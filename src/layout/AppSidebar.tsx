@@ -22,7 +22,7 @@ import {
   TableIcon,
   TaskIcon,
   UserCircleIcon,
-} from "../icons/index";
+} from "../icons";
 import SidebarWidget from "./SidebarWidget";
 
 type NavItem = {
@@ -70,6 +70,64 @@ const navItems: NavItem[] = [
       },
     ],
   },
+  {
+    name: "Templates",
+    icon: <BoxCubeIcon />,
+    new: true,
+    subItems: [
+      {
+        name: "E-commerce",
+        path: "/templates/ecommerce",
+      },
+      {
+        name: "Blog Writer",
+        path: "/templates/blog-writer",
+        new: true,
+      },
+      {
+        name: "Restaurant",
+        path: "/templates/restaurant",
+      },
+      {
+        name: "Healthcare",
+        path: "/templates/healthcare",
+      },
+      {
+        name: "Finance",
+        path: "/templates/finance",
+      },
+      {
+        name: "Education",
+        path: "/templates/education",
+      },
+      {
+        name: "SaaS",
+        path: "/templates/saas",
+      },
+    ],
+  },
+        {
+          name: "AI Customer Care",
+          icon: <CallIcon />,
+          new: true,
+          subItems: [
+            { name: "Dashboard", path: "/templates/ai-customer-care" },
+            { name: "Voice Agents", path: "/templates/ai-customer-care/agents/voice" },
+            { name: "Chat Agents", path: "/templates/ai-customer-care/agents/chat" },
+            { name: "Live Monitoring", path: "/templates/ai-customer-care/monitoring" },
+            { name: "Call Flow Builder", path: "/templates/ai-customer-care/flows" },
+            { name: "Analytics", path: "/templates/ai-customer-care/analytics" },
+            { name: "Call History", path: "/templates/ai-customer-care/calls/history" },
+            { name: "Knowledge Base", path: "/templates/ai-customer-care/knowledge" },
+            { name: "Integrations", path: "/templates/ai-customer-care/integrations" },
+            { name: "Webhooks", path: "/templates/ai-customer-care/webhooks" },
+            { name: "Phone Numbers", path: "/templates/ai-customer-care/numbers" },
+            { name: "Quality Assurance", path: "/templates/ai-customer-care/quality" },
+            { name: "Settings", path: "/templates/ai-customer-care/settings" },
+            { name: "API Playground", path: "/templates/ai-customer-care/api-playground" },
+            { name: "Tenant Management", path: "/templates/ai-customer-care/tenant-settings" },
+          ],
+        },
   {
     name: "E-commerce",
     icon: <CartIcon />,
@@ -266,7 +324,7 @@ const AppSidebar: React.FC = () => {
                   new
                 </span>
               )}
-              {(isExpanded || isHovered || isMobileOpen) && (
+              {(isExpanded || isHovered || isMobileOpen) && nav.subItems && (
                 <ChevronDownIcon
                   className={`ml-auto w-5 h-5 transition-transform duration-200  ${
                     openSubmenu?.type === menuType &&

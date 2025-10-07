@@ -70,6 +70,8 @@ npm run dev
 ```
 
 ### For Developers
+
+#### Multi-Template Development
 ```bash
 # Clone and develop
 git clone https://github.com/tindevelopers/tinadmin-master-admin-panel.git
@@ -80,6 +82,98 @@ npm run dev
 # Create new templates
 npm run template:create [template-name]
 ```
+
+#### Template Extraction & Standalone Development
+
+**Extract Template to Standalone Project:**
+```bash
+# Extract AI Customer Care template
+node scripts/extract-template.js ai-customer-care
+
+# This creates: ./ai-customer-care-standalone/
+cd ai-customer-care-standalone/
+npm run dev
+```
+
+**Create Independent Repository:**
+```bash
+cd ai-customer-care-standalone/
+git init
+git remote add origin https://github.com/your-org/ai-customer-care-standalone.git
+git add .
+git commit -m "Initial AI Customer Care standalone template"
+git push -u origin main
+```
+
+#### Continued Development Workflow
+
+**Option 1: Re-extract After Major Updates**
+```bash
+# 1. Update main template
+git checkout ai-customer-care-bot
+# ... make changes to templates/ and src/components/
+git add . && git commit -m "feat: Add new features"
+git push origin ai-customer-care-bot
+
+# 2. Re-extract to standalone
+node scripts/extract-template.js ai-customer-care
+
+# 3. Update standalone repo
+cd ai-customer-care-standalone/
+git add . && git commit -m "feat: Update with latest features"
+git push origin main
+```
+
+**Option 2: Direct Standalone Development**
+```bash
+# Develop directly in standalone project
+cd ai-customer-care-standalone/
+# ... make changes
+git add . && git commit -m "feat: Add new feature"
+git push origin main
+
+# Periodically sync back to main template
+```
+
+#### Available Templates & Branches
+
+| Template | Branch | Status | Standalone |
+|----------|--------|--------|------------|
+| **🤖 AI Customer Care** | `ai-customer-care-bot` | ✅ Active | ✅ Extracted |
+| **📝 Blog Writer** | `blog-writer-admin-panel` | ✅ Active | ⏳ Pending |
+| **🛒 E-commerce** | `main` | ✅ Active | ⏳ Pending |
+| **🏥 Healthcare** | `main` | ✅ Active | ⏳ Pending |
+| **💰 Finance** | `main` | ✅ Active | ⏳ Pending |
+
+#### CI/CD & Deployment
+
+**Automated Pipeline:**
+- ✅ **GitHub Actions** - Automated testing and building
+- ✅ **Template Extraction** - Automatic standalone project generation
+- ✅ **Retry Logic** - Network timeout handling with 3-attempt retry
+- ✅ **Enhanced Caching** - npm dependency caching for faster builds
+- ✅ **Multi-Environment** - Test, staging, and production deployments
+
+**Deployment Options:**
+```bash
+# Vercel (Recommended)
+vercel --prod
+
+# Netlify
+npm run build && npm run export
+
+# Docker
+docker build -t tinadmin-template .
+docker run -p 3000:3000 tinadmin-template
+
+# Railway
+railway deploy
+```
+
+**Monitor CI/CD:**
+- **GitHub Actions**: https://github.com/tindevelopers/tinadmin-master-admin-panel/actions
+- **Template Status**: Check individual template extraction jobs
+- **Build Artifacts**: Download extracted templates from Actions
 
 ## Installation
 

@@ -1,0 +1,19 @@
+{
+  "name": "TinAdmin Blog Writer",
+  "description": "Marketing dashboard for small business client management, social media, email marketing, and appointment booking",
+  "version": "1.0.0",
+  "features": [
+    "client-management",
+    "social-media",
+    "email-marketing",
+    "appointment-booking",
+    "content-creation"
+  ],
+  "theme": {
+    "colors": {
+      "primary": "#F59E0B",
+      "secondary": "#EF4444"
+    }
+  },
+  "dependencies": {}
+}

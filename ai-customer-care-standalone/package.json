@@ -1,0 +1,56 @@
+{
+  "name": "ai-customer-care-template",
+  "version": "1.0.0",
+  "description": "Standalone AI Customer Care template built with Next.js 15 and Tailwind CSS",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "type-check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "next": "^15.5.4",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "": "heroicons/react",
+    "typescript": "^5.0.0",
+    "tailwindcss": "^4.0.0",
+    "autoprefixer": "^10.4.0",
+    "postcss": "^8.4.0",
+    "eslint": "^9.0.0",
+    "eslint-config-next": "^15.5.4",
+    "clsx": "^2.1.0",
+    "tailwind-merge": "^2.5.0",
+    "lucide-react": "^0.460.0",
+    "recharts": "^2.13.0"
+  },
+  "devDependencies": {
+    "": "types/react-dom",
+    "typescript": "^5.0.0",
+    "eslint": "^9.0.0",
+    "eslint-config-next": "^15.5.4"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=8.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/your-username/ai-customer-care-template.git"
+  },
+  "keywords": [
+    "nextjs",
+    "react",
+    "typescript",
+    "tailwindcss",
+    "admin-dashboard",
+    "ai-customer-care",
+    "voice-agents",
+    "chat-agents",
+    "call-analytics"
+  ],
+  "author": "Your Name <your.email@example.com>",
+  "license": "MIT"
+}
