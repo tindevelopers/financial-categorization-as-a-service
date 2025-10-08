@@ -1,0 +1,65 @@
+{
+  "name": "TinAdmin Blog Writer",
+  "description": "Comprehensive blog management and content creation platform with team collaboration, analytics, and multi-platform publishing",
+  "version": "1.0.0",
+  "features": [
+    "content-management",
+    "draft-management",
+    "content-calendar",
+    "media-library",
+    "team-collaboration",
+    "workflow-management",
+    "seo-tools",
+    "analytics-dashboard",
+    "publishing-management",
+    "content-templates",
+    "third-party-integrations",
+    "multi-tenant-support"
+  ],
+  "theme": {
+    "colors": {
+      "primary": "#3B82F6",
+      "secondary": "#10B981"
+    }
+  },
+  "realTimeFeatures": [
+    "live-collaboration",
+    "real-time-analytics",
+    "live-preview",
+    "instant-publishing"
+  ],
+  "dataVisualization": [
+    "content-performance-charts",
+    "traffic-analytics",
+    "engagement-metrics",
+    "seo-performance"
+  ],
+  "mobileResponsive": true,
+  "accessibility": true,
+  "performance": {
+    "optimized": true,
+    "caching": true,
+    "imageOptimization": true
+  },
+  "security": {
+    "authentication": true,
+    "roleBasedAccess": true,
+    "dataEncryption": true
+  },
+  "integrations": [
+    "wordpress",
+    "webflow",
+    "shopify",
+    "mailchimp",
+    "google-analytics",
+    "social-media-platforms"
+  ],
+  "dependencies": {
+    "next": "^15.5.4",
+    "react": "^19.0.0",
+    "typescript": "^5.0.0",
+    "tailwindcss": "^4.0.0",
+    "@heroicons/react": "^2.1.0",
+    "recharts": "^2.13.0"
+  }
+}

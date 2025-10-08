@@ -931,6 +931,62 @@ function fixBlogWriterResponsiveLayout() {
   }
 }
 
+function fixSidebarWidgetAndDashboard() {
+  console.log('🔧 Fixing sidebar widget branding and dashboard responsiveness...');
+  
+  // Fix SidebarWidget branding
+  const sidebarWidgetPath = path.join(OUTPUT_DIR, 'src/layout/SidebarWidget.tsx');
+  if (fs.existsSync(sidebarWidgetPath)) {
+    let content = fs.readFileSync(sidebarWidgetPath, 'utf8');
+    
+    // Change Tailwind to TIN
+    content = content.replace(/#1 Tailwind CSS Dashboard/g, '#1 TIN Dashboard');
+    content = content.replace(/Leading Tailwind CSS Admin Template/g, 'Leading TIN Admin Template');
+    
+    // Update the link
+    content = content.replace(/https:\/\/tailadmin\.com\/pricing/g, 'https://tin.info/admindashboards');
+    
+    // Fix responsive padding
+    content = content.replace(/px-4 py-5/g, 'px-3 sm:px-4 py-4 sm:py-5');
+    
+    fs.writeFileSync(sidebarWidgetPath, content);
+    console.log('✅ Fixed sidebar widget branding and responsiveness');
+  }
+  
+  // Fix BlogWriterDashboard responsiveness
+  const dashboardPath = path.join(OUTPUT_DIR, 'src/components/blog-writer/BlogWriterDashboard.tsx');
+  if (fs.existsSync(dashboardPath)) {
+    let content = fs.readFileSync(dashboardPath, 'utf8');
+    
+    // Fix activity item responsiveness
+    content = content.replace(
+      /className="flex items-center space-x-4 p-4 bg-gray-50 dark:bg-gray-700 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors"/g,
+      'className="flex items-start sm:items-center space-x-3 sm:space-x-4 p-3 sm:p-4 bg-gray-50 dark:bg-gray-700 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors"'
+    );
+    
+    // Fix text container
+    content = content.replace(
+      /className="flex-1 min-w-0"/g,
+      'className="flex-1 min-w-0 overflow-hidden"'
+    );
+    
+    // Fix title text wrapping
+    content = content.replace(
+      /className="text-sm font-medium text-gray-900 dark:text-white truncate"/g,
+      'className="text-sm font-medium text-gray-900 dark:text-white break-words line-clamp-2"'
+    );
+    
+    // Fix author text truncation
+    content = content.replace(
+      /className="text-sm text-gray-500 dark:text-gray-400"/g,
+      'className="text-sm text-gray-500 dark:text-gray-400 truncate"'
+    );
+    
+    fs.writeFileSync(dashboardPath, content);
+    console.log('✅ Fixed dashboard responsiveness');
+  }
+}
+
 function modifyAppSidebar() {
   const sidebarPath = path.join(OUTPUT_DIR, 'src/layout/AppSidebar.tsx');
   if (fs.existsSync(sidebarPath)) {
@@ -1819,6 +1875,11 @@ function extractTemplate() {
   log('Fixing responsive layout...', 'progress');
   fixBlogWriterResponsiveLayout();
   log('Fixed responsive layout', 'success');
+
+  // Fix sidebar widget branding and dashboard responsiveness
+  log('Fixing sidebar widget branding and dashboard responsiveness...', 'progress');
+  fixSidebarWidgetAndDashboard();
+  log('Fixed sidebar widget branding and dashboard responsiveness', 'success');
   
   // Add build caching configuration
   log('Adding build caching configuration...', 'progress');

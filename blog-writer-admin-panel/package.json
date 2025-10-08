@@ -1,0 +1,92 @@
+{
+  "name": "tinadmin-blog-writer-template",
+  "version": "1.0.0",
+  "description": "Blog Writer Template - A comprehensive blog management and content creation platform",
+  "private": false,
+  "main": "bin/create-blog-writer.js",
+  "bin": {
+    "tinadmin-blog-writer-template": "./bin/create-blog-writer.js"
+  },
+  "files": [
+    "bin/",
+    "src/",
+    "public/",
+    "templates/",
+    "package.json",
+    "README.md",
+    "DEPLOYMENT.md",
+    "LICENSE",
+    "next.config.ts",
+    "tsconfig.json",
+    "tailwind.config.ts",
+    "postcss.config.mjs",
+    "eslint.config.mjs"
+  ],
+  "keywords": [
+    "nextjs",
+    "react",
+    "typescript",
+    "tailwindcss",
+    "blog",
+    "content-management",
+    "cms",
+    "admin-panel",
+    "template"
+  ],
+  "author": "TinAdmin",
+  "license": "MIT",
+  "homepage": "https://github.com/tindevelopers/adminpanel-template-blog-writer-next-js",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tindevelopers/adminpanel-template-blog-writer-next-js.git"
+  },
+  "bugs": {
+    "url": "https://github.com/tindevelopers/adminpanel-template-blog-writer-next-js/issues"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "type-check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "next": "^15.5.4",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "@types/node": "^22.0.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@types/prismjs": "^1.26.5",
+    "typescript": "^5.0.0",
+    "tailwindcss": "^4.0.0",
+    "autoprefixer": "^10.4.0",
+    "postcss": "^8.4.0",
+    "eslint": "^9.0.0",
+    "eslint-config-next": "^15.5.4",
+    "@heroicons/react": "^2.1.0",
+    "@svgr/webpack": "^8.1.0",
+    "@tailwindcss/forms": "^0.5.9",
+    "@tailwindcss/postcss": "^4.0.9",
+    "clsx": "^2.1.0",
+    "tailwind-merge": "^2.5.0",
+    "lucide-react": "^0.460.0",
+    "recharts": "^2.13.0",
+    "apexcharts": "^4.3.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "typescript": "^5.0.0",
+    "eslint": "^9.0.0",
+    "eslint-config-next": "^15.5.4"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=8.0.0"
+  }
+}
