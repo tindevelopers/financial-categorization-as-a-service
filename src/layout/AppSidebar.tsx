@@ -41,7 +41,7 @@ const othersItems: NavItem[] = [];
 const supportItems: NavItem[] = [];
 
 // AI Customer Care specific navigation items
-const templateItems: NavItem[] = [
+const aiCustomerCareItems: NavItem[] = [
   {
     name: "AI Customer Care",
     icon: <AiIcon />,
@@ -84,9 +84,75 @@ const templateItems: NavItem[] = [
   },
 ];
 
+// Blog Writer specific navigation items
+const blogWriterItems: NavItem[] = [
+  {
+    name: "Blog Writer",
+    icon: <span className="w-5 h-5 flex items-center justify-center text-xs font-bold bg-blue-500 text-white rounded">B</span>,
+    new: true,
+    subItems: [
+      { name: "Dashboard", path: "/templates/blog-writer" },
+      { 
+        name: "Content Management", 
+        isAccordionHeader: true,
+        new: true,
+        subItems: [
+          { name: "Drafts", path: "/templates/blog-writer/drafts", new: true },
+          { name: "Templates", path: "/templates/blog-writer/templates", new: true },
+          { name: "Publishing", path: "/templates/blog-writer/publishing", new: true },
+          { name: "Workflows", path: "/templates/blog-writer/workflows", new: true },
+        ]
+      },
+      { 
+        name: "Team & Collaboration", 
+        isAccordionHeader: true,
+        new: true,
+        subItems: [
+          { name: "Team", path: "/templates/blog-writer/team", new: true },
+          { name: "Media", path: "/templates/blog-writer/media", new: true },
+          { name: "Integrations", path: "/templates/blog-writer/integrations", new: true },
+        ]
+      },
+      { 
+        name: "Analytics & SEO", 
+        isAccordionHeader: true,
+        pro: true,
+        subItems: [
+          { name: "Analytics", path: "/templates/blog-writer/analytics", pro: true },
+          { name: "SEO", path: "/templates/blog-writer/seo", pro: true },
+        ]
+      },
+    ],
+  },
+];
+
 const AppSidebar: React.FC = () => {
   const { isExpanded, isMobileOpen, isHovered, setIsHovered } = useSidebar();
   const pathname = usePathname();
+
+  // Determine which template is active based on the current path
+  const getCurrentTemplate = () => {
+    if (pathname.startsWith('/templates/blog-writer')) {
+      return 'blog-writer';
+    } else if (pathname.startsWith('/templates/ai-customer-care')) {
+      return 'ai-customer-care';
+    }
+    return 'ai-customer-care'; // default
+  };
+
+  // Get the appropriate template items based on current template
+  const getTemplateItems = () => {
+    const currentTemplate = getCurrentTemplate();
+    switch (currentTemplate) {
+      case 'blog-writer':
+        return blogWriterItems;
+      case 'ai-customer-care':
+      default:
+        return aiCustomerCareItems;
+    }
+  };
+
+  const templateItems = getTemplateItems();
 
   const renderMenuItems = (
     navItems: NavItem[],
