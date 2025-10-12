@@ -355,3 +355,7 @@ A major update focused on Next.js 15 implementation and comprehensive redesign.
 ## License
 
 Refer to our [LICENSE](https://tailadmin.com/license) page for more information.
+
+---
+
+**Last Updated:** October 12, 2025 | **Version:** 1.0.0
