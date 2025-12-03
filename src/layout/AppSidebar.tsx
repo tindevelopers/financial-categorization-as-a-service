@@ -173,7 +173,21 @@ const navItems: NavItem[] = [
           { name: "Tenant Management", path: "/templates/saas/admin/entity/tenant-management" },
           { name: "Organization Management", path: "/templates/saas/admin/entity/organization-management" },
           { name: "Role Management", path: "/templates/saas/admin/entity/role-management" },
-          { name: "System", path: "/templates/saas/admin/system" },
+        ],
+      },
+      {
+        name: "System Admin",
+        subItems: [
+          { name: "API Configuration", path: "/templates/saas/admin/system-admin/api-configuration" },
+          {
+            name: "Webhooks",
+            subItems: [
+              { name: "Management", path: "/templates/saas/webhooks/management" },
+              { name: "Events", path: "/templates/saas/webhooks/events" },
+              { name: "Logs", path: "/templates/saas/webhooks/logs" },
+              { name: "Testing", path: "/templates/saas/webhooks/testing" },
+            ],
+          },
         ],
       },
       {
@@ -215,15 +229,6 @@ const navItems: NavItem[] = [
           { name: "IP Restrictions", path: "/templates/saas/security/ip-restrictions" },
           { name: "Audit Logs", path: "/templates/saas/security/audit-logs" },
           { name: "Compliance", path: "/templates/saas/security/compliance" },
-        ],
-      },
-      {
-        name: "Webhooks",
-        subItems: [
-          { name: "Management", path: "/templates/saas/webhooks/management" },
-          { name: "Events", path: "/templates/saas/webhooks/events" },
-          { name: "Logs", path: "/templates/saas/webhooks/logs" },
-          { name: "Testing", path: "/templates/saas/webhooks/testing" },
         ],
       },
       {
