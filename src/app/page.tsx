@@ -4,11 +4,11 @@ import HeroSection from "@/components/landing/HeroSection";
 import QuickStart from "@/components/landing/QuickStart";
 
 export const metadata: Metadata = {
-  title: "TailAdmin - Modern Admin Dashboard Templates",
+  title: "SaaS Admin - Modern Admin Dashboard Templates",
   description: "Choose from industry-specific admin dashboard templates built with Next.js 15 and Tailwind CSS. E-commerce, Healthcare, Finance, Education, SaaS and more.",
   keywords: "admin dashboard, template, Next.js, Tailwind CSS, e-commerce, healthcare, finance, SaaS",
   openGraph: {
-    title: "TailAdmin - Modern Admin Dashboard Templates",
+    title: "SaaS Admin - Modern Admin Dashboard Templates",
     description: "Industry-specific admin dashboard templates for modern web applications",
     type: "website",
   },
