@@ -7,6 +7,9 @@ import { ThemeProvider } from "@/context/ThemeContext";
 
 const outfit = Outfit({
   subsets: ["latin"],
+  display: "swap",
+  preload: true,
+  variable: "--font-outfit",
 });
 
 export default function RootLayout({
@@ -16,7 +19,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body className={`${outfit.className} dark:bg-gray-900`}>
+      <body className={`${outfit.variable} ${outfit.className} dark:bg-gray-900`}>
         <ThemeProvider>
           <SidebarProvider>{children}</SidebarProvider>
         </ThemeProvider>

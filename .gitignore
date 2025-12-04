@@ -41,6 +41,9 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
-# standalone templates (published separately)
-blog-writer-standalone/
-ai-customer-care-standalone/
+# build artifacts
+*.tsbuildinfo
+.next/
+out/
+dist/
+build/

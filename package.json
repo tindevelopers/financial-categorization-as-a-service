@@ -3,20 +3,14 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "dev": "next dev ",
-    "build": "next build ",
+    "dev": "next dev",
+    "build": "next build",
     "start": "next start",
     "lint": "next lint",
     "type-check": "tsc --noEmit",
     "audit": "npm audit --audit-level=moderate",
     "deps:check": "npx npm-check-updates",
-    "deps:update": "npx npm-check-updates -u",
-    "template:create": "node scripts/create-template.js",
-    "template:build": "node scripts/build-template.js",
-    "template:list": "ls templates/",
-    "template:extract": "node scripts/extract-template.js",
-    "template:github": "node scripts/create-github-repo.js",
-    "publish:template": "npm run template:build && npm publish"
+    "deps:update": "npx npm-check-updates -u"
   },
   "dependencies": {
     "@fullcalendar/core": "^6.1.15",
