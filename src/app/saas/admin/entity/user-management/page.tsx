@@ -1,3 +1,5 @@
+"use client";
+
 import Button from "@/components/ui/button/Button";
 import {
   Table,
@@ -12,92 +14,90 @@ import {
   MagnifyingGlassIcon,
   ArrowDownTrayIcon,
 } from "@heroicons/react/24/outline";
-import type { Metadata } from "next";
 import Image from "next/image";
-import React from "react";
+import React, { useEffect, useState } from "react";
+import { getAllUsers } from "@/app/actions/users";
+import type { Database } from "@/lib/supabase/types";
 
-export const metadata: Metadata = {
-  title: "User Management | TailAdmin",
-  description: "Comprehensive user directory with roles, plans, and activity tracking",
+type User = Database["public"]["Tables"]["users"]["Row"] & {
+  roles?: { name: string } | null;
+  tenants?: { name: string } | null;
 };
-
-const userDirectory = [
-  {
-    name: "Ava Patel",
-    email: "ava@atlasretail.com",
-    role: "Platform Admin",
-    plan: "Enterprise",
-    status: "Active",
-    lastActive: "2m ago",
-    avatar: "/images/user/user-17.jpg",
-  },
-  {
-    name: "Marcus Reed",
-    email: "m.reed@northwind.finance",
-    role: "Billing Owner",
-    plan: "Enterprise",
-    status: "Active",
-    lastActive: "12m ago",
-    avatar: "/images/user/user-13.jpg",
-  },
-  {
-    name: "Isabella Chen",
-    email: "isabella@lumenhealth.io",
-    role: "Security Analyst",
-    plan: "Healthcare",
-    status: "Pending",
-    lastActive: "Invite sent",
-    avatar: "/images/user/user-18.jpg",
-  },
-  {
-    name: "Diego Alvarez",
-    email: "diego@auroraapps.dev",
-    role: "Developer",
-    plan: "Growth",
-    status: "Active",
-    lastActive: "1h ago",
-    avatar: "/images/user/user-20.jpg",
-  },
-  {
-    name: "Noor Alvi",
-    email: "noor@orbitmobility.com",
-    role: "Support Lead",
-    plan: "Enterprise",
-    status: "Suspended",
-    lastActive: "24h ago",
-    avatar: "/images/user/user-12.jpg",
-  },
-  {
-    name: "Emily Brooks",
-    email: "emily@evergreen.edu",
-    role: "Workspace Admin",
-    plan: "Education",
-    status: "Active",
-    lastActive: "4m ago",
-    avatar: "/images/user/user-11.jpg",
-  },
-];
 
 const StatusBadge = ({ status }: { status: string }) => {
   const styles: Record<string, string> = {
-    Active:
+    active:
       "bg-emerald-50 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-300",
-    Pending:
+    pending:
       "bg-amber-50 text-amber-600 dark:bg-amber-500/15 dark:text-amber-300",
-    Suspended:
+    suspended:
       "bg-rose-50 text-rose-600 dark:bg-rose-500/15 dark:text-rose-300",
   };
 
+  const displayStatus = status.charAt(0).toUpperCase() + status.slice(1);
+
   return (
     <span
-      className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${styles[status] ?? "bg-gray-100 text-gray-600"}`}
+      className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${styles[status.toLowerCase()] ?? "bg-gray-100 text-gray-600"}`}
     >
-      {status}
+      {displayStatus}
     </span>
   );
 };
 
+const formatLastActive = (lastActiveAt: string | null) => {
+  if (!lastActiveAt) return "Never";
+  
+  const date = new Date(lastActiveAt);
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+  const diffMins = Math.floor(diffMs / 60000);
+  const diffHours = Math.floor(diffMs / 3600000);
+  const diffDays = Math.floor(diffMs / 86400000);
+
+  if (diffMins < 1) return "Just now";
+  if (diffMins < 60) return `${diffMins}m ago`;
+  if (diffHours < 24) return `${diffHours}h ago`;
+  if (diffDays < 7) return `${diffDays}d ago`;
+  
+  return date.toLocaleDateString();
+};
+
 export default function UserManagementPage() {
+  const [users, setUsers] = useState<User[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    loadUsers();
+  }, []);
+
+  const loadUsers = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const data = await getAllUsers();
+      setUsers(data as User[]);
+    } catch (error) {
+      console.error("Error loading users:", error);
+      const errorMessage = error instanceof Error ? error.message : "Failed to load users";
+      setError(errorMessage);
+      setUsers([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const filteredUsers = users.filter(
+    (user) =>
+      user.full_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      user.email.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  const activeUsers = users.filter((u) => u.status === "active").length;
+  const pendingUsers = users.filter((u) => u.status === "pending").length;
+
   return (
     <div className="space-y-8">
       <section className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-indigo-600 via-purple-600 to-pink-600 p-8 text-white">
@@ -117,6 +117,11 @@ export default function UserManagementPage() {
             <p className="max-w-2xl text-white/70">
               Manage users, roles, permissions, and access across your
               organization with real-time sync and policy-aware controls.
+              {users.length > 0 && (
+                <span className="block mt-2 text-sm text-white/60">
+                  Showing {users.length} user{users.length !== 1 ? 's' : ''} you have access to
+                </span>
+              )}
             </p>
           </div>
           <div className="grid w-full max-w-md gap-4 rounded-2xl border border-white/15 bg-white/5 p-5 backdrop-blur">
@@ -124,24 +129,20 @@ export default function UserManagementPage() {
               <p className="text-xs uppercase tracking-wide text-white/60">
                 Total users
               </p>
-              <p className="text-4xl font-semibold">{userDirectory.length}</p>
+              <p className="text-4xl font-semibold">{users.length}</p>
             </div>
             <div className="grid grid-cols-2 gap-4 text-sm">
               <div className="rounded-xl border border-white/10 p-3">
                 <p className="text-xs uppercase tracking-wide text-white/50">
                   Active
                 </p>
-                <p className="text-2xl font-semibold">
-                  {userDirectory.filter((u) => u.status === "Active").length}
-                </p>
+                <p className="text-2xl font-semibold">{activeUsers}</p>
               </div>
               <div className="rounded-xl border border-white/10 p-3">
                 <p className="text-xs uppercase tracking-wide text-white/50">
                   Pending
                 </p>
-                <p className="text-2xl font-semibold">
-                  {userDirectory.filter((u) => u.status === "Pending").length}
-                </p>
+                <p className="text-2xl font-semibold">{pendingUsers}</p>
               </div>
             </div>
           </div>
@@ -164,6 +165,8 @@ export default function UserManagementPage() {
               <input
                 type="search"
                 placeholder="Search people, emails..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
                 className="h-10 rounded-full border border-gray-200 bg-white/70 pl-10 pr-4 text-sm dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
               />
             </div>
@@ -178,68 +181,104 @@ export default function UserManagementPage() {
           </div>
         </div>
 
-        <div className="overflow-x-auto custom-scrollbar rounded-2xl border border-gray-100 dark:border-gray-800">
-          <Table className="divide-y divide-gray-100 dark:divide-gray-800">
-            <TableHeader className="bg-gray-50/80 dark:bg-gray-800/60">
-              <TableRow>
-                {["User", "Role", "Plan", "Status", "Last active"].map(
-                  (label) => (
-                    <TableCell
-                      key={label}
-                      isHeader
-                      className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400"
-                    >
-                      {label}
-                    </TableCell>
-                  )
-                )}
-              </TableRow>
-            </TableHeader>
-            <TableBody className="bg-white dark:bg-gray-900">
-              {userDirectory.map((user) => (
-                <TableRow
-                  key={user.email}
-                  className="border-b border-gray-100 last:border-none dark:border-gray-800"
-                >
-                  <TableCell className="px-4 py-3">
-                    <div className="flex items-center gap-3">
-                      <div className="h-10 w-10 overflow-hidden rounded-full">
-                        <Image
-                          src={user.avatar}
-                          alt={user.name}
-                          width={40}
-                          height={40}
-                        />
-                      </div>
-                      <div>
-                        <p className="font-medium text-gray-900 dark:text-white">
-                          {user.name}
-                        </p>
-                        <p className="text-sm text-gray-500 dark:text-gray-400">
-                          {user.email}
-                        </p>
-                      </div>
-                    </div>
-                  </TableCell>
-                  <TableCell className="px-4 py-3 text-sm text-gray-700 dark:text-gray-300">
-                    {user.role}
-                  </TableCell>
-                  <TableCell className="px-4 py-3 text-sm text-gray-700 dark:text-gray-300">
-                    {user.plan}
-                  </TableCell>
-                  <TableCell className="px-4 py-3">
-                    <StatusBadge status={user.status} />
-                  </TableCell>
-                  <TableCell className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400">
-                    {user.lastActive}
-                  </TableCell>
+        {loading ? (
+          <div className="py-12 text-center text-gray-500 dark:text-gray-400">
+            Loading users...
+          </div>
+        ) : error ? (
+          <div className="py-12 text-center">
+            <div className="inline-block p-4 rounded-lg bg-red-50 dark:bg-red-900/20">
+              <p className="text-red-600 dark:text-red-400 font-medium">Error loading users</p>
+              <p className="text-sm text-red-500 dark:text-red-500 mt-1">{error}</p>
+              <button
+                onClick={loadUsers}
+                className="mt-3 px-4 py-2 text-sm font-medium text-red-700 dark:text-red-300 hover:text-red-800 dark:hover:text-red-200"
+              >
+                Try again
+              </button>
+            </div>
+          </div>
+        ) : filteredUsers.length === 0 ? (
+          <div className="py-12 text-center text-gray-500 dark:text-gray-400">
+            {searchQuery ? "No users found matching your search." : "No users found. Add your first user to get started."}
+          </div>
+        ) : (
+          <div className="overflow-x-auto custom-scrollbar rounded-2xl border border-gray-100 dark:border-gray-800">
+            <Table className="divide-y divide-gray-100 dark:divide-gray-800">
+              <TableHeader className="bg-gray-50/80 dark:bg-gray-800/60">
+                <TableRow>
+                  {["User", "Role", "Plan", "Status", "Last active"].map(
+                    (label) => (
+                      <TableCell
+                        key={label}
+                        isHeader
+                        className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400"
+                      >
+                        {label}
+                      </TableCell>
+                    )
+                  )}
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </div>
+              </TableHeader>
+              <TableBody className="bg-white dark:bg-gray-900">
+                {filteredUsers.map((user) => (
+                  <TableRow
+                    key={user.id}
+                    className="border-b border-gray-100 last:border-none dark:border-gray-800"
+                  >
+                    <TableCell className="px-4 py-3">
+                      <div className="flex items-center gap-3">
+                        <div className="h-10 w-10 overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700 flex items-center justify-center">
+                          {user.avatar_url ? (
+                            <Image
+                              src={user.avatar_url}
+                              alt={user.full_name}
+                              width={40}
+                              height={40}
+                              className="object-cover"
+                            />
+                          ) : (
+                            <span className="text-sm font-medium text-gray-600 dark:text-gray-300">
+                              {user.full_name.charAt(0).toUpperCase()}
+                            </span>
+                          )}
+                        </div>
+                        <div>
+                          <p className="font-medium text-gray-900 dark:text-white">
+                            {user.full_name}
+                          </p>
+                          <p className="text-sm text-gray-500 dark:text-gray-400">
+                            {user.email}
+                          </p>
+                        </div>
+                      </div>
+                    </TableCell>
+                    <TableCell className="px-4 py-3 text-sm text-gray-700 dark:text-gray-300">
+                      <div>
+                        <p className="font-medium">{user.roles?.name || "No role"}</p>
+                        {user.tenants && (
+                          <p className="text-xs text-gray-500 dark:text-gray-400">
+                            {user.tenants.name}
+                          </p>
+                        )}
+                      </div>
+                    </TableCell>
+                    <TableCell className="px-4 py-3 text-sm text-gray-700 dark:text-gray-300">
+                      {user.plan}
+                    </TableCell>
+                    <TableCell className="px-4 py-3">
+                      <StatusBadge status={user.status} />
+                    </TableCell>
+                    <TableCell className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400">
+                      {formatLastActive(user.last_active_at)}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        )}
       </section>
     </div>
   );
 }
-

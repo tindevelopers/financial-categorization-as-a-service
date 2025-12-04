@@ -1,12 +1,24 @@
 "use client";
 import Image from "next/image";
 import Link from "next/link";
-import React, { useState } from "react";
+import { useRouter } from "next/navigation";
+import React, { useState, useEffect } from "react";
 import { Dropdown } from "../ui/dropdown/Dropdown";
 import { DropdownItem } from "../ui/dropdown/DropdownItem";
+import { signOut } from "@/app/actions/auth";
+import { getCurrentUser } from "@/app/actions/user";
+import { createClient } from "@/lib/supabase/client";
+import type { Database } from "@/lib/supabase/types";
+
+type User = Database["public"]["Tables"]["users"]["Row"] & {
+  roles?: { name: string } | null;
+};
 
 export default function UserDropdown() {
   const [isOpen, setIsOpen] = useState(false);
+  const [user, setUser] = useState<User | null>(null);
+  const [loading, setLoading] = useState(true);
+  const router = useRouter();
 
   function toggleDropdown() {
     setIsOpen(!isOpen);
@@ -14,6 +26,76 @@ export default function UserDropdown() {
 
   function closeDropdown() {
     setIsOpen(false);
+  }
+
+  useEffect(() => {
+    async function loadUser() {
+      try {
+        setLoading(true);
+        // Use server action to get current user (bypasses RLS properly)
+        const userData = await getCurrentUser();
+        
+        if (userData) {
+          console.log("[UserDropdown] User loaded:", {
+            email: userData.email,
+            full_name: userData.full_name,
+            role: (userData.roles as any)?.name,
+          });
+          setUser(userData);
+        } else {
+          console.log("[UserDropdown] No user data returned (user not authenticated or not found)");
+          setUser(null);
+        }
+      } catch (error) {
+        // Better error handling for server action errors
+        const errorMessage = error instanceof Error 
+          ? error.message 
+          : typeof error === 'string' 
+          ? error 
+          : JSON.stringify(error);
+        
+        console.error("[UserDropdown] Error loading user:", {
+          message: errorMessage,
+          error: error,
+          type: typeof error,
+        });
+        setUser(null);
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    loadUser();
+
+    // Listen for auth changes
+    const supabase = createClient();
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(() => {
+      loadUser();
+    });
+
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, []);
+
+  async function handleSignOut() {
+    try {
+      // Clear session from browser client
+      const supabase = createClient();
+      await supabase.auth.signOut();
+      
+      // Also call server action
+      await signOut();
+      
+      // Redirect to sign in page
+      router.push("/signin");
+      router.refresh();
+    } catch (error) {
+      console.error("Sign out error:", error);
+      // Still redirect even if there's an error
+      router.push("/signin");
+      router.refresh();
+    }
   }
   return (
     <div className="relative">
@@ -30,7 +112,9 @@ export default function UserDropdown() {
           />
         </span>
 
-        <span className="block mr-1 font-medium text-theme-sm">Jane Smith</span>
+        <span className="block mr-1 font-medium text-theme-sm">
+          {loading ? "Loading..." : user?.full_name || "User"}
+        </span>
 
         <svg
           className={`stroke-gray-500 dark:stroke-gray-400 transition-transform duration-200 ${
@@ -59,10 +143,10 @@ export default function UserDropdown() {
       >
         <div>
           <span className="block font-medium text-gray-700 text-theme-sm dark:text-gray-400">
-            John Smith
+            {loading ? "Loading..." : user?.full_name || "User"}
           </span>
           <span className="mt-0.5 block text-theme-xs text-gray-500 dark:text-gray-400">
-            randomuser@pimjo.com
+            {loading ? "Loading..." : user?.email || "No email"}
           </span>
         </div>
 
@@ -143,9 +227,9 @@ export default function UserDropdown() {
             </DropdownItem>
           </li>
         </ul>
-        <Link
-          href="/signin"
-          className="flex items-center gap-3 px-3 py-2 mt-3 font-medium text-gray-700 rounded-lg group text-theme-sm hover:bg-gray-100 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-white/5 dark:hover:text-gray-300"
+        <button
+          onClick={handleSignOut}
+          className="flex items-center gap-3 px-3 py-2 mt-3 font-medium text-gray-700 rounded-lg group text-theme-sm hover:bg-gray-100 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-white/5 dark:hover:text-gray-300 w-full text-left"
         >
           <svg
             className="fill-gray-500 group-hover:fill-gray-700 dark:group-hover:fill-gray-300"
@@ -163,7 +247,7 @@ export default function UserDropdown() {
             />
           </svg>
           Sign out
-        </Link>
+        </button>
       </Dropdown>
     </div>
   );

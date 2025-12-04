@@ -15,6 +15,7 @@ import {
   GridIcon,
   HorizontaLDots,
   ListIcon,
+  LockIcon,
   MailIcon,
   PageIcon,
   PieChartIcon,
@@ -88,6 +89,26 @@ const navItems: NavItem[] = [
     ],
   },
   {
+    name: "System Admin",
+    icon: <LockIcon />,
+    subItems: [
+      { name: "Tenant Management", path: "/saas/admin/entity/tenant-management" },
+      { name: "Organization Admins", path: "/saas/admin/system-admin/organization-admins" },
+      { name: "Organization Management", path: "/saas/admin/entity/organization-management" },
+      { name: "Role Management", path: "/saas/admin/entity/role-management" },
+      { name: "API Configuration", path: "/saas/admin/system-admin/api-configuration" },
+      {
+        name: "Webhooks",
+        subItems: [
+          { name: "Management", path: "/saas/webhooks/management" },
+          { name: "Events", path: "/saas/webhooks/events" },
+          { name: "Logs", path: "/saas/webhooks/logs" },
+          { name: "Testing", path: "/saas/webhooks/testing" },
+        ],
+      },
+    ],
+  },
+  {
     name: "SaaS",
     icon: <ShootingStarIcon />,
     new: true,
@@ -98,24 +119,6 @@ const navItems: NavItem[] = [
         name: "Admin",
         subItems: [
           { name: "User Management", path: "/saas/admin/entity/user-management" },
-          { name: "Tenant Management", path: "/saas/admin/entity/tenant-management" },
-          { name: "Organization Management", path: "/saas/admin/entity/organization-management" },
-          { name: "Role Management", path: "/saas/admin/entity/role-management" },
-        ],
-      },
-      {
-        name: "System Admin",
-        subItems: [
-          { name: "API Configuration", path: "/saas/admin/system-admin/api-configuration" },
-          {
-            name: "Webhooks",
-            subItems: [
-              { name: "Management", path: "/saas/webhooks/management" },
-              { name: "Events", path: "/saas/webhooks/events" },
-              { name: "Logs", path: "/saas/webhooks/logs" },
-              { name: "Testing", path: "/saas/webhooks/testing" },
-            ],
-          },
         ],
       },
       {

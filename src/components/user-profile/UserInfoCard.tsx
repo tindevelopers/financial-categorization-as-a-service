@@ -1,17 +1,55 @@
 "use client";
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { useModal } from "../../hooks/useModal";
 import { Modal } from "../ui/modal";
 import Button from "../ui/button/Button";
 import Input from "../form/input/InputField";
 import Label from "../form/Label";
+import { getCurrentUser } from "@/app/actions/user";
+import type { Database } from "@/lib/supabase/types";
+
+type User = Database["public"]["Tables"]["users"]["Row"] & {
+  roles?: { name: string } | null;
+};
 
 export default function UserInfoCard() {
   const { isOpen, openModal, closeModal } = useModal();
+  const [user, setUser] = useState<User | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    async function loadUser() {
+      try {
+        const userData = await getCurrentUser();
+        setUser(userData);
+      } catch (error) {
+        console.error("Error loading user:", error);
+      } finally {
+        setLoading(false);
+      }
+    }
+    loadUser();
+  }, []);
+
   const handleSave = () => {
     // Handle save logic here
     console.log("Saving changes...");
     closeModal();
+  };
+
+  // Get role display name
+  const getRoleDisplayName = (roleName: string | null | undefined): string => {
+    if (!roleName) return "No Role";
+    
+    const roleMap: Record<string, string> = {
+      "Platform Admin": "Platform Admin",
+      "Workspace Admin": "Organization Admin",
+      "Billing Owner": "Billing Owner",
+      "Developer": "Developer",
+      "Viewer": "Viewer",
+    };
+    
+    return roleMap[roleName] || roleName;
   };
   return (
     <div className="p-5 border border-gray-200 rounded-2xl dark:border-gray-800 lg:p-6">
@@ -27,7 +65,7 @@ export default function UserInfoCard() {
                 First Name
               </p>
               <p className="text-sm font-medium text-gray-800 dark:text-white/90">
-                John Smith
+                {loading ? "Loading..." : user?.full_name?.split(" ")[0] || "N/A"}
               </p>
             </div>
 
@@ -36,7 +74,7 @@ export default function UserInfoCard() {
                 Last Name
               </p>
               <p className="text-sm font-medium text-gray-800 dark:text-white/90">
-                Chowdhury
+                {loading ? "Loading..." : user?.full_name?.split(" ").slice(1).join(" ") || "N/A"}
               </p>
             </div>
 
@@ -45,25 +83,25 @@ export default function UserInfoCard() {
                 Email address
               </p>
               <p className="text-sm font-medium text-gray-800 dark:text-white/90">
-                randomuser@pimjo.com
+                {loading ? "Loading..." : user?.email || "N/A"}
               </p>
             </div>
 
             <div>
               <p className="mb-2 text-xs leading-normal text-gray-500 dark:text-gray-400">
-                Phone
+                Role
               </p>
               <p className="text-sm font-medium text-gray-800 dark:text-white/90">
-                +09 363 398 46
+                {loading ? "Loading..." : getRoleDisplayName((user?.roles as any)?.name)}
               </p>
             </div>
 
             <div>
               <p className="mb-2 text-xs leading-normal text-gray-500 dark:text-gray-400">
-                Bio
+                Status
               </p>
               <p className="text-sm font-medium text-gray-800 dark:text-white/90">
-                Team Manager
+                {loading ? "Loading..." : user?.status ? user.status.charAt(0).toUpperCase() + user.status.slice(1) : "N/A"}
               </p>
             </div>
           </div>
@@ -148,27 +186,27 @@ export default function UserInfoCard() {
                 <div className="grid grid-cols-1 gap-x-6 gap-y-5 lg:grid-cols-2">
                   <div className="col-span-2 lg:col-span-1">
                     <Label>First Name</Label>
-                    <Input type="text" defaultValue="John Smith" />
+                    <Input type="text" defaultValue={user?.full_name?.split(" ")[0] || ""} />
                   </div>
 
                   <div className="col-span-2 lg:col-span-1">
                     <Label>Last Name</Label>
-                    <Input type="text" defaultValue="Chowdhury" />
+                    <Input type="text" defaultValue={user?.full_name?.split(" ").slice(1).join(" ") || ""} />
                   </div>
 
                   <div className="col-span-2 lg:col-span-1">
                     <Label>Email Address</Label>
-                    <Input type="text" defaultValue="randomuser@pimjo.com" />
+                    <Input type="text" defaultValue={user?.email || ""} />
                   </div>
 
                   <div className="col-span-2 lg:col-span-1">
-                    <Label>Phone</Label>
-                    <Input type="text" defaultValue="+09 363 398 46" />
+                    <Label>Role</Label>
+                    <Input type="text" defaultValue={getRoleDisplayName((user?.roles as any)?.name)} disabled />
                   </div>
 
                   <div className="col-span-2">
-                    <Label>Bio</Label>
-                    <Input type="text" defaultValue="Team Manager" />
+                    <Label>Status</Label>
+                    <Input type="text" defaultValue={user?.status ? user.status.charAt(0).toUpperCase() + user.status.slice(1) : ""} disabled />
                   </div>
                 </div>
               </div>

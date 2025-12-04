@@ -1,18 +1,73 @@
 "use client";
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { useModal } from "../../hooks/useModal";
 import { Modal } from "../ui/modal";
 import Button from "../ui/button/Button";
 import Input from "../form/input/InputField";
 import Label from "../form/Label";
+import Badge from "../ui/badge/Badge";
 import Image from "next/image";
+import { getCurrentUser } from "@/app/actions/user";
+import type { Database } from "@/lib/supabase/types";
+
+type User = Database["public"]["Tables"]["users"]["Row"] & {
+  roles?: { name: string } | null;
+};
 
 export default function UserMetaCard() {
   const { isOpen, openModal, closeModal } = useModal();
+  const [user, setUser] = useState<User | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    async function loadUser() {
+      try {
+        const userData = await getCurrentUser();
+        setUser(userData);
+      } catch (error) {
+        console.error("Error loading user:", error);
+      } finally {
+        setLoading(false);
+      }
+    }
+    loadUser();
+  }, []);
+
   const handleSave = () => {
     // Handle save logic here
     console.log("Saving changes...");
     closeModal();
+  };
+
+  // Get role display name
+  const getRoleDisplayName = (roleName: string | null | undefined): string => {
+    if (!roleName) return "No Role";
+    
+    const roleMap: Record<string, string> = {
+      "Platform Admin": "Platform Admin",
+      "Workspace Admin": "Organization Admin",
+      "Billing Owner": "Billing Owner",
+      "Developer": "Developer",
+      "Viewer": "Viewer",
+    };
+    
+    return roleMap[roleName] || roleName;
+  };
+
+  // Get badge color for role
+  const getRoleBadgeColor = (roleName: string | null | undefined): "primary" | "success" | "info" | "warning" | "dark" => {
+    if (!roleName) return "dark";
+    
+    const roleColorMap: Record<string, "primary" | "success" | "info" | "warning" | "dark"> = {
+      "Platform Admin": "primary",
+      "Workspace Admin": "success",
+      "Organization Admin": "success",
+      "Billing Owner": "warning",
+      "Developer": "info",
+      "Viewer": "dark",
+    };
+    
+    return roleColorMap[roleName] || "dark";
   };
   return (
     <>
@@ -29,15 +84,23 @@ export default function UserMetaCard() {
             </div>
             <div className="order-3 xl:order-2">
               <h4 className="mb-2 text-lg font-semibold text-center text-gray-800 dark:text-white/90 xl:text-left">
-                Jane Smith
+                {loading ? "Loading..." : user?.full_name || "User"}
               </h4>
-              <div className="flex flex-col items-center gap-1 text-center xl:flex-row xl:gap-3 xl:text-left">
-                <p className="text-sm text-gray-500 dark:text-gray-400">
-                  Team Manager
-                </p>
+              <div className="flex flex-col items-center gap-2 text-center xl:flex-row xl:items-center xl:gap-3 xl:text-left">
+                {loading ? (
+                  <p className="text-sm text-gray-500 dark:text-gray-400">Loading...</p>
+                ) : user?.roles?.name ? (
+                  <Badge 
+                    variant="light" 
+                    color={getRoleBadgeColor((user?.roles as any)?.name)}
+                    size="sm"
+                  >
+                    {getRoleDisplayName((user?.roles as any)?.name)}
+                  </Badge>
+                ) : null}
                 <div className="hidden h-3.5 w-px bg-gray-300 dark:bg-gray-700 xl:block"></div>
                 <p className="text-sm text-gray-500 dark:text-gray-400">
-                  Arizona, United States
+                  {user?.email || "No email"}
                 </p>
               </div>
             </div>
@@ -206,27 +269,27 @@ export default function UserMetaCard() {
                 <div className="grid grid-cols-1 gap-x-6 gap-y-5 lg:grid-cols-2">
                   <div className="col-span-2 lg:col-span-1">
                     <Label>First Name</Label>
-                    <Input type="text" defaultValue="John Smith" />
+                    <Input type="text" defaultValue={user?.full_name?.split(" ")[0] || ""} />
                   </div>
 
                   <div className="col-span-2 lg:col-span-1">
                     <Label>Last Name</Label>
-                    <Input type="text" defaultValue="Chowdhury" />
+                    <Input type="text" defaultValue={user?.full_name?.split(" ").slice(1).join(" ") || ""} />
                   </div>
 
                   <div className="col-span-2 lg:col-span-1">
                     <Label>Email Address</Label>
-                    <Input type="text" defaultValue="randomuser@pimjo.com" />
+                    <Input type="text" defaultValue={user?.email || ""} />
                   </div>
 
                   <div className="col-span-2 lg:col-span-1">
-                    <Label>Phone</Label>
-                    <Input type="text" defaultValue="+09 363 398 46" />
+                    <Label>Role</Label>
+                    <Input type="text" defaultValue={getRoleDisplayName((user?.roles as any)?.name)} disabled />
                   </div>
 
                   <div className="col-span-2">
-                    <Label>Bio</Label>
-                    <Input type="text" defaultValue="Team Manager" />
+                    <Label>Status</Label>
+                    <Input type="text" defaultValue={user?.status ? user.status.charAt(0).toUpperCase() + user.status.slice(1) : ""} disabled />
                   </div>
                 </div>
               </div>

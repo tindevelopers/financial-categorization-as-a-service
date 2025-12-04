@@ -47,3 +47,7 @@ next-env.d.ts
 out/
 dist/
 build/
+
+# Supabase local development
+supabase/.branches
+supabase/.temp

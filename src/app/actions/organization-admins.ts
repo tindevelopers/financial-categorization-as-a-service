@@ -1,0 +1,119 @@
+"use server";
+
+import { createAdminClient } from "@/lib/supabase/admin-client";
+import { createClient } from "@/lib/supabase/server";
+import type { Database } from "@/lib/supabase/types";
+
+type OrganizationAdmin = Database["public"]["Tables"]["users"]["Row"] & {
+  roles?: { 
+    id: string;
+    name: string;
+    description: string;
+    permissions: string[];
+  } | null;
+  tenants?: { 
+    id: string;
+    name: string;
+    domain: string;
+    status: string;
+  } | null;
+};
+
+/**
+ * Check if current user is a Platform Admin (server-side)
+ */
+async function isPlatformAdminServer(): Promise<boolean> {
+  try {
+    const supabase = await createClient();
+    
+    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    if (userError || !user) return false;
+
+    const adminClient = createAdminClient();
+    const { data: currentUser, error: queryError } = await adminClient
+      .from("users")
+      .select("role_id, tenant_id, roles:role_id(name)")
+      .eq("id", user.id)
+      .single();
+
+    if (queryError || !currentUser) return false;
+
+    const roleName = (currentUser.roles as any)?.name;
+    const tenantId = currentUser.tenant_id;
+    return roleName === "Platform Admin" && tenantId === null;
+  } catch (error) {
+    console.error("[isPlatformAdminServer] Error:", error);
+    return false;
+  }
+}
+
+/**
+ * Get all Organization Admins (Workspace Admins) across all tenants
+ * Only accessible by Platform Admins
+ * Server action version
+ */
+export async function getAllOrganizationAdmins(): Promise<OrganizationAdmin[]> {
+  try {
+    // Check if current user is Platform Admin
+    const adminStatus = await isPlatformAdminServer();
+    if (!adminStatus) {
+      throw new Error("Only Platform Admins can view all Organization Admins");
+    }
+
+    // Get all Workspace Admins with tenant info
+    // Use admin client to bypass RLS for this query
+    const adminClient = createAdminClient();
+    
+    // First get the Workspace Admin role ID
+    const { data: workspaceAdminRole } = await adminClient
+      .from("roles")
+      .select("id")
+      .eq("name", "Workspace Admin")
+      .single();
+
+    if (!workspaceAdminRole) {
+      throw new Error("Workspace Admin role not found");
+    }
+
+    // Get all Workspace Admins (tenant-scoped users only)
+    const { data, error } = await adminClient
+      .from("users")
+      .select(`
+        *,
+        roles:role_id (
+          id,
+          name,
+          description,
+          permissions
+        ),
+        tenants:tenant_id (
+          id,
+          name,
+          domain,
+          status
+        )
+      `)
+      .not("tenant_id", "is", null)  // Only tenant-scoped users
+      .eq("role_id", workspaceAdminRole.id)  // Workspace Admin role
+      .order("created_at", { ascending: false });
+
+    if (error) {
+      console.error("[getAllOrganizationAdmins] Error fetching Organization Admins:", error);
+      throw error;
+    }
+    
+    return (data || []) as OrganizationAdmin[];
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    console.error("[getAllOrganizationAdmins] Error:", errorMessage);
+    throw error;
+  }
+}
+
+/**
+ * Check if current user is Platform Admin (server action)
+ */
+export async function isPlatformAdmin(): Promise<boolean> {
+  return await isPlatformAdminServer();
+}
+
