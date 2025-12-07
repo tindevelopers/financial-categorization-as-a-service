@@ -3,11 +3,11 @@
 import PageBreadcrumb from "@/components/common/PageBreadCrumb";
 import Button from "@/components/ui/button/Button";
 import { createSetupIntent, attachPaymentMethod } from "@/app/actions/stripe/payment-methods";
-import { getStripe } from "@/lib/stripe/client";
+import { getStripe } from "@/core/billing/client";
 import { Elements, PaymentElement, useStripe, useElements } from "@stripe/react-stripe-js";
 import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
+import { createBrowserClient } from "@/core/database";
 
 function AddPaymentMethodForm({ router }: { router: ReturnType<typeof useRouter> }) {
   const stripe = useStripe();
@@ -18,7 +18,7 @@ function AddPaymentMethodForm({ router }: { router: ReturnType<typeof useRouter>
 
   useEffect(() => {
     async function getTenantId() {
-      const supabase = createClient();
+      const supabase = createBrowserClient();
       const { data: { user } } = await supabase.auth.getUser();
       if (user) {
         const { data: userData } = await supabase
@@ -105,7 +105,7 @@ export default function AddNewCardPage() {
   useEffect(() => {
     async function setup() {
       try {
-        const supabase = createClient();
+        const supabase = createBrowserClient();
         const { data: { user } } = await supabase.auth.getUser();
         
         if (!user) {

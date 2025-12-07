@@ -1,8 +1,7 @@
-import { createClient } from "@/lib/supabase/client";
-import { createAdminClient } from "@/lib/supabase/admin-client";
-import { createUser, getUser } from "@/lib/supabase/users";
-import { createTenant } from "@/lib/supabase/tenants";
-import type { Database } from "@/lib/supabase/types";
+import { createBrowserClient, createAdminClient } from "@/core/database";
+import { createUser, getUser } from "@/core/database";
+import { createTenant } from "@/core/database";
+import type { Database } from "@/core/database";
 
 type UserInsert = Database["public"]["Tables"]["users"]["Insert"];
 type TenantInsert = Database["public"]["Tables"]["tenants"]["Insert"];
@@ -26,7 +25,7 @@ export interface SignInData {
  * Sign up a new user and create their tenant
  */
 export async function signUp(data: SignUpData) {
-  const supabase = createClient();
+  const supabase = createBrowserClient();
   
   // Use admin client for tenant creation (bypasses RLS)
   // This is safe because we're creating the tenant as part of signup
@@ -106,7 +105,7 @@ export async function signUp(data: SignUpData) {
  * Sign in existing user
  */
 export async function signIn(data: SignInData) {
-  const supabase = createClient();
+  const supabase = createBrowserClient();
 
   const { data: authData, error } = await supabase.auth.signInWithPassword({
     email: data.email,
@@ -136,7 +135,7 @@ export async function signIn(data: SignInData) {
  * Sign out current user
  */
 export async function signOut() {
-  const supabase = createClient();
+  const supabase = createBrowserClient();
   const { error } = await supabase.auth.signOut();
   
   if (error) throw error;
@@ -146,7 +145,7 @@ export async function signOut() {
  * Get current session
  */
 export async function getSession() {
-  const supabase = createClient();
+  const supabase = createBrowserClient();
   const { data: { session }, error } = await supabase.auth.getSession();
   
   if (error) throw error;
@@ -157,7 +156,7 @@ export async function getSession() {
  * Reset password
  */
 export async function resetPassword(email: string) {
-  const supabase = createClient();
+  const supabase = createBrowserClient();
   const { error } = await supabase.auth.resetPasswordForEmail(email, {
     redirectTo: `${window.location.origin}/auth/reset-password`,
   });
@@ -169,7 +168,7 @@ export async function resetPassword(email: string) {
  * Update password
  */
 export async function updatePassword(newPassword: string) {
-  const supabase = createClient();
+  const supabase = createBrowserClient();
   const { error } = await supabase.auth.updateUser({
     password: newPassword,
   });

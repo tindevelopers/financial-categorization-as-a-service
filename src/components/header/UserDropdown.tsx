@@ -7,8 +7,8 @@ import { Dropdown } from "../ui/dropdown/Dropdown";
 import { DropdownItem } from "../ui/dropdown/DropdownItem";
 import { signOut } from "@/app/actions/auth";
 import { getCurrentUser } from "@/app/actions/user";
-import { createClient } from "@/lib/supabase/client";
-import type { Database } from "@/lib/supabase/types";
+import { createBrowserClient } from "@/core/database";
+import type { Database } from "@/core/database";
 
 type User = Database["public"]["Tables"]["users"]["Row"] & {
   roles?: { name: string } | null;
@@ -68,7 +68,7 @@ export default function UserDropdown() {
     loadUser();
 
     // Listen for auth changes
-    const supabase = createClient();
+    const supabase = createBrowserClient();
     const { data: { subscription } } = supabase.auth.onAuthStateChange(() => {
       loadUser();
     });
@@ -81,7 +81,7 @@ export default function UserDropdown() {
   async function handleSignOut() {
     try {
       // Clear session from browser client
-      const supabase = createClient();
+      const supabase = createBrowserClient();
       await supabase.auth.signOut();
       
       // Also call server action

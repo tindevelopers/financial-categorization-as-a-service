@@ -1,10 +1,9 @@
 "use server";
 
-import { stripe } from "@/lib/stripe/config";
-import { createAdminClient } from "@/lib/supabase/admin-client";
-import { createClient } from "@/lib/supabase/server";
-import { getCurrentTenant } from "@/lib/tenant/server";
-import { requirePermission } from "@/lib/auth/permission-middleware";
+import { stripe } from "@/core/billing";
+import { createAdminClient, createClient } from "@/core/database";
+import { getCurrentTenant } from "@/core/multi-tenancy";
+import { requirePermission } from "@/core/permissions";
 import type Stripe from "stripe";
 
 /**
