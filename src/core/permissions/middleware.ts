@@ -4,11 +4,11 @@
  * Server-side middleware for checking permissions in API routes and server actions
  */
 
-import { createClient } from "@/lib/supabase/server";
+import { createClient } from "@/core/database";
 import { getUserPermissions, hasPermission, hasAnyPermission, hasAllPermissions, type Permission } from "./permissions";
 import { hasTenantPermission } from "./tenant-permissions";
-import { getCurrentUserTenantId } from "@/lib/tenant/validation";
-import { logPermissionCheckWithContext } from "./audit-log";
+import { getCurrentUserTenantId } from "@/core/multi-tenancy/validation";
+import { logPermissionCheckWithContext } from "@/core/auth/audit-log";
 
 export interface PermissionCheckResult {
   allowed: boolean;

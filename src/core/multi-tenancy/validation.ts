@@ -4,11 +4,9 @@
  * Provides validation functions for tenant operations and access control
  */
 
-import { createClient } from "@/lib/supabase/client";
-import { createClient as createServerClient } from "@/lib/supabase/server";
-import { createAdminClient } from "@/lib/supabase/admin-client";
+import { createBrowserClient as createClient, createClient as createServerClient, createAdminClient } from "@/core/database";
 import { isPlatformAdmin } from "@/app/actions/organization-admins";
-import type { Database } from "@/lib/supabase/types";
+import type { Database } from "@/core/database";
 
 type Tenant = Database["public"]["Tables"]["tenants"]["Row"];
 

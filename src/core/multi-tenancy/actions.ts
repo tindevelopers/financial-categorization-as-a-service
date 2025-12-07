@@ -1,10 +1,7 @@
 "use server";
 
-import { createClient } from "@/lib/supabase/server";
-import { createAdminClient } from "@/lib/supabase/admin-client";
-import { isPlatformAdmin } from "@/core/database";
-import { requirePermission } from "@/lib/auth/permission-middleware";
-import type { Database } from "@/lib/supabase/types";
+import { createClient, createAdminClient, isPlatformAdmin, type Database } from "@/core/database";
+import { requirePermission } from "@/core/permissions";
 
 type Tenant = Database["public"]["Tables"]["tenants"]["Row"] & {
   userCount?: number;

@@ -11,8 +11,8 @@ import {
   SendEmailResult,
   EmailTemplateProps,
 } from './email-interface';
-import { 
-  getProviderConfigFromEnv, 
+import {
+  getProviderConfigFromEnv,
   getFallbackProviderConfig,
 } from './config/provider-config';
 import { providerRegistry } from './config/provider-factory';
@@ -319,7 +319,7 @@ async function applyWhiteLabel(params: SendEmailParams): Promise<SendEmailParams
 async function getTenantWhiteLabel(tenantId: string): Promise<any> {
   try {
     // Import Supabase client
-    const { createAdminClient } = await import('@/lib/supabase/admin-client');
+    const { createAdminClient } = await import('@/core/database');
     const supabase = createAdminClient();
     
     const { data, error } = await supabase

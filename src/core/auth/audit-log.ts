@@ -4,8 +4,7 @@
  * Logs all permission checks and access attempts for compliance and security
  */
 
-import { createAdminClient } from "@/lib/supabase/admin-client";
-import type { Database } from "@/lib/supabase/types";
+import { createAdminClient, type Database } from "@/core/database";
 
 type AuditLogInsert = Database["public"]["Tables"]["audit_logs"]["Insert"];
 

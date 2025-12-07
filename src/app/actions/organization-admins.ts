@@ -1,9 +1,7 @@
 "use server";
 
-import { createAdminClient } from "@/lib/supabase/admin-client";
-import { createClient } from "@/lib/supabase/server";
-import { requirePermission } from "@/lib/auth/permission-middleware";
-import type { Database } from "@/lib/supabase/types";
+import { createAdminClient, createClient, type Database } from "@/core/database";
+import { requirePermission } from "@/core/permissions";
 
 type OrganizationAdmin = Database["public"]["Tables"]["users"]["Row"] & {
   roles?: { 

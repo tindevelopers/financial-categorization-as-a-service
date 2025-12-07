@@ -1,8 +1,7 @@
 "use client";
 
 import { createContext, useContext, useState, useEffect, type ReactNode } from "react";
-import { createClient } from "@/lib/supabase/client";
-import type { Database } from "@/lib/supabase/types";
+import { createBrowserClient, type Database } from "@/core/database";
 
 type Tenant = Database["public"]["Tables"]["tenants"]["Row"];
 
@@ -27,7 +26,7 @@ export function TenantProvider({ children }: { children: ReactNode }) {
       setIsLoading(true);
       setError(null);
       
-      const supabase = createClient();
+      const supabase = createBrowserClient();
       
       // Check localStorage for tenant override (from tenant switcher)
       const storedTenantId = typeof window !== "undefined" 
@@ -108,7 +107,7 @@ export function TenantProvider({ children }: { children: ReactNode }) {
     loadTenant();
     
     // Listen for auth changes
-    const supabase = createClient();
+    const supabase = createBrowserClient();
     const { data: { subscription } } = supabase.auth.onAuthStateChange(() => {
       loadTenant();
     });

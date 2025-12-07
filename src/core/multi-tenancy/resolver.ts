@@ -4,10 +4,7 @@
  * Resolves tenant from various sources: subdomain, URL params, session, headers
  */
 
-import { createClient } from "@/lib/supabase/client";
-import { createClient as createServerClient } from "@/lib/supabase/server";
-import { createAdminClient } from "@/lib/supabase/admin-client";
-import type { Database } from "@/lib/supabase/types";
+import { createClient as createServerClient, createAdminClient, type Database } from "@/core/database";
 import { extractTenantFromSubdomain, extractTenantIdFromRequest } from "./query-builder";
 
 type Tenant = Database["public"]["Tables"]["tenants"]["Row"];

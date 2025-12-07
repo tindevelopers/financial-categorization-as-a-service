@@ -1,8 +1,7 @@
 "use server";
 
-import { requirePermission } from "@/lib/auth/permission-middleware";
-import { assignTenantRole, removeTenantRole, getUserTenantRoles } from "@/lib/supabase/user-tenant-roles";
-import type { Database } from "@/lib/supabase/types";
+import { requirePermission } from "@/core/permissions";
+import { assignTenantRole, removeTenantRole, getUserTenantRoles, type Database } from "@/core/database";
 
 type UserTenantRole = Database["public"]["Tables"]["user_tenant_roles"]["Row"] & {
   tenants?: { name: string; domain: string } | null;

@@ -1,3 +1,3 @@
-// Re-export Database types from supabase
-export type { Database } from "@/lib/supabase/types";
+// Re-export Database types from core database domain
+export type { Database } from "@/core/database";
 

@@ -5,8 +5,8 @@
 
 "use client";
 
-import { createClient } from "@/lib/supabase/client";
-import type { Database } from "@/lib/supabase/types";
+import { createBrowserClient } from "@/core/database";
+import type { Database } from "@/core/database";
 import type { Permission, UserPermissions } from "./permissions";
 
 /**
@@ -16,7 +16,7 @@ export async function getUserPermissionsClient(
   userId: string,
   tenantId?: string | null
 ): Promise<UserPermissions> {
-  const supabase = createClient();
+  const supabase = createBrowserClient();
   
   // First, check platform role (users.role_id)
   const { data: user, error } = await supabase

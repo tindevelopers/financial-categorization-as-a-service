@@ -1,10 +1,8 @@
 "use server";
 
-import { requirePermission } from "@/lib/auth/permission-middleware";
-import { createClient } from "@/lib/supabase/server";
-import { createAdminClient } from "@/lib/supabase/admin-client";
-import { getCurrentUserTenantId } from "@/lib/tenant/validation";
-import type { Database } from "@/lib/supabase/types";
+import { requirePermission } from "@/core/permissions";
+import { createClient, createAdminClient, type Database } from "@/core/database";
+import { getCurrentUserTenantId } from "@/core/multi-tenancy/validation";
 
 type Tenant = Database["public"]["Tables"]["tenants"]["Row"];
 

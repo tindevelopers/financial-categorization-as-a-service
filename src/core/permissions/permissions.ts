@@ -1,7 +1,5 @@
-import { createClient as createServerClient } from "@/lib/supabase/server";
-import { createAdminClient } from "@/lib/supabase/admin-client";
-import type { Database } from "@/lib/supabase/types";
-import { getEffectiveRole } from "@/lib/supabase/user-tenant-roles";
+import { createAdminClient, type Database } from "@/core/database";
+import { getEffectiveRole } from "@/core/database";
 
 type Role = Database["public"]["Tables"]["roles"]["Row"];
 
@@ -115,7 +113,7 @@ export async function getUserPermissions(
     const effectiveRole = await getEffectiveRole(userId, tenantId);
     if (effectiveRole && effectiveRole.source === "tenant") {
       // Use tenant role for permissions
-      const { data: tenantRoleData } = await supabase
+      const { data: tenantRoleData } = await adminClient
         .from("roles")
         .select("name, permissions")
         .eq("id", effectiveRole.roleId)

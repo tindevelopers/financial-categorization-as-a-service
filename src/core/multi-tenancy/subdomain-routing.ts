@@ -5,6 +5,7 @@
  */
 
 import { headers } from "next/headers";
+import { createAdminClient } from "@/core/database";
 
 export interface SubdomainInfo {
   subdomain: string | null;
@@ -74,7 +75,6 @@ export async function getTenantIdFromSubdomain(
   subdomain: string
 ): Promise<string | null> {
   try {
-    const { createAdminClient } = await import("@/lib/supabase/admin-client");
     const adminClient = createAdminClient();
     
     // Look up tenant by domain (subdomain becomes the domain)

@@ -4,11 +4,8 @@
  * Implements tenant-scoped permissions and permission inheritance
  */
 
-import { createClient } from "@/lib/supabase/client";
-import { createClient as createServerClient } from "@/lib/supabase/server";
-import { createAdminClient } from "@/lib/supabase/admin-client";
+import { createClient as createServerClient, createAdminClient, type Database } from "@/core/database";
 import { getUserPermissions, type Permission } from "./permissions";
-import type { Database } from "@/lib/supabase/types";
 
 type TenantPermission = Database["public"]["Tables"]["tenants"]["Row"] & {
   custom_permissions?: Permission[];

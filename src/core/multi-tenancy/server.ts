@@ -2,7 +2,7 @@
  * Server-side tenant utilities
  */
 
-import { createClient } from "@/lib/supabase/server";
+import { createClient } from "@/core/database";
 import { cookies, headers } from "next/headers";
 
 /**

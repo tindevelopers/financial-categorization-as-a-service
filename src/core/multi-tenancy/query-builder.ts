@@ -5,7 +5,7 @@
  */
 
 import { SupabaseClient } from "@supabase/supabase-js";
-import type { Database } from "@/lib/supabase/types";
+import type { Database } from "@/core/database";
 import { ensureTenantId, hasTenantAccess } from "./validation";
 
 type TableName = keyof Database["public"]["Tables"];
