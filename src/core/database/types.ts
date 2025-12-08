@@ -11,11 +11,11 @@ export interface Database {
           region: string;
           avatar_url: string | null;
           features: string[];
-          branding: Record<string, any> | null;
-          theme_settings: Record<string, any> | null;
-          email_settings: Record<string, any> | null;
+          branding: Record<string, unknown> | null;
+          theme_settings: Record<string, unknown> | null;
+          email_settings: Record<string, unknown> | null;
           custom_css: string | null;
-          custom_domains: any[] | null;
+          custom_domains: string[] | null;
           created_at: string;
           updated_at: string;
         };
@@ -28,11 +28,11 @@ export interface Database {
           region: string;
           avatar_url?: string | null;
           features?: string[];
-          branding?: Record<string, any> | null;
-          theme_settings?: Record<string, any> | null;
-          email_settings?: Record<string, any> | null;
+          branding?: Record<string, unknown> | null;
+          theme_settings?: Record<string, unknown> | null;
+          email_settings?: Record<string, unknown> | null;
           custom_css?: string | null;
-          custom_domains?: any[] | null;
+          custom_domains?: string[] | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -45,14 +45,15 @@ export interface Database {
           region?: string;
           avatar_url?: string | null;
           features?: string[];
-          branding?: Record<string, any> | null;
-          theme_settings?: Record<string, any> | null;
-          email_settings?: Record<string, any> | null;
+          branding?: Record<string, unknown> | null;
+          theme_settings?: Record<string, unknown> | null;
+          email_settings?: Record<string, unknown> | null;
           custom_css?: string | null;
-          custom_domains?: any[] | null;
+          custom_domains?: string[] | null;
           created_at?: string;
           updated_at?: string;
         };
+        Relationships: [];
       };
       roles: {
         Row: {
@@ -91,6 +92,7 @@ export interface Database {
           created_at?: string;
           updated_at?: string;
         };
+        Relationships: [];
       };
       users: {
         Row: {
@@ -132,6 +134,22 @@ export interface Database {
           created_at?: string;
           updated_at?: string;
         };
+        Relationships: [
+          {
+            foreignKeyName: "users_role_id_fkey";
+            columns: ["role_id"];
+            isOneToOne: false;
+            referencedRelation: "roles";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "users_tenant_id_fkey";
+            columns: ["tenant_id"];
+            isOneToOne: false;
+            referencedRelation: "tenants";
+            referencedColumns: ["id"];
+          }
+        ];
       };
       workspaces: {
         Row: {
@@ -141,7 +159,7 @@ export interface Database {
           slug: string;
           description: string | null;
           avatar_url: string | null;
-          settings: Record<string, any>;
+          settings: Record<string, unknown>;
           status: "active" | "suspended" | "archived";
           created_at: string;
           updated_at: string;
@@ -153,7 +171,7 @@ export interface Database {
           slug: string;
           description?: string | null;
           avatar_url?: string | null;
-          settings?: Record<string, any>;
+          settings?: Record<string, unknown>;
           status?: "active" | "suspended" | "archived";
           created_at?: string;
           updated_at?: string;
@@ -165,11 +183,20 @@ export interface Database {
           slug?: string;
           description?: string | null;
           avatar_url?: string | null;
-          settings?: Record<string, any>;
+          settings?: Record<string, unknown>;
           status?: "active" | "suspended" | "archived";
           created_at?: string;
           updated_at?: string;
         };
+        Relationships: [
+          {
+            foreignKeyName: "workspaces_tenant_id_fkey";
+            columns: ["tenant_id"];
+            isOneToOne: false;
+            referencedRelation: "tenants";
+            referencedColumns: ["id"];
+          }
+        ];
       };
       workspace_users: {
         Row: {
@@ -196,6 +223,29 @@ export interface Database {
           permissions?: string[];
           joined_at?: string;
         };
+        Relationships: [
+          {
+            foreignKeyName: "workspace_users_workspace_id_fkey";
+            columns: ["workspace_id"];
+            isOneToOne: false;
+            referencedRelation: "workspaces";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "workspace_users_user_id_fkey";
+            columns: ["user_id"];
+            isOneToOne: false;
+            referencedRelation: "users";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "workspace_users_role_id_fkey";
+            columns: ["role_id"];
+            isOneToOne: false;
+            referencedRelation: "roles";
+            referencedColumns: ["id"];
+          }
+        ];
       };
       user_tenant_roles: {
         Row: {
@@ -222,6 +272,29 @@ export interface Database {
           created_at?: string;
           updated_at?: string;
         };
+        Relationships: [
+          {
+            foreignKeyName: "user_tenant_roles_user_id_fkey";
+            columns: ["user_id"];
+            isOneToOne: false;
+            referencedRelation: "users";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "user_tenant_roles_tenant_id_fkey";
+            columns: ["tenant_id"];
+            isOneToOne: false;
+            referencedRelation: "tenants";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "user_tenant_roles_role_id_fkey";
+            columns: ["role_id"];
+            isOneToOne: false;
+            referencedRelation: "roles";
+            referencedColumns: ["id"];
+          }
+        ];
       };
       stripe_customers: {
         Row: {
@@ -232,8 +305,8 @@ export interface Database {
           email: string;
           name: string | null;
           phone: string | null;
-          address: Record<string, any> | null;
-          metadata: Record<string, any>;
+          address: Record<string, unknown> | null;
+          metadata: Record<string, unknown>;
           created_at: string;
           updated_at: string;
         };
@@ -245,8 +318,8 @@ export interface Database {
           email: string;
           name?: string | null;
           phone?: string | null;
-          address?: Record<string, any> | null;
-          metadata?: Record<string, any>;
+          address?: Record<string, unknown> | null;
+          metadata?: Record<string, unknown>;
           created_at?: string;
           updated_at?: string;
         };
@@ -258,11 +331,27 @@ export interface Database {
           email?: string;
           name?: string | null;
           phone?: string | null;
-          address?: Record<string, any> | null;
-          metadata?: Record<string, any>;
+          address?: Record<string, unknown> | null;
+          metadata?: Record<string, unknown>;
           created_at?: string;
           updated_at?: string;
         };
+        Relationships: [
+          {
+            foreignKeyName: "stripe_customers_tenant_id_fkey";
+            columns: ["tenant_id"];
+            isOneToOne: false;
+            referencedRelation: "tenants";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "stripe_customers_user_id_fkey";
+            columns: ["user_id"];
+            isOneToOne: false;
+            referencedRelation: "users";
+            referencedColumns: ["id"];
+          }
+        ];
       };
       stripe_subscriptions: {
         Row: {
@@ -283,7 +372,7 @@ export interface Database {
           plan_price: number;
           billing_cycle: "monthly" | "annual";
           currency: string;
-          metadata: Record<string, any>;
+          metadata: Record<string, unknown>;
           created_at: string;
           updated_at: string;
         };
@@ -305,7 +394,7 @@ export interface Database {
           plan_price: number;
           billing_cycle: "monthly" | "annual";
           currency?: string;
-          metadata?: Record<string, any>;
+          metadata?: Record<string, unknown>;
           created_at?: string;
           updated_at?: string;
         };
@@ -327,10 +416,19 @@ export interface Database {
           plan_price?: number;
           billing_cycle?: "monthly" | "annual";
           currency?: string;
-          metadata?: Record<string, any>;
+          metadata?: Record<string, unknown>;
           created_at?: string;
           updated_at?: string;
         };
+        Relationships: [
+          {
+            foreignKeyName: "stripe_subscriptions_tenant_id_fkey";
+            columns: ["tenant_id"];
+            isOneToOne: false;
+            referencedRelation: "tenants";
+            referencedColumns: ["id"];
+          }
+        ];
       };
       stripe_payment_methods: {
         Row: {
@@ -344,8 +442,8 @@ export interface Database {
           card_last4: string | null;
           card_exp_month: number | null;
           card_exp_year: number | null;
-          billing_details: Record<string, any>;
-          metadata: Record<string, any>;
+          billing_details: Record<string, unknown>;
+          metadata: Record<string, unknown>;
           created_at: string;
           updated_at: string;
         };
@@ -360,8 +458,8 @@ export interface Database {
           card_last4?: string | null;
           card_exp_month?: number | null;
           card_exp_year?: number | null;
-          billing_details?: Record<string, any>;
-          metadata?: Record<string, any>;
+          billing_details?: Record<string, unknown>;
+          metadata?: Record<string, unknown>;
           created_at?: string;
           updated_at?: string;
         };
@@ -376,11 +474,20 @@ export interface Database {
           card_last4?: string | null;
           card_exp_month?: number | null;
           card_exp_year?: number | null;
-          billing_details?: Record<string, any>;
-          metadata?: Record<string, any>;
+          billing_details?: Record<string, unknown>;
+          metadata?: Record<string, unknown>;
           created_at?: string;
           updated_at?: string;
         };
+        Relationships: [
+          {
+            foreignKeyName: "stripe_payment_methods_tenant_id_fkey";
+            columns: ["tenant_id"];
+            isOneToOne: false;
+            referencedRelation: "tenants";
+            referencedColumns: ["id"];
+          }
+        ];
       };
       stripe_invoices: {
         Row: {
@@ -401,8 +508,8 @@ export interface Database {
           paid_at: string | null;
           invoice_pdf: string | null;
           invoice_hosted_url: string | null;
-          line_items: any[];
-          metadata: Record<string, any>;
+          line_items: unknown[];
+          metadata: Record<string, unknown>;
           created_at: string;
           updated_at: string;
         };
@@ -424,8 +531,8 @@ export interface Database {
           paid_at?: string | null;
           invoice_pdf?: string | null;
           invoice_hosted_url?: string | null;
-          line_items?: any[];
-          metadata?: Record<string, any>;
+          line_items?: unknown[];
+          metadata?: Record<string, unknown>;
           created_at?: string;
           updated_at?: string;
         };
@@ -447,11 +554,20 @@ export interface Database {
           paid_at?: string | null;
           invoice_pdf?: string | null;
           invoice_hosted_url?: string | null;
-          line_items?: any[];
-          metadata?: Record<string, any>;
+          line_items?: unknown[];
+          metadata?: Record<string, unknown>;
           created_at?: string;
           updated_at?: string;
         };
+        Relationships: [
+          {
+            foreignKeyName: "stripe_invoices_tenant_id_fkey";
+            columns: ["tenant_id"];
+            isOneToOne: false;
+            referencedRelation: "tenants";
+            referencedColumns: ["id"];
+          }
+        ];
       };
       stripe_payment_intents: {
         Row: {
@@ -463,7 +579,7 @@ export interface Database {
           currency: string;
           status: "requires_payment_method" | "requires_confirmation" | "requires_action" | "processing" | "requires_capture" | "canceled" | "succeeded";
           payment_method_id: string | null;
-          metadata: Record<string, any>;
+          metadata: Record<string, unknown>;
           created_at: string;
           updated_at: string;
         };
@@ -476,7 +592,7 @@ export interface Database {
           currency?: string;
           status: "requires_payment_method" | "requires_confirmation" | "requires_action" | "processing" | "requires_capture" | "canceled" | "succeeded";
           payment_method_id?: string | null;
-          metadata?: Record<string, any>;
+          metadata?: Record<string, unknown>;
           created_at?: string;
           updated_at?: string;
         };
@@ -489,10 +605,19 @@ export interface Database {
           currency?: string;
           status?: "requires_payment_method" | "requires_confirmation" | "requires_action" | "processing" | "requires_capture" | "canceled" | "succeeded";
           payment_method_id?: string | null;
-          metadata?: Record<string, any>;
+          metadata?: Record<string, unknown>;
           created_at?: string;
           updated_at?: string;
         };
+        Relationships: [
+          {
+            foreignKeyName: "stripe_payment_intents_tenant_id_fkey";
+            columns: ["tenant_id"];
+            isOneToOne: false;
+            referencedRelation: "tenants";
+            referencedColumns: ["id"];
+          }
+        ];
       };
       stripe_webhook_events: {
         Row: {
@@ -502,7 +627,7 @@ export interface Database {
           livemode: boolean;
           processed: boolean;
           processed_at: string | null;
-          event_data: Record<string, any>;
+          event_data: Record<string, unknown>;
           error_message: string | null;
           created_at: string;
         };
@@ -513,7 +638,7 @@ export interface Database {
           livemode?: boolean;
           processed?: boolean;
           processed_at?: string | null;
-          event_data: Record<string, any>;
+          event_data: Record<string, unknown>;
           error_message?: string | null;
           created_at?: string;
         };
@@ -524,10 +649,11 @@ export interface Database {
           livemode?: boolean;
           processed?: boolean;
           processed_at?: string | null;
-          event_data?: Record<string, any>;
+          event_data?: Record<string, unknown>;
           error_message?: string | null;
           created_at?: string;
         };
+        Relationships: [];
       };
       stripe_products: {
         Row: {
@@ -536,7 +662,7 @@ export interface Database {
           name: string;
           description: string | null;
           active: boolean;
-          metadata: Record<string, any>;
+          metadata: Record<string, unknown>;
           created_at: string;
           updated_at: string;
         };
@@ -546,7 +672,7 @@ export interface Database {
           name: string;
           description?: string | null;
           active?: boolean;
-          metadata?: Record<string, any>;
+          metadata?: Record<string, unknown>;
           created_at?: string;
           updated_at?: string;
         };
@@ -556,10 +682,11 @@ export interface Database {
           name?: string;
           description?: string | null;
           active?: boolean;
-          metadata?: Record<string, any>;
+          metadata?: Record<string, unknown>;
           created_at?: string;
           updated_at?: string;
         };
+        Relationships: [];
       };
       stripe_prices: {
         Row: {
@@ -571,7 +698,7 @@ export interface Database {
           unit_amount: number;
           billing_cycle: "monthly" | "annual";
           interval_count: number;
-          metadata: Record<string, any>;
+          metadata: Record<string, unknown>;
           created_at: string;
           updated_at: string;
         };
@@ -584,7 +711,7 @@ export interface Database {
           unit_amount: number;
           billing_cycle: "monthly" | "annual";
           interval_count?: number;
-          metadata?: Record<string, any>;
+          metadata?: Record<string, unknown>;
           created_at?: string;
           updated_at?: string;
         };
@@ -597,59 +724,161 @@ export interface Database {
           unit_amount?: number;
           billing_cycle?: "monthly" | "annual";
           interval_count?: number;
-          metadata?: Record<string, any>;
+          metadata?: Record<string, unknown>;
           created_at?: string;
           updated_at?: string;
         };
+        Relationships: [
+          {
+            foreignKeyName: "stripe_prices_stripe_product_id_fkey";
+            columns: ["stripe_product_id"];
+            isOneToOne: false;
+            referencedRelation: "stripe_products";
+            referencedColumns: ["stripe_product_id"];
+          }
+        ];
+      };
+      stripe_connect_accounts: {
+        Row: {
+          id: string;
+          tenant_id: string;
+          stripe_account_id: string;
+          account_type: "standard" | "express" | "custom";
+          charges_enabled: boolean;
+          payouts_enabled: boolean;
+          details_submitted: boolean;
+          country: string;
+          default_currency: string;
+          email: string | null;
+          business_name: string | null;
+          metadata: Record<string, unknown>;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          tenant_id: string;
+          stripe_account_id: string;
+          account_type: "standard" | "express" | "custom";
+          charges_enabled?: boolean;
+          payouts_enabled?: boolean;
+          details_submitted?: boolean;
+          country: string;
+          default_currency: string;
+          email?: string | null;
+          business_name?: string | null;
+          metadata?: Record<string, unknown>;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          tenant_id?: string;
+          stripe_account_id?: string;
+          account_type?: "standard" | "express" | "custom";
+          charges_enabled?: boolean;
+          payouts_enabled?: boolean;
+          details_submitted?: boolean;
+          country?: string;
+          default_currency?: string;
+          email?: string | null;
+          business_name?: string | null;
+          metadata?: Record<string, unknown>;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "stripe_connect_accounts_tenant_id_fkey";
+            columns: ["tenant_id"];
+            isOneToOne: false;
+            referencedRelation: "tenants";
+            referencedColumns: ["id"];
+          }
+        ];
+      };
+      audit_logs: {
+        Row: {
+          id: string;
+          user_id: string;
+          tenant_id: string | null;
+          workspace_id: string | null;
+          action: string;
+          resource: string;
+          permission: string;
+          allowed: boolean;
+          reason: string | null;
+          metadata: Record<string, unknown>;
+          ip_address: string | null;
+          user_agent: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          tenant_id?: string | null;
+          workspace_id?: string | null;
+          action: string;
+          resource: string;
+          permission: string;
+          allowed?: boolean;
+          reason?: string | null;
+          metadata?: Record<string, unknown>;
+          ip_address?: string | null;
+          user_agent?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          user_id?: string;
+          tenant_id?: string | null;
+          workspace_id?: string | null;
+          action?: string;
+          resource?: string;
+          permission?: string;
+          allowed?: boolean;
+          reason?: string | null;
+          metadata?: Record<string, unknown>;
+          ip_address?: string | null;
+          user_agent?: string | null;
+          created_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "audit_logs_user_id_fkey";
+            columns: ["user_id"];
+            isOneToOne: false;
+            referencedRelation: "users";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "audit_logs_tenant_id_fkey";
+            columns: ["tenant_id"];
+            isOneToOne: false;
+            referencedRelation: "tenants";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "audit_logs_workspace_id_fkey";
+            columns: ["workspace_id"];
+            isOneToOne: false;
+            referencedRelation: "workspaces";
+            referencedColumns: ["id"];
+          }
+        ];
       };
     };
-    audit_logs: {
-      Row: {
-        id: string;
-        user_id: string;
-        tenant_id: string | null;
-        workspace_id: string | null;
-        action: string;
-        resource: string;
-        permission: string;
-        allowed: boolean;
-        reason: string | null;
-        metadata: Record<string, any>;
-        ip_address: string | null;
-        user_agent: string | null;
-        created_at: string;
-      };
-      Insert: {
-        id?: string;
-        user_id: string;
-        tenant_id?: string | null;
-        workspace_id?: string | null;
-        action: string;
-        resource: string;
-        permission: string;
-        allowed?: boolean;
-        reason?: string | null;
-        metadata?: Record<string, any>;
-        ip_address?: string | null;
-        user_agent?: string | null;
-        created_at?: string;
-      };
-      Update: {
-        id?: string;
-        user_id?: string;
-        tenant_id?: string | null;
-        workspace_id?: string | null;
-        action?: string;
-        resource?: string;
-        permission?: string;
-        allowed?: boolean;
-        reason?: string | null;
-        metadata?: Record<string, any>;
-        ip_address?: string | null;
-        user_agent?: string | null;
-        created_at?: string;
-      };
+    Views: {
+      [_ in never]: never;
+    };
+    Functions: {
+      [_ in never]: never;
+    };
+    Enums: {
+      [_ in never]: never;
+    };
+    CompositeTypes: {
+      [_ in never]: never;
     };
   };
 }
-

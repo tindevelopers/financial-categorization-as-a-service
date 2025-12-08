@@ -52,9 +52,13 @@ export {
 // These are utility functions - import directly from query-builder.ts when needed
 
 // ============================================================================
-// SERVER UTILITIES (Server-side - Import directly when needed)
+// SERVER UTILITIES (Server-side)
 // ============================================================================
-// These are server-side functions - import directly from server.ts when needed
+export {
+  getCurrentTenant,
+  getCurrentTenantDetails,
+  validateTenantAccess,
+} from './server';
 
 // ============================================================================
 // ACTIONS (Server Actions - Import directly when needed)
