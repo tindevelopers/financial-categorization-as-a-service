@@ -40,19 +40,20 @@ export async function getAllTenants(): Promise<Tenant[]> {
       console.log("[getAllTenants] Platform Admin detected - fetching all tenants");
       const adminClient = createAdminClient();
       
-      const { data, error } = await adminClient
+      const result: { data: Tenant[] | null; error: any } = await adminClient
         .from("tenants")
         .select("*")
         .order("created_at", { ascending: false });
       
-      if (error) {
+      const data = result.data;
+      if (result.error) {
         console.error("[getAllTenants] Error fetching all tenants:", {
-          code: error.code,
-          message: error.message,
-          details: error.details,
-          hint: error.hint,
+          code: result.error.code,
+          message: result.error.message,
+          details: result.error.details,
+          hint: result.error.hint,
         });
-        throw error;
+        throw result.error;
       }
       
       // Get user counts per tenant
@@ -60,11 +61,12 @@ export async function getAllTenants(): Promise<Tenant[]> {
       let userCounts: Record<string, number> = {};
       
       if (tenantIds.length > 0) {
-        const { data: users } = await adminClient
+        const usersResult: { data: { tenant_id: string }[] | null; error: any } = await adminClient
           .from("users")
           .select("tenant_id")
           .in("tenant_id", tenantIds);
         
+        const users = usersResult.data;
         userCounts = (users || []).reduce((acc: Record<string, number>, user) => {
           if (user.tenant_id) {
             acc[user.tenant_id] = (acc[user.tenant_id] || 0) + 1;
@@ -83,31 +85,32 @@ export async function getAllTenants(): Promise<Tenant[]> {
     } else {
       // Regular user: Use regular client (RLS will filter to their tenant)
       console.log("[getAllTenants] Regular user - fetching tenant-scoped tenants");
-      const { data, error } = await supabase
+      const result: { data: Tenant[] | null; error: any } = await supabase
         .from("tenants")
         .select("*")
         .order("created_at", { ascending: false });
       
-      if (error) {
+      const data = result.data;
+      if (result.error) {
         console.error("[getAllTenants] Error fetching tenant:", {
-          code: error.code,
-          message: error.message,
-          details: error.details,
-          hint: error.hint,
+          code: result.error.code,
+          message: result.error.message,
+          details: result.error.details,
+          hint: result.error.hint,
         });
-        throw error;
+        throw result.error;
       }
       
       // Get user count for this tenant
       let userCount = 0;
       if (data && data.length > 0) {
         const tenantId = data[0].id;
-        const { data: users } = await supabase
+        const usersResult: { data: { id: string }[] | null; error: any } = await supabase
           .from("users")
           .select("id")
           .eq("tenant_id", tenantId);
         
-        userCount = users?.length || 0;
+        userCount = usersResult.data?.length || 0;
       }
       
       const tenantsWithCounts = (data || []).map(tenant => ({

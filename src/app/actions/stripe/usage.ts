@@ -96,13 +96,14 @@ export async function trackUsageEvent(params: {
     const adminClient = createAdminClient();
 
     // Get active subscription with metered billing
-    const { data: subscription } = await adminClient
+    const result: { data: { stripe_subscription_id: string } | null; error: any } = await adminClient
       .from("stripe_subscriptions")
       .select("stripe_subscription_id")
       .eq("tenant_id", tenantId)
       .in("status", ["active", "trialing"])
       .single();
 
+    const subscription = result.data;
     if (!subscription) {
       return { success: false, error: "No active subscription found" };
     }
@@ -170,13 +171,14 @@ export async function getCurrentUsage(): Promise<{
     const adminClient = createAdminClient();
 
     // Get active subscription
-    const { data: subscription } = await adminClient
+    const result: { data: { stripe_subscription_id: string; current_period_start: string; current_period_end: string } | null; error: any } = await adminClient
       .from("stripe_subscriptions")
       .select("stripe_subscription_id, current_period_start, current_period_end")
       .eq("tenant_id", tenantId)
       .in("status", ["active", "trialing"])
       .single();
 
+    const subscription = result.data;
     if (!subscription) {
       return { success: false, error: "No active subscription found" };
     }
