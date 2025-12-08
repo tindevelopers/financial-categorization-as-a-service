@@ -174,9 +174,7 @@ async function handleSubscriptionEvent(subscription: Stripe.Subscription) {
         currency: price?.currency || "usd",
         metadata: subscription.metadata as any,
       },
-      {
-        onConflict: "stripe_subscription_id",
-      }
+      { onConflict: 'stripe_subscription_id' }
     );
 }
 
@@ -275,9 +273,7 @@ async function handlePaymentMethodEvent(
         billing_details: paymentMethod.billing_details as any,
         metadata: paymentMethod.metadata as any,
       },
-      {
-        onConflict: "stripe_payment_method_id",
-      }
+      { onConflict: 'stripe_payment_method_id' }
     );
 }
 

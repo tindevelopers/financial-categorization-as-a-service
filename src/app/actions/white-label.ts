@@ -369,7 +369,7 @@ export async function getCustomDomains(): Promise<CustomDomain[]> {
       return [];
     }
 
-    return (tenant?.custom_domains as CustomDomain[]) || [];
+    return (tenant?.custom_domains as unknown as CustomDomain[]) || [];
   } catch {
     return [];
   }
@@ -391,7 +391,7 @@ export async function saveCustomDomains(domains: CustomDomain[]): Promise<{ succ
 
     const { error } = await supabase
       .from("tenants")
-      .update({ custom_domains: domains })
+      .update({ custom_domains: domains as unknown as string[] })
       .eq("id", tenantId);
 
     if (error) {

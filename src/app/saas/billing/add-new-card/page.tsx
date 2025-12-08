@@ -60,7 +60,7 @@ function AddPaymentMethodForm({ router }: { router: ReturnType<typeof useRouter>
       }
 
       // Attach payment method to customer
-      const result = await attachPaymentMethod(tenantId, paymentMethod.id, true);
+      const result = await attachPaymentMethod(paymentMethod.id, true);
 
       if (result.success) {
         router.push("/saas/billing/dashboard");
@@ -127,7 +127,7 @@ export default function AddNewCardPage() {
         setTenantId(userData.tenant_id);
 
         // Create setup intent
-        const result = await createSetupIntent(userData.tenant_id);
+        const result = await createSetupIntent();
         if (result.success && result.clientSecret) {
           setClientSecret(result.clientSecret);
         }

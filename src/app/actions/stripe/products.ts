@@ -59,11 +59,10 @@ export async function syncProducts(): Promise<{
               stripe_price_id: price.id,
               stripe_product_id: product.id,
               active: price.active,
-              unit_amount: price.unit_amount || null,
+              unit_amount: price.unit_amount ? price.unit_amount / 100 : null, // Convert from cents
               currency: price.currency,
-              type: price.type,
-              interval: price.recurring?.interval || null,
-              interval_count: price.recurring?.interval_count || null,
+              billing_cycle: price.recurring?.interval === 'year' ? 'annual' : 'monthly',
+              interval_count: price.recurring?.interval_count || 1,
               metadata: price.metadata as Record<string, unknown>,
             },
             { onConflict: 'stripe_price_id' }

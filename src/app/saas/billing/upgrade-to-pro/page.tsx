@@ -4,6 +4,7 @@ import Button from "@/components/ui/button/Button";
 import { CheckIcon } from "@heroicons/react/24/outline";
 import { useRouter } from "next/navigation";
 import React, { useState } from "react";
+import { createBrowserClient } from "@/core/database";
 
 const proFeatures = [
   "50,000 orders per month",
@@ -48,7 +49,7 @@ export default function UpgradeToProPage() {
     setLoading(true);
     try {
       // Get tenant ID
-      const supabase = createClient();
+      const supabase = createBrowserClient();
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
         router.push("/signin");
@@ -67,10 +68,10 @@ export default function UpgradeToProPage() {
       }
 
       // Get plans and find the Pro plan price
-      const { getPlans } = await import("@/app/actions/stripe/products");
-      const { createCheckoutSession } = await import("@/app/actions/stripe/subscriptions");
-      
-      const plansResult = await getPlans();
+      const { getProducts } = await import("@/app/actions/stripe/products");
+      const { createCheckoutSession } = await import("@/app/actions/stripe/checkout");
+
+      const plansResult = await getProducts();
       if (!plansResult.success || !plansResult.plans) {
         alert("Unable to load plans. Please try again.");
         return;
