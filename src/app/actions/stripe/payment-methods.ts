@@ -255,13 +255,13 @@ export async function attachPaymentMethod(
         tenant_id: tenantId,
         stripe_customer_id: customer.stripe_customer_id,
         stripe_payment_method_id: paymentMethod.id,
-        type: paymentMethod.type,
+        type: paymentMethod.type as "card" | "bank_account" | "us_bank_account" | "sepa_debit",
         card_brand: paymentMethod.card?.brand,
         card_last4: paymentMethod.card?.last4,
         card_exp_month: paymentMethod.card?.exp_month,
         card_exp_year: paymentMethod.card?.exp_year,
         is_default: makeDefault,
-        billing_details: paymentMethod.billing_details as Record<string, unknown>,
+        billing_details: paymentMethod.billing_details as unknown as Record<string, unknown>,
       });
 
     if (insertError) {

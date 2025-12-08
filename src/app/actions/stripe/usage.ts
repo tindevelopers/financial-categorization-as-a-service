@@ -23,7 +23,7 @@ export async function recordUsage(params: {
     }
 
     // Create usage record in Stripe
-    const usageRecord = await stripe.subscriptionItems.createUsageRecord(
+    const usageRecord = await (stripe.subscriptionItems as any).createUsageRecord(
       params.subscriptionItemId,
       {
         quantity: params.quantity,
@@ -62,7 +62,7 @@ export async function getUsageRecords(
     }
 
     // Fetch usage records from Stripe
-    const usageRecords = await stripe.subscriptionItems.listUsageRecordSummaries(
+    const usageRecords = await (stripe.subscriptionItems as any).listUsageRecordSummaries(
       subscriptionItemId,
       { limit }
     );
@@ -122,7 +122,7 @@ export async function trackUsageEvent(params: {
     }
 
     // Record usage for the first metered item (you can customize this logic)
-    await stripe.subscriptionItems.createUsageRecord(meteredItems[0].id, {
+    await (stripe.subscriptionItems as any).createUsageRecord(meteredItems[0].id, {
       quantity: params.quantity,
       timestamp: Math.floor(Date.now() / 1000),
       action: "increment",
@@ -191,7 +191,7 @@ export async function getCurrentUsage(): Promise<{
       stripeSubscription.items.data
         .filter((item) => item.price.recurring?.usage_type === "metered")
         .map(async (item) => {
-          const summaries = await stripe.subscriptionItems.listUsageRecordSummaries(
+          const summaries = await (stripe.subscriptionItems as any).listUsageRecordSummaries(
             item.id,
             { limit: 1 }
           );

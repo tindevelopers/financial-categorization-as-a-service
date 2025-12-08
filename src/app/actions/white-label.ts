@@ -107,7 +107,7 @@ export async function saveBrandingSettings(settings: BrandingSettings): Promise<
 
     const { error } = await supabase
       .from("tenants")
-      .update({ branding: settings })
+      .update({ branding: settings as Record<string, unknown> })
       .eq("id", tenantId);
 
     if (error) {
@@ -181,7 +181,7 @@ export async function saveThemeSettings(settings: ThemeSettings): Promise<{ succ
 
     const { error } = await supabase
       .from("tenants")
-      .update({ theme_settings: settings })
+      .update({ theme_settings: settings as Record<string, unknown> })
       .eq("id", tenantId);
 
     if (error) {
@@ -251,7 +251,7 @@ export async function saveEmailSettings(settings: EmailSettings): Promise<{ succ
 
     const { error } = await supabase
       .from("tenants")
-      .update({ email_settings: settings })
+      .update({ email_settings: settings as Record<string, unknown> })
       .eq("id", tenantId);
 
     if (error) {

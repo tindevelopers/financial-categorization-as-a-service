@@ -101,6 +101,11 @@ export {
   createWorkspace,
   updateWorkspace,
   deleteWorkspace,
+  addUserToWorkspace,
+  removeUserFromWorkspace,
+  updateWorkspaceUser,
+  getUserWorkspaces,
+  getWorkspaceMembers,
 } from './workspaces';
 
 // ============================================================================

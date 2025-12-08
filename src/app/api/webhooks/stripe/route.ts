@@ -156,8 +156,8 @@ async function handleSubscriptionEvent(subscription: Stripe.Subscription) {
         stripe_price_id: price?.id || null,
         stripe_product_id: product || null,
         status: subscription.status,
-        current_period_start: new Date(subscription.current_period_start * 1000).toISOString(),
-        current_period_end: new Date(subscription.current_period_end * 1000).toISOString(),
+        current_period_start: new Date((subscription as any).current_period_start * 1000).toISOString(),
+        current_period_end: new Date((subscription as any).current_period_end * 1000).toISOString(),
         cancel_at_period_end: subscription.cancel_at_period_end,
         canceled_at: subscription.canceled_at
           ? new Date(subscription.canceled_at * 1000).toISOString()
@@ -197,7 +197,7 @@ async function handleInvoiceEvent(invoice: Stripe.Invoice) {
         stripe_customer_id:
           typeof invoice.customer === "string" ? invoice.customer : invoice.customer?.id || "",
         stripe_subscription_id:
-          typeof invoice.subscription === "string" ? invoice.subscription : null,
+          typeof (invoice as any).subscription === "string" ? (invoice as any).subscription : null,
         stripe_invoice_id: invoice.id,
         invoice_number: invoice.number || null,
         status: invoice.status || "draft",
@@ -205,7 +205,7 @@ async function handleInvoiceEvent(invoice: Stripe.Invoice) {
         amount_paid: invoice.amount_paid,
         subtotal: invoice.subtotal,
         total: invoice.total,
-        tax: invoice.tax || null,
+        tax: (invoice as any).tax || null,
         currency: invoice.currency,
         due_date: invoice.due_date ? new Date(invoice.due_date * 1000).toISOString() : null,
         paid_at:
