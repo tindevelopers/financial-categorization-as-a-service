@@ -33,7 +33,7 @@ export async function syncProducts(): Promise<{
             description: product.description || null,
             active: product.active,
             metadata: product.metadata as any,
-          },
+          } as any,
           {
             onConflict: "stripe_product_id",
           }
@@ -64,7 +64,7 @@ export async function syncProducts(): Promise<{
               billing_cycle: price.recurring?.interval === 'year' ? 'annual' : 'monthly',
               interval_count: price.recurring?.interval_count || 1,
               metadata: price.metadata as Record<string, unknown>,
-            },
+            } as any,
             { onConflict: 'stripe_price_id' }
           );
       }
