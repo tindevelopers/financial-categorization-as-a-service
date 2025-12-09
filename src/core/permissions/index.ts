@@ -12,7 +12,6 @@
 // ============================================================================
 export type {
   Permission,
-  PermissionCategory,
   UserPermissions,
 } from './permissions';
 
@@ -201,7 +200,8 @@ export function matchesPermission(permission: string, pattern: string): boolean 
  * Get all permissions for a role
  */
 export function getPermissionsForRole(roleName: string): string[] {
-  return ROLE_PERMISSIONS[roleName as keyof typeof ROLE_PERMISSIONS] || [];
+  const perms = ROLE_PERMISSIONS[roleName as keyof typeof ROLE_PERMISSIONS];
+  return perms ? [...perms] : [];
 }
 
 /**

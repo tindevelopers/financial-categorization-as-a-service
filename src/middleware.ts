@@ -108,16 +108,17 @@ export async function middleware(request: NextRequest) {
 
   // If user is authenticated but no tenant from resolution, try session
   if (user && !tenantResult.tenantId) {
-    const { data: userData } = await supabase
+    const userDataResult: { data: { tenant_id: string | null; roles: { name: string } | null } | null; error: any } = await supabase
       .from("users")
       .select("tenant_id, roles:role_id(name)")
       .eq("id", user.id)
       .single();
 
+    const userData = userDataResult.data;
     if (userData?.tenant_id) {
       request.headers.set("x-tenant-id", userData.tenant_id);
       response.headers.set("x-tenant-id", userData.tenant_id);
-    } else if ((userData?.roles as any)?.name === "Platform Admin") {
+    } else if (userData?.roles?.name === "Platform Admin") {
       // Platform Admin - set a special header
       request.headers.set("x-user-type", "platform-admin");
       response.headers.set("x-user-type", "platform-admin");

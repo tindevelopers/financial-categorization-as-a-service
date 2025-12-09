@@ -19,7 +19,7 @@ export async function getUserPermissionsClient(
   const supabase = createBrowserClient();
   
   // First, check platform role (users.role_id)
-  const { data: user, error } = await supabase
+  const userResult: { data: { role_id: string | null; tenant_id: string | null; roles: { id: string; name: string; permissions: string[] } | null } | null; error: any } = await supabase
     .from("users")
     .select(`
       role_id,
@@ -33,7 +33,8 @@ export async function getUserPermissionsClient(
     .eq("id", userId)
     .single();
 
-  if (error || !user) {
+  const user = userResult.data;
+  if (userResult.error || !user) {
     return {
       role: null,
       permissions: [],
@@ -73,7 +74,7 @@ export async function getUserPermissionsClient(
 
   // If tenant context provided, check for tenant-specific role
   if (tenantId) {
-    const { data: tenantRole } = await supabase
+    const tenantRoleResult: { data: { role_id: string; roles: { id: string; name: string; permissions: string[] } | null } | null; error: any } = await supabase
       .from("user_tenant_roles")
       .select(`
         role_id,
@@ -87,6 +88,7 @@ export async function getUserPermissionsClient(
       .eq("tenant_id", tenantId)
       .maybeSingle();
 
+    const tenantRole = tenantRoleResult.data;
     if (tenantRole) {
       const role = tenantRole.roles as { id: string; name: string; permissions: string[] } | null;
       if (role) {

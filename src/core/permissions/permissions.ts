@@ -44,7 +44,7 @@ export async function getUserPermissions(
   const adminClient = createAdminClient();
   
   // First, check platform role (users.role_id)
-  const { data: user, error } = await adminClient
+  const userResult: { data: { role_id: string | null; tenant_id: string | null; roles: { id: string; name: string; permissions: string[] } | null } | null; error: any } = await adminClient
     .from("users")
     .select(`
       role_id,
@@ -58,8 +58,9 @@ export async function getUserPermissions(
     .eq("id", userId)
     .single();
 
-  if (error) {
-    console.error(`[getUserPermissions] Error fetching user ${userId}:`, error);
+  const user = userResult.data;
+  if (userResult.error) {
+    console.error(`[getUserPermissions] Error fetching user ${userId}:`, userResult.error);
     return {
       role: null,
       permissions: [],
@@ -116,12 +117,13 @@ export async function getUserPermissions(
     const effectiveRole = await getEffectiveRole(userId, tenantId);
     if (effectiveRole && effectiveRole.source === "tenant") {
       // Use tenant role for permissions
-      const { data: tenantRoleData } = await adminClient
+      const tenantRoleResult: { data: { name: string; permissions: string[] } | null; error: any } = await adminClient
         .from("roles")
         .select("name, permissions")
         .eq("id", effectiveRole.roleId)
         .single();
 
+      const tenantRoleData = tenantRoleResult.data;
       if (tenantRoleData) {
         return mapRoleToPermissions(tenantRoleData.name, tenantRoleData.permissions as string[]);
       }

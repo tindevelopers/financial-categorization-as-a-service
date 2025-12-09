@@ -97,7 +97,7 @@ export async function checkAnyPermission(
     if (options?.tenantId) {
       // Check tenant permissions for each permission
       const checks = await Promise.all(
-        permissions.map(p => hasTenantPermission(user.id, options.tenantId, p))
+        permissions.map(p => hasTenantPermission(user.id, options.tenantId!, p))
       );
       const hasAccess = checks.some(check => check);
       

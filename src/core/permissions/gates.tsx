@@ -8,7 +8,8 @@
 
 import { useEffect, useState, type ReactNode } from "react";
 import { createClient as createBrowserClient } from "@/core/database/client";
-import { hasPermissionClient, hasAnyPermissionClient, hasAllPermissionsClient, type Permission } from "./permissions-client";
+import { hasPermissionClient, hasAnyPermissionClient, hasAllPermissionsClient } from "./permissions-client";
+import type { Permission } from "./permissions";
 
 interface PermissionGateProps {
   permission: Permission | Permission[];
