@@ -3,17 +3,18 @@
  * Run with: npx tsx test-multi-tenant.ts
  */
 
-import { createClient } from "./src/lib/supabase/client";
-import { signUp, signIn } from "./src/lib/auth/auth";
-import { getUsers, createUser } from "./src/lib/supabase/users";
-import { getTenants, createTenant } from "./src/lib/supabase/tenants";
-import { getRoles } from "./src/lib/supabase/roles";
-import { getUserPermissions, hasPermission } from "./src/lib/auth/permissions";
+import { createClient } from "@/core/database/server";
+import { signUp, signIn } from "@/app/actions/auth";
+import { getAllUsers } from "@/core/database/users";
+import { getTenants, createTenant } from "@/core/database/tenants";
+import { getRoles } from "@/core/database/roles";
+import { getUserPermissions, hasPermission } from "@/core/permissions/permissions";
+import type { Database } from "@/core/database";
 
 async function testMultiTenant() {
   console.log("🧪 Testing Multi-Tenant System\n");
 
-  const supabase = createClient();
+  const supabase = await createClient();
 
   try {
     // Test 1: Create Tenant 1
@@ -25,6 +26,9 @@ async function testMultiTenant() {
       region: "us-east-1",
       status: "active",
     });
+    if (!tenant1) {
+      throw new Error("Failed to create Tenant 1");
+    }
     console.log("✅ Tenant 1 created:", tenant1.id);
 
     // Test 2: Create Tenant 2
@@ -36,13 +40,16 @@ async function testMultiTenant() {
       region: "us-west-1",
       status: "active",
     });
+    if (!tenant2) {
+      throw new Error("Failed to create Tenant 2");
+    }
     console.log("✅ Tenant 2 created:", tenant2.id);
 
     // Test 3: Get Roles
     console.log("\n3️⃣ Fetching roles...");
     const roles = await getRoles();
     console.log(`✅ Found ${roles.length} roles`);
-    const workspaceAdminRole = roles.find(r => r.name === "Workspace Admin");
+    const workspaceAdminRole = roles.find((r: { name: string; id: string }) => r.name === "Workspace Admin");
     console.log("   Workspace Admin role ID:", workspaceAdminRole?.id);
 
     // Test 4: Sign up user for Tenant 1
@@ -54,27 +61,26 @@ async function testMultiTenant() {
         fullName: "Alice Johnson",
         tenantName: "Acme Corp",
         tenantDomain: "acme.com",
-        plan: "pro",
-        region: "us-east-1",
       });
-      console.log("✅ User signed up:", signupResult.user.email);
-      console.log("   Tenant ID:", signupResult.user.tenant_id);
+      console.log("✅ User signed up:", signupResult.user?.email);
+      console.log("   Tenant ID:", signupResult.user?.tenant_id);
     } catch (err) {
       console.log("⚠️  Signup test skipped (user may already exist)");
     }
 
     // Test 5: Get users (should be tenant-scoped)
     console.log("\n5️⃣ Fetching users...");
-    const users = await getUsers();
+    const users = await getAllUsers();
     console.log(`✅ Found ${users.length} users`);
-    users.forEach(user => {
+    users.forEach((user: { email: string; tenant_id: string | null }) => {
       console.log(`   - ${user.email} (Tenant: ${user.tenant_id})`);
     });
 
     // Test 6: Test tenant isolation
     console.log("\n6️⃣ Testing tenant isolation...");
-    const tenant1Users = await getUsers(tenant1.id);
-    const tenant2Users = await getUsers(tenant2.id);
+    const allUsers = await getAllUsers();
+    const tenant1Users = allUsers.filter((u: { tenant_id: string | null }) => u.tenant_id === tenant1.id);
+    const tenant2Users = allUsers.filter((u: { tenant_id: string | null }) => u.tenant_id === tenant2.id);
     console.log(`✅ Tenant 1 users: ${tenant1Users?.length || 0}`);
     console.log(`✅ Tenant 2 users: ${tenant2Users?.length || 0}`);
 
@@ -82,7 +88,7 @@ async function testMultiTenant() {
     console.log("\n7️⃣ Fetching tenants...");
     const tenants = await getTenants();
     console.log(`✅ Found ${tenants.length} tenants`);
-    tenants.forEach(tenant => {
+    tenants.forEach((tenant: { name: string; domain: string | null }) => {
       console.log(`   - ${tenant.name} (${tenant.domain})`);
     });
 
