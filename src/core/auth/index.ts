@@ -18,12 +18,9 @@ export type {
 } from './auth-interface';
 
 // ============================================================================
-// PROVIDERS
+// PROVIDERS (Client-side)
 // ============================================================================
 export {
-  signIn,
-  signUp,
-  signOut,
   getCurrentUser,
   getCurrentSession,
 } from './supabase-provider';
@@ -32,10 +29,9 @@ export {
 // ACTIONS (Server Actions)
 // ============================================================================
 export {
-  signInAction,
-  signUpAction,
-  signOutAction,
-  verifyOtpAction,
+  signUp,
+  signIn,
+  signOut,
 } from './actions';
 
 // ============================================================================

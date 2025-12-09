@@ -5,9 +5,20 @@
  */
 
 import { createAdminClient } from "@/core/database/admin-client";
-import type { Database } from "@/core/database";
 
-type AuditLogInsert = Database["public"]["Tables"]["audit_logs"]["Insert"];
+type AuditLogInsert = {
+  user_id: string;
+  tenant_id?: string | null;
+  workspace_id?: string | null;
+  action: string;
+  resource: string;
+  permission: string;
+  allowed: boolean;
+  reason?: string | null;
+  metadata?: Record<string, any>;
+  ip_address?: string | null;
+  user_agent?: string | null;
+};
 
 export interface PermissionAuditLog {
   userId: string;
@@ -48,7 +59,7 @@ export async function logPermissionCheck(
 
     // Try to insert, but don't fail if table doesn't exist yet
     try {
-      await adminClient.from("audit_logs").insert(auditLog);
+      await ((adminClient.from("audit_logs") as any).insert(auditLog as any));
     } catch (error: any) {
       // If table doesn't exist, log to console for now
       if (error.code === "42P01") {
