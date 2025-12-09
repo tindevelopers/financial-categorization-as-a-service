@@ -11,11 +11,12 @@
 // STRIPE CONFIGURATION
 // ============================================================================
 export { stripe, stripeConfig } from './config';
+import { stripeConfig } from './config';
 
 // ============================================================================
 // STRIPE CLIENT (Client-side)
 // ============================================================================
-export { loadStripe, getStripePromise } from './client';
+export { getStripe } from './client';
 
 // ============================================================================
 // CUSTOMERS
@@ -41,14 +42,17 @@ export {
   getActiveSubscription,
   cancelSubscription,
   resumeSubscription,
-  updateSubscriptionPlan,
+  updateSubscription,
 } from './subscriptions';
 
 // ============================================================================
 // PRODUCTS & PRICING
 // ============================================================================
 export {
-  getActiveProductsWithPrices,
+  getProducts,
+  getProduct,
+  getPrices,
+  syncProducts,
 } from './products';
 
 // ============================================================================
@@ -56,9 +60,9 @@ export {
 // ============================================================================
 export {
   getPaymentMethods,
-  attachPaymentMethod,
-  detachPaymentMethod,
   setDefaultPaymentMethod,
+  deletePaymentMethod,
+  createSetupIntent,
 } from './payment-methods';
 
 // ============================================================================
@@ -66,7 +70,9 @@ export {
 // ============================================================================
 export {
   recordUsage,
-  getUsageForPeriod,
+  getUsageRecords,
+  trackUsageEvent,
+  getCurrentUsage,
 } from './usage';
 
 // ============================================================================
@@ -74,9 +80,13 @@ export {
 // ============================================================================
 export {
   createConnectAccount,
-  getConnectAccountStatus,
+  getConnectAccount,
   createConnectAccountLink,
-  deleteConnectAccount,
+  createConnectLoginLink,
+  updateConnectAccount,
+  createConnectedPayment,
+  createPayout,
+  getConnectAccountBalance,
 } from './connect';
 
 // ============================================================================
