@@ -78,13 +78,14 @@ export async function getTenantIdFromSubdomain(
     const adminClient = createAdminClient();
     
     // Look up tenant by domain (subdomain becomes the domain)
-    const { data, error } = await adminClient
+    const tenantResult: { data: { id: string } | null; error: any } = await adminClient
       .from("tenants")
       .select("id")
       .eq("domain", subdomain)
       .single();
     
-    if (error || !data) {
+    const data = tenantResult.data;
+    if (tenantResult.error || !data) {
       return null;
     }
     

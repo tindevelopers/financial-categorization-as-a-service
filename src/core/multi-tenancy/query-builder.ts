@@ -27,8 +27,8 @@ export async function buildTenantQuery<T extends TableName>(
   supabase: SupabaseClient<Database>,
   table: T,
   options: TenantQueryOptions = {}
-): Promise<ReturnType<SupabaseClient<Database>["from"]>> {
-  let query = supabase.from(table);
+): Promise<any> {
+  let query: any = supabase.from(table);
 
   // Filter by tenant_id if provided, otherwise get from context
   // Note: Platform Admin check should be done at the server action level
@@ -36,30 +36,30 @@ export async function buildTenantQuery<T extends TableName>(
   if (options.includePlatformAdmins) {
     // Platform Admin mode - only filter if explicit tenantId provided
     if (options.tenantId) {
-      query = query.eq("tenant_id", options.tenantId) as any;
+      query = query.eq("tenant_id", options.tenantId);
     }
     // Otherwise, no filter (Platform Admin sees all)
   } else {
     // Regular user mode - must filter by tenant_id
     const tenantId = options.tenantId || await ensureTenantId();
-    query = query.eq("tenant_id", tenantId) as any;
+    query = query.eq("tenant_id", tenantId);
   }
 
   // Apply ordering
   if (options.orderBy) {
     query = query.order(options.orderBy.column, {
       ascending: options.orderBy.ascending ?? true,
-    }) as any;
+    });
   }
 
   // Apply limit
   if (options.limit) {
-    query = query.limit(options.limit) as any;
+    query = query.limit(options.limit);
   }
 
   // Apply offset
   if (options.offset) {
-    query = query.range(options.offset, options.offset + (options.limit || 10) - 1) as any;
+    query = query.range(options.offset, options.offset + (options.limit || 10) - 1);
   }
 
   return query;

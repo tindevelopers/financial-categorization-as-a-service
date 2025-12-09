@@ -18,12 +18,13 @@ export async function getCurrentTenant(): Promise<string | null> {
     }
 
     // Get user's tenant_id
-    const { data: userData } = await supabase
+    const userDataResult: { data: { tenant_id: string | null } | null; error: any } = await supabase
       .from("users")
       .select("tenant_id")
       .eq("id", user.id)
       .single();
 
+    const userData = userDataResult.data;
     return userData?.tenant_id || null;
   } catch (error) {
     console.error("Error getting current tenant:", error);
@@ -68,23 +69,28 @@ export async function validateTenantAccess(tenantId: string): Promise<boolean> {
     }
 
     // Check if user has access to this tenant
-    const { data: userData } = await supabase
+    const userDataResult2: { data: { tenant_id: string | null; role_id: string | null } | null; error: any } = await supabase
       .from("users")
       .select("tenant_id, role_id")
       .eq("id", user.id)
       .single();
 
+    const userData = userDataResult2.data;
     if (!userData) {
       return false;
     }
 
     // Platform admins have access to all tenants
-    const { data: role } = await supabase
+    if (!userData.role_id) {
+      return false;
+    }
+    const roleResult: { data: { name: string } | null; error: any } = await supabase
       .from("roles")
       .select("name")
       .eq("id", userData.role_id)
       .single();
 
+    const role = roleResult.data;
     if (role?.name === "Platform Admin") {
       return true;
     }

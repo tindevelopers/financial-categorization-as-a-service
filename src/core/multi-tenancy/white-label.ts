@@ -71,14 +71,15 @@ export async function getBrandingSettings(): Promise<BrandingSettings> {
       return {};
     }
 
-    const { data: tenant, error } = await supabase
+    const brandingResult: { data: { branding: any } | null; error: any } = await supabase
       .from("tenants")
       .select("branding")
       .eq("id", tenantId)
       .single();
 
-    if (error) {
-      console.error("Error fetching branding settings:", error);
+    const tenant = brandingResult.data;
+    if (brandingResult.error) {
+      console.error("Error fetching branding settings:", brandingResult.error);
       return {};
     }
 
@@ -108,10 +109,11 @@ export async function saveBrandingSettings(settings: BrandingSettings): Promise<
       return { success: false, error: "No tenant context" };
     }
 
-    const { error } = await supabase
-      .from("tenants")
-      .update({ branding: settings })
-      .eq("id", tenantId);
+    const updateResult: { error: any } = await ((supabase
+      .from("tenants") as any)
+      .update({ branding: settings } as any)
+      .eq("id", tenantId));
+    const error = updateResult.error;
 
     if (error) {
       console.error("Error saving branding settings:", error);
@@ -150,14 +152,15 @@ export async function getThemeSettings(): Promise<ThemeSettings> {
       return {};
     }
 
-    const { data: tenant, error } = await supabase
+    const themeResult: { data: { theme_settings: any } | null; error: any } = await supabase
       .from("tenants")
       .select("theme_settings")
       .eq("id", tenantId)
       .single();
 
-    if (error) {
-      console.error("Error fetching theme settings:", error);
+    const tenant = themeResult.data;
+    if (themeResult.error) {
+      console.error("Error fetching theme settings:", themeResult.error);
       return {};
     }
 
@@ -182,10 +185,11 @@ export async function saveThemeSettings(settings: ThemeSettings): Promise<{ succ
       return { success: false, error: "No tenant context" };
     }
 
-    const { error } = await supabase
-      .from("tenants")
-      .update({ theme_settings: settings })
-      .eq("id", tenantId);
+    const updateThemeResult: { error: any } = await ((supabase
+      .from("tenants") as any)
+      .update({ theme_settings: settings } as any)
+      .eq("id", tenantId));
+    const error = updateThemeResult.error;
 
     if (error) {
       return { success: false, error: error.message };
@@ -222,13 +226,14 @@ export async function getEmailSettings(): Promise<EmailSettings> {
       return {};
     }
 
-    const { data: tenant, error } = await supabase
+    const emailResult: { data: { email_settings: any } | null; error: any } = await supabase
       .from("tenants")
       .select("email_settings")
       .eq("id", tenantId)
       .single();
 
-    if (error) {
+    const tenant = emailResult.data;
+    if (emailResult.error) {
       return {};
     }
 
@@ -252,10 +257,11 @@ export async function saveEmailSettings(settings: EmailSettings): Promise<{ succ
       return { success: false, error: "No tenant context" };
     }
 
-    const { error } = await supabase
-      .from("tenants")
-      .update({ email_settings: settings })
-      .eq("id", tenantId);
+    const updateEmailResult: { error: any } = await ((supabase
+      .from("tenants") as any)
+      .update({ email_settings: settings } as any)
+      .eq("id", tenantId));
+    const error = updateEmailResult.error;
 
     if (error) {
       return { success: false, error: error.message };
@@ -292,13 +298,14 @@ export async function getCustomCSS(): Promise<string> {
       return "";
     }
 
-    const { data: tenant, error } = await supabase
+    const cssResult: { data: { custom_css: string | null } | null; error: any } = await supabase
       .from("tenants")
       .select("custom_css")
       .eq("id", tenantId)
       .single();
 
-    if (error) {
+    const tenant = cssResult.data;
+    if (cssResult.error) {
       return "";
     }
 
@@ -322,10 +329,11 @@ export async function saveCustomCSS(css: string): Promise<{ success: boolean; er
       return { success: false, error: "No tenant context" };
     }
 
-    const { error } = await supabase
-      .from("tenants")
-      .update({ custom_css: css })
-      .eq("id", tenantId);
+    const updateCssResult: { error: any } = await ((supabase
+      .from("tenants") as any)
+      .update({ custom_css: css } as any)
+      .eq("id", tenantId));
+    const error = updateCssResult.error;
 
     if (error) {
       return { success: false, error: error.message };
@@ -362,13 +370,14 @@ export async function getCustomDomains(): Promise<CustomDomain[]> {
       return [];
     }
 
-    const { data: tenant, error } = await supabase
+    const domainsResult: { data: { custom_domains: any } | null; error: any } = await supabase
       .from("tenants")
       .select("custom_domains")
       .eq("id", tenantId)
       .single();
 
-    if (error) {
+    const tenant = domainsResult.data;
+    if (domainsResult.error) {
       return [];
     }
 
@@ -392,10 +401,11 @@ export async function saveCustomDomains(domains: CustomDomain[]): Promise<{ succ
       return { success: false, error: "No tenant context" };
     }
 
-    const { error } = await supabase
-      .from("tenants")
-      .update({ custom_domains: domains })
-      .eq("id", tenantId);
+    const updateDomainsResult: { error: any } = await ((supabase
+      .from("tenants") as any)
+      .update({ custom_domains: domains } as any)
+      .eq("id", tenantId));
+    const error = updateDomainsResult.error;
 
     if (error) {
       return { success: false, error: error.message };

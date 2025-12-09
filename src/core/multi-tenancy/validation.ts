@@ -71,12 +71,13 @@ export async function validateTenantAccess(
       };
     } else {
       // Regular user: Check if tenant matches their tenant_id
-      const { data: userData } = await supabase
+      const userDataResult: { data: { tenant_id: string | null } | null; error: any } = await supabase
         .from("users")
         .select("tenant_id")
         .eq("id", user.id)
         .single();
 
+      const userData = userDataResult.data;
       if (!userData || userData.tenant_id !== tenantId) {
         return {
           isValid: false,
@@ -85,11 +86,14 @@ export async function validateTenantAccess(
       }
 
       // Get tenant details
-      const { data: tenant, error } = await supabase
+      const tenantResult: { data: any | null; error: any } = await supabase
         .from("tenants")
         .select("*")
         .eq("id", tenantId)
         .single();
+      
+      const tenant = tenantResult.data;
+      const error = tenantResult.error;
 
       if (error || !tenant) {
         return {
@@ -162,12 +166,13 @@ export async function getCurrentUserTenantId(): Promise<string | null> {
       return null;
     }
 
-    const { data: userData } = await supabase
+    const userDataResult2: { data: { tenant_id: string | null } | null; error: any } = await supabase
       .from("users")
       .select("tenant_id")
       .eq("id", user.id)
       .single();
 
+    const userData = userDataResult2.data;
     return userData?.tenant_id || null;
   } catch {
     return null;

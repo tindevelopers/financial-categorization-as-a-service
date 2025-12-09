@@ -198,10 +198,15 @@ export { getCurrentTenant, useTenant, TenantProvider } from './multi-tenancy';
 export { createCheckoutSession, getActiveSubscription } from './billing';
 
 // Permissions
-export { hasPermission, requirePermission, PermissionGate } from './permissions';
+// Note: hasPermission and requirePermission are server-only and should be imported directly:
+//   import { hasPermission } from '@/core/permissions/permissions';
+//   import { requirePermission } from '@/core/permissions/middleware';
+export { PermissionGate } from './permissions';
 
 // Database
-export { createClient, createAdminClient } from './database';
+// Note: createClient and createAdminClient are server-only and should be imported directly:
+//   import { createClient } from '@/core/database/server';
+//   import { createAdminClient } from '@/core/database/admin-client';
 
 // Shared
 export { sleep, retry, isValidEmail, APP_CONFIG } from './shared';

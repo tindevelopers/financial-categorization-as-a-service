@@ -319,16 +319,17 @@ async function applyWhiteLabel(params: SendEmailParams): Promise<SendEmailParams
 async function getTenantWhiteLabel(tenantId: string): Promise<any> {
   try {
     // Import Supabase client
-    const { createAdminClient } = await import('@/core/database');
+    const { createAdminClient } = await import('@/core/database/admin-client');
     const supabase = createAdminClient();
     
-    const { data, error } = await supabase
+    const tenantResult: { data: { branding: any; theme_settings: any; custom_domains: any } | null; error: any } = await supabase
       .from('tenants')
       .select('branding, theme_settings, custom_domains')
       .eq('id', tenantId)
       .single();
     
-    if (error || !data) {
+    const data = tenantResult.data;
+    if (tenantResult.error || !data) {
       console.warn(`[Email Service] Could not load tenant ${tenantId} white-label settings`);
       return null;
     }

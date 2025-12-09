@@ -10,11 +10,8 @@
 // ============================================================================
 // TYPES
 // ============================================================================
-export type {
-  TenantContext,
-  TenantResolutionSource,
-  TenantValidationResult,
-} from './types';
+// Database types are re-exported from database domain
+export type { Database } from './types';
 
 // ============================================================================
 // TENANT CONTEXT

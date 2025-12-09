@@ -56,16 +56,17 @@ export async function getAllTenants(): Promise<Tenant[]> {
       }
       
       // Get user counts per tenant
-      const tenantIds = (data || []).map(t => t.id);
+      const tenantIds = (data || []).map((t: Tenant) => t.id);
       let userCounts: Record<string, number> = {};
       
       if (tenantIds.length > 0) {
-        const { data: users } = await adminClient
+        const usersResult: { data: Array<{ tenant_id: string }> | null; error: any } = await adminClient
           .from("users")
           .select("tenant_id")
           .in("tenant_id", tenantIds);
         
-        userCounts = (users || []).reduce((acc: Record<string, number>, user) => {
+        const users = usersResult.data || [];
+        userCounts = users.reduce((acc: Record<string, number>, user) => {
           if (user.tenant_id) {
             acc[user.tenant_id] = (acc[user.tenant_id] || 0) + 1;
           }
@@ -73,7 +74,7 @@ export async function getAllTenants(): Promise<Tenant[]> {
         }, {});
       }
       
-      const tenantsWithCounts = (data || []).map(tenant => ({
+      const tenantsWithCounts = (data || []).map((tenant: Tenant) => ({
         ...tenant,
         userCount: userCounts[tenant.id] || 0,
       }));
@@ -101,16 +102,16 @@ export async function getAllTenants(): Promise<Tenant[]> {
       // Get user count for this tenant
       let userCount = 0;
       if (data && data.length > 0) {
-        const tenantId = data[0].id;
-        const { data: users } = await supabase
+        const tenantId = (data[0] as Tenant).id;
+        const usersResult: { data: Array<{ id: string }> | null; error: any } = await supabase
           .from("users")
           .select("id")
           .eq("tenant_id", tenantId);
         
-        userCount = users?.length || 0;
+        userCount = usersResult.data?.length || 0;
       }
       
-      const tenantsWithCounts = (data || []).map(tenant => ({
+      const tenantsWithCounts = (data || []).map((tenant: Tenant) => ({
         ...tenant,
         userCount,
       }));

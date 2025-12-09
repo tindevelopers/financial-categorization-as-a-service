@@ -39,24 +39,28 @@ export function TenantProvider({ children }: { children: ReactNode }) {
       }
 
       // Get user's tenant_id from users table
-      const { data: userData, error: userDataError } = await supabase
+      const userDataResult: { data: { tenant_id: string | null } | null; error: any } = await supabase
         .from("users")
         .select("tenant_id")
         .eq("id", user.id)
         .single();
 
-      if (userDataError || !userData?.tenant_id) {
+      const userData = userDataResult.data;
+      if (userDataResult.error || !userData?.tenant_id) {
         setTenant(null);
         setIsLoading(false);
         return;
       }
 
       // Get tenant details
-      const { data: tenantData, error: tenantError } = await supabase
+      const tenantResult: { data: Tenant | null; error: any } = await supabase
         .from("tenants")
         .select("*")
         .eq("id", userData.tenant_id)
         .single();
+      
+      const tenantData = tenantResult.data;
+      const tenantError = tenantResult.error;
 
       if (tenantError) {
         setError(tenantError.message);
