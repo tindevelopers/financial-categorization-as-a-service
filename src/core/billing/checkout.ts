@@ -32,21 +32,23 @@ export async function createCheckoutSession(params: {
 
     // Get or create customer
     let customerId: string | undefined;
-    const { data: existingCustomer } = await adminClient
+    const customerResult: { data: { stripe_customer_id: string } | null; error: any } = await adminClient
       .from("stripe_customers")
       .select("stripe_customer_id")
       .eq("tenant_id", tenantId)
       .single();
 
+    const existingCustomer = customerResult.data;
     if (existingCustomer) {
       customerId = existingCustomer.stripe_customer_id;
     } else {
       // Create customer
-      const { data: tenant } = await adminClient
+      const tenantResult: { data: { name: string } | null; error: any } = await adminClient
         .from("tenants")
         .select("name")
         .eq("id", tenantId)
         .single();
+      const tenant = tenantResult.data;
 
       const customer = await stripe.customers.create({
         email: user.email,
@@ -58,13 +60,13 @@ export async function createCheckoutSession(params: {
       });
 
       // Save to database
-      await adminClient.from("stripe_customers").insert({
+      await ((adminClient.from("stripe_customers") as any).insert({
         tenant_id: tenantId,
         stripe_customer_id: customer.id,
         email: user.email || "",
         name: tenant?.name || user.email || "",
         metadata: { tenant_id: tenantId, user_id: user.id },
-      });
+      } as any));
 
       customerId = customer.id;
     }
@@ -140,12 +142,13 @@ export async function createBillingPortalSession(
     const adminClient = createAdminClient();
 
     // Get customer
-    const { data: customer } = await adminClient
+    const customerResult: { data: { stripe_customer_id: string } | null; error: any } = await adminClient
       .from("stripe_customers")
       .select("stripe_customer_id")
       .eq("tenant_id", tenantId)
       .single();
 
+    const customer = customerResult.data;
     if (!customer) {
       return { success: false, error: "Customer not found. Please subscribe first." };
     }
@@ -194,12 +197,13 @@ export async function createPaymentSession(params: {
 
     // Get or create customer
     let customerId: string | undefined;
-    const { data: existingCustomer } = await adminClient
+    const customerResult2: { data: { stripe_customer_id: string } | null; error: any } = await adminClient
       .from("stripe_customers")
       .select("stripe_customer_id")
       .eq("tenant_id", tenantId)
       .single();
 
+    const existingCustomer = customerResult2.data;
     if (existingCustomer) {
       customerId = existingCustomer.stripe_customer_id;
     }

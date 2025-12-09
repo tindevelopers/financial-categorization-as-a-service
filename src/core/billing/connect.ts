@@ -22,12 +22,13 @@ export async function createConnectAccount(
     const adminClient = createAdminClient();
 
     // Check if account already exists
-    const { data: existingAccount } = await adminClient
+    const accountResult: { data: { stripe_account_id: string } | null; error: any } = await adminClient
       .from("stripe_connect_accounts")
       .select("stripe_account_id")
       .eq("tenant_id", tenantId)
       .single();
 
+    const existingAccount = accountResult.data;
     if (existingAccount) {
       return {
         success: true,
@@ -36,11 +37,12 @@ export async function createConnectAccount(
     }
 
     // Get tenant details
-    const { data: tenant } = await adminClient
+    const tenantResult: { data: { name: string } | null; error: any } = await adminClient
       .from("tenants")
       .select("name")
       .eq("id", tenantId)
       .single();
+    const tenant = tenantResult.data;
 
     if (!tenant) {
       return { success: false, error: "Tenant not found" };
@@ -67,7 +69,7 @@ export async function createConnectAccount(
     const account = await stripe.accounts.create(accountParams);
 
     // Save to database
-    await adminClient.from("stripe_connect_accounts").insert({
+    await ((adminClient.from("stripe_connect_accounts") as any).insert({
       tenant_id: tenantId,
       stripe_account_id: account.id,
       account_type: accountType,
@@ -77,9 +79,9 @@ export async function createConnectAccount(
       country: account.country || country || "US",
       default_currency: account.default_currency || "usd",
       email: account.email || email,
-      business_name: account.business_profile?.name || tenant.name,
+      business_name: account.business_profile?.name || tenant?.name,
       metadata: account.metadata as any,
-    });
+    } as any));
 
     return { success: true, accountId: account.id };
   } catch (error) {
@@ -105,19 +107,20 @@ export async function createConnectAccountLink(
     const adminClient = createAdminClient();
 
     // Get connect account
-    const { data: connectAccount } = await adminClient
+    const accountResult2: { data: { stripe_account_id: string } | null; error: any } = await adminClient
       .from("stripe_connect_accounts")
       .select("stripe_account_id")
       .eq("tenant_id", tenantId)
       .single();
 
+    let connectAccount = accountResult2.data;
     if (!connectAccount) {
       // Create account first
       const createResult = await createConnectAccount(tenantId);
       if (!createResult.success || !createResult.accountId) {
         return { success: false, error: "Failed to create connect account" };
       }
-      connectAccount.stripe_account_id = createResult.accountId;
+      connectAccount = { stripe_account_id: createResult.accountId };
     }
 
     // Create account link
@@ -152,12 +155,13 @@ export async function createConnectLoginLink(tenantId: string): Promise<{
     const adminClient = createAdminClient();
 
     // Get connect account
-    const { data: connectAccount } = await adminClient
+    const accountResult3: { data: { stripe_account_id: string } | null; error: any } = await adminClient
       .from("stripe_connect_accounts")
       .select("stripe_account_id")
       .eq("tenant_id", tenantId)
       .single();
 
+    const connectAccount = accountResult3.data;
     if (!connectAccount) {
       return { success: false, error: "Connect account not found" };
     }
@@ -187,13 +191,14 @@ export async function getConnectAccount(tenantId: string): Promise<{
     const adminClient = createAdminClient();
 
     // Get connect account from database
-    const { data: connectAccount, error } = await adminClient
+    const accountResult4: { data: { stripe_account_id: string; [key: string]: any } | null; error: any } = await adminClient
       .from("stripe_connect_accounts")
       .select("*")
       .eq("tenant_id", tenantId)
       .single();
 
-    if (error || !connectAccount) {
+    const connectAccount = accountResult4.data;
+    if (accountResult4.error || !connectAccount) {
       return { success: false, error: "Connect account not found" };
     }
 
@@ -247,10 +252,10 @@ export async function updateConnectAccount(
       updateData.metadata = accountData.metadata;
     }
 
-    await adminClient
-      .from("stripe_connect_accounts")
-      .update(updateData)
-      .eq("stripe_account_id", accountId);
+    await ((adminClient
+      .from("stripe_connect_accounts") as any)
+      .update(updateData as any)
+      .eq("stripe_account_id", accountId));
 
     return { success: true };
   } catch (error) {
@@ -275,23 +280,25 @@ export async function createConnectedPayment(
     const adminClient = createAdminClient();
 
     // Get connect account
-    const { data: connectAccount } = await adminClient
+    const accountResult5: { data: { stripe_account_id: string } | null; error: any } = await adminClient
       .from("stripe_connect_accounts")
       .select("stripe_account_id")
       .eq("tenant_id", tenantId)
       .single();
 
+    const connectAccount = accountResult5.data;
     if (!connectAccount) {
       return { success: false, error: "Connect account not found" };
     }
 
     // Get customer
-    const { data: customer } = await adminClient
+    const customerResult3: { data: { stripe_customer_id: string } | null; error: any } = await adminClient
       .from("stripe_customers")
       .select("stripe_customer_id")
       .eq("tenant_id", tenantId)
       .single();
 
+    const customer = customerResult3.data;
     if (!customer) {
       return { success: false, error: "Customer not found" };
     }
@@ -338,12 +345,13 @@ export async function createPayout(
     const adminClient = createAdminClient();
 
     // Get connect account
-    const { data: connectAccount } = await adminClient
+    const accountResult6: { data: { stripe_account_id: string } | null; error: any } = await adminClient
       .from("stripe_connect_accounts")
       .select("stripe_account_id")
       .eq("tenant_id", tenantId)
       .single();
 
+    const connectAccount = accountResult6.data;
     if (!connectAccount) {
       return { success: false, error: "Connect account not found" };
     }
@@ -384,12 +392,13 @@ export async function getConnectAccountBalance(tenantId: string): Promise<{
     const adminClient = createAdminClient();
 
     // Get connect account
-    const { data: connectAccount } = await adminClient
+    const accountResult7: { data: { stripe_account_id: string } | null; error: any } = await adminClient
       .from("stripe_connect_accounts")
       .select("stripe_account_id")
       .eq("tenant_id", tenantId)
       .single();
 
+    const connectAccount = accountResult7.data;
     if (!connectAccount) {
       return { success: false, error: "Connect account not found" };
     }
