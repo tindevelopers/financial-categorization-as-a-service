@@ -157,7 +157,6 @@ const navItems: NavItem[] = [
     new: true,
     subItems: [
       { name: "Dashboard", path: "/saas/dashboard" },
-      { name: "User Profile", path: "/profile" },
       {
         name: "Usage & Metering",
         subItems: [
@@ -261,8 +260,12 @@ const navItems: NavItem[] = [
   },
   {
     icon: <UserCircleIcon />,
-    name: "Profile",
-    path: "/profile",
+    name: "User Profile",
+    subItems: [
+      { name: "My Profile", path: "/saas/userprofile" },
+      { name: "Account Settings", path: "/profile" },
+      { name: "Change Password", path: "/change-password" },
+    ],
   },
   {
     name: "Task",
