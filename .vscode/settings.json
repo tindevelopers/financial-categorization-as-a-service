@@ -1,0 +1,33 @@
+{
+  // Git Status Bar Configuration
+  "git.enabled": true,
+  "git.showStatusBarSync": true,
+  "git.showInlineOpenFileAction": true,
+  
+  // Status Bar Configuration
+  "workbench.statusBar.visible": true,
+  
+  // Show Git Branch in Status Bar
+  "git.branchWhitespaceChar": " ",
+  
+  // Problems (Errors/Warnings) in Status Bar
+  "problems.showCurrentInStatus": true,
+  
+  // Status Bar Items to Show
+  "workbench.statusBar.feedback.visible": false,
+  
+  // Editor Configuration
+  "editor.formatOnSave": false,
+  "editor.codeActionsOnSave": {
+    "source.fixAll.eslint": "explicit"
+  },
+  
+  // File Explorer
+  "explorer.fileNesting.enabled": true,
+  "explorer.fileNesting.patterns": {
+    "*.ts": "${capture}.js",
+    "*.js": "${capture}.js.map, ${capture}.min.js, ${capture}.d.ts",
+    "tsconfig.json": "tsconfig.*.json",
+    "package.json": "package-lock.json, yarn.lock, pnpm-lock.yaml"
+  }
+}
