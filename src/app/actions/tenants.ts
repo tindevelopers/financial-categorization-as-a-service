@@ -8,6 +8,7 @@ import { requirePermission } from "@/core/permissions/middleware";
 
 type Tenant = Database["public"]["Tables"]["tenants"]["Row"] & {
   userCount?: number;
+  workspaceCount?: number;
 };
 
 /**
@@ -56,11 +57,13 @@ export async function getAllTenants(): Promise<Tenant[]> {
         throw result.error;
       }
       
-      // Get user counts per tenant
+      // Get user counts and workspace counts per tenant
       const tenantIds = (data || []).map(t => t.id);
       let userCounts: Record<string, number> = {};
+      let workspaceCounts: Record<string, number> = {};
       
       if (tenantIds.length > 0) {
+        // Get user counts
         const usersResult: { data: { tenant_id: string }[] | null; error: any } = await adminClient
           .from("users")
           .select("tenant_id")
@@ -73,11 +76,26 @@ export async function getAllTenants(): Promise<Tenant[]> {
           }
           return acc;
         }, {});
+
+        // Get workspace counts
+        const workspacesResult: { data: { tenant_id: string }[] | null; error: any } = await adminClient
+          .from("workspaces")
+          .select("tenant_id")
+          .in("tenant_id", tenantIds);
+        
+        const workspaces = workspacesResult.data;
+        workspaceCounts = (workspaces || []).reduce((acc: Record<string, number>, workspace) => {
+          if (workspace.tenant_id) {
+            acc[workspace.tenant_id] = (acc[workspace.tenant_id] || 0) + 1;
+          }
+          return acc;
+        }, {});
       }
       
       const tenantsWithCounts = (data || []).map(tenant => ({
         ...tenant,
         userCount: userCounts[tenant.id] || 0,
+        workspaceCount: workspaceCounts[tenant.id] || 0,
       }));
       
       console.log(`[getAllTenants] Fetched ${tenantsWithCounts.length} tenants (Platform Admin view)`);
@@ -101,8 +119,9 @@ export async function getAllTenants(): Promise<Tenant[]> {
         throw result.error;
       }
       
-      // Get user count for this tenant
+      // Get user count and workspace count for this tenant
       let userCount = 0;
+      let workspaceCount = 0;
       if (data && data.length > 0) {
         const tenantId = data[0].id;
         const usersResult: { data: { id: string }[] | null; error: any } = await supabase
@@ -111,11 +130,19 @@ export async function getAllTenants(): Promise<Tenant[]> {
           .eq("tenant_id", tenantId);
         
         userCount = usersResult.data?.length || 0;
+
+        const workspacesResult: { data: { id: string }[] | null; error: any } = await supabase
+          .from("workspaces")
+          .select("id")
+          .eq("tenant_id", tenantId);
+        
+        workspaceCount = workspacesResult.data?.length || 0;
       }
       
       const tenantsWithCounts = (data || []).map(tenant => ({
         ...tenant,
         userCount,
+        workspaceCount,
       }));
       
       console.log(`[getAllTenants] Fetched ${tenantsWithCounts.length} tenant(s) (tenant-scoped)`);

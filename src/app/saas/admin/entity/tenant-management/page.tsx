@@ -13,6 +13,7 @@ import {
   XMarkIcon,
 } from "@heroicons/react/24/outline";
 import Image from "next/image";
+import Link from "next/link";
 import React, { useEffect, useState } from "react";
 import { getAllTenants, createTenant, type CreateTenantData } from "@/app/actions/tenants";
 import { PermissionGate } from "@/core/permissions";
@@ -47,7 +48,7 @@ const StatusBadge = ({ status }: { status: string }) => {
 const formatDate = (dateString: string | null) => {
   if (!dateString) return "N/A";
   const date = new Date(dateString);
-  return date.toLocaleDateString("en-US", { month: "short", year: "numeric" });
+  return date.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 };
 
 export default function TenantManagementPage() {
@@ -322,10 +323,19 @@ export default function TenantManagementPage() {
                       <span className="inline-flex items-center rounded-full bg-indigo-50 px-3 py-1 text-xs font-medium text-indigo-700 dark:bg-indigo-500/15 dark:text-indigo-300">
                         {tenant.plan}
                       </span>
-                      <Button variant="outline" size="sm">
-                        <Cog6ToothIcon className="h-4 w-4" />
-                        Manage
-                      </Button>
+                      {tenant.status === "active" ? (
+                        <Link href={`/saas/admin/entity/tenant-management/${tenant.id}`}>
+                          <Button variant="outline" size="sm">
+                            <Cog6ToothIcon className="h-4 w-4" />
+                            Manage
+                          </Button>
+                        </Link>
+                      ) : (
+                        <Button variant="outline" size="sm" disabled className="opacity-50 cursor-not-allowed">
+                          <Cog6ToothIcon className="h-4 w-4" />
+                          Manage
+                        </Button>
+                      )}
                     </div>
                   </div>
                   <div className="mt-4 flex items-center justify-between pt-4 border-t border-gray-100 dark:border-gray-800">
@@ -333,13 +343,33 @@ export default function TenantManagementPage() {
                       Created {formatDate(tenant.created_at)}
                     </span>
                     <div className="flex gap-2">
-                      <button className="text-sm font-medium text-indigo-600 hover:text-indigo-700 dark:text-indigo-400">
-                        View users
-                      </button>
-                      <span className="text-gray-300 dark:text-gray-700">•</span>
-                      <button className="text-sm font-medium text-indigo-600 hover:text-indigo-700 dark:text-indigo-400">
-                        Settings
-                      </button>
+                      {tenant.status === "active" ? (
+                        <>
+                          <Link 
+                            href={`/saas/admin/entity/user-management?tenant=${tenant.id}`}
+                            className="text-sm font-medium text-indigo-600 hover:text-indigo-700 dark:text-indigo-400"
+                          >
+                            View users
+                          </Link>
+                          <span className="text-gray-300 dark:text-gray-700">•</span>
+                          <Link 
+                            href={`/saas/admin/entity/tenant-management/${tenant.id}/settings`}
+                            className="text-sm font-medium text-indigo-600 hover:text-indigo-700 dark:text-indigo-400"
+                          >
+                            Settings
+                          </Link>
+                        </>
+                      ) : (
+                        <>
+                          <span className="text-sm font-medium text-gray-400 dark:text-gray-600 cursor-not-allowed opacity-50">
+                            View users
+                          </span>
+                          <span className="text-gray-300 dark:text-gray-700">•</span>
+                          <span className="text-sm font-medium text-gray-400 dark:text-gray-600 cursor-not-allowed opacity-50">
+                            Settings
+                          </span>
+                        </>
+                      )}
                     </div>
                   </div>
                 </div>

@@ -23,7 +23,9 @@ import { PermissionGate } from "@/core/permissions";
 import { Permission } from "@/core/permissions";
 import AssignTenantRoleModal from "@/components/admin/AssignTenantRoleModal";
 import { useModal } from "@/hooks/useModal";
-import { Cog6ToothIcon } from "@heroicons/react/24/outline";
+import { Cog6ToothIcon, PencilIcon, TrashIcon } from "@heroicons/react/24/outline";
+import UserModal from "@/components/admin/UserModal";
+import { deleteUser } from "@/app/actions/users";
 
 type User = Database["public"]["Tables"]["users"]["Row"] & {
   roles?: { name: string } | null;
@@ -80,7 +82,10 @@ export default function UserManagementPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
+  const [selectedUserForEdit, setSelectedUserForEdit] = useState<User | null>(null);
   const assignRoleModal = useModal();
+  const userModal = useModal();
+  const [deletingUserId, setDeletingUserId] = useState<string | null>(null);
 
   useEffect(() => {
     loadUsers();
@@ -209,18 +214,17 @@ export default function UserManagementPage() {
                 className="h-10 rounded-full border border-gray-200 bg-white/70 pl-10 pr-4 text-sm dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
               />
             </div>
-                <PermissionGate permission="users.read" fallback={null}>
-                  <Button variant="outline" size="sm">
-                    <ArrowDownTrayIcon className="h-4 w-4" />
-                    Export CSV
-                  </Button>
-                </PermissionGate>
-                <PermissionGate permission="users.write" fallback={null}>
-                  <Button size="sm">
-                    <UserPlusIcon className="h-4 w-4" />
-                    Add User
-                  </Button>
-                </PermissionGate>
+                <Button variant="outline" size="sm">
+                  <ArrowDownTrayIcon className="h-4 w-4" />
+                  Export CSV
+                </Button>
+                <Button size="sm" onClick={() => {
+                  setSelectedUserForEdit(null);
+                  userModal.openModal();
+                }}>
+                  <UserPlusIcon className="h-4 w-4" />
+                  Add User
+                </Button>
           </div>
         </div>
 
@@ -250,7 +254,7 @@ export default function UserManagementPage() {
             <Table className="divide-y divide-gray-100 dark:divide-gray-800">
               <TableHeader className="bg-gray-50/80 dark:bg-gray-800/60">
                 <TableRow>
-                  {["User", "Role", "Plan", "Status", "Last active"].map(
+                  {["User", "Role", "Plan", "Status", "Last active", "Actions"].map(
                     (label) => (
                       <TableCell
                         key={label}
@@ -343,6 +347,44 @@ export default function UserManagementPage() {
                     <TableCell className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400">
                       {formatLastActive(user.last_active_at)}
                     </TableCell>
+                    <TableCell className="px-4 py-3">
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => {
+                            setSelectedUserForEdit(user);
+                            userModal.openModal();
+                          }}
+                          className="text-indigo-600 hover:text-indigo-700 dark:text-indigo-400 dark:hover:text-indigo-300"
+                          title="Edit user"
+                        >
+                          <PencilIcon className="h-4 w-4" />
+                        </button>
+                        <button
+                          onClick={async () => {
+                            if (confirm(`Are you sure you want to delete ${user.full_name}? This action cannot be undone.`)) {
+                              setDeletingUserId(user.id);
+                              try {
+                                const result = await deleteUser(user.id);
+                                if (result.success) {
+                                  await loadUsers();
+                                } else {
+                                  alert(result.error || "Failed to delete user");
+                                }
+                              } catch (err: any) {
+                                alert(err.message || "Failed to delete user");
+                              } finally {
+                                setDeletingUserId(null);
+                              }
+                            }
+                          }}
+                          disabled={deletingUserId === user.id}
+                          className="text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 disabled:opacity-50"
+                          title="Delete user"
+                        >
+                          <TrashIcon className="h-4 w-4" />
+                        </button>
+                      </div>
+                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -350,6 +392,20 @@ export default function UserManagementPage() {
           </div>
         )}
       </section>
+
+      {/* User Modal */}
+      <UserModal
+        isOpen={userModal.isOpen}
+        onClose={() => {
+          userModal.closeModal();
+          setSelectedUserForEdit(null);
+        }}
+        user={selectedUserForEdit}
+        onSuccess={async () => {
+          // Reload users after successful creation/update
+          await loadUsers();
+        }}
+      />
 
       {/* Assign Tenant Role Modal */}
       {selectedUser && (
