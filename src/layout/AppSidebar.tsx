@@ -122,6 +122,15 @@ const navItems: NavItem[] = [
       { name: "Tenant Management", path: "/saas/admin/entity/tenant-management" },
       { name: "Organization Management", path: "/saas/admin/entity/organization-management" },
       { name: "Role Management", path: "/saas/admin/entity/role-management" },
+      {
+        name: "Email & Notifications",
+        subItems: [
+          { name: "Templates", path: "/saas/email-notifications/templates" },
+          { name: "Settings", path: "/saas/email-notifications/settings" },
+          { name: "Logs", path: "/saas/email-notifications/logs" },
+          { name: "Campaigns", path: "/saas/email-notifications/campaigns" },
+        ],
+      },
     ],
   },
   {
@@ -187,15 +196,6 @@ const navItems: NavItem[] = [
           { name: "IP Restrictions", path: "/saas/security/ip-restrictions" },
           { name: "Audit Logs", path: "/saas/security/audit-logs" },
           { name: "Compliance", path: "/saas/security/compliance" },
-        ],
-      },
-      {
-        name: "Email & Notifications",
-        subItems: [
-          { name: "Templates", path: "/saas/email-notifications/templates" },
-          { name: "Settings", path: "/saas/email-notifications/settings" },
-          { name: "Logs", path: "/saas/email-notifications/logs" },
-          { name: "Campaigns", path: "/saas/email-notifications/campaigns" },
         ],
       },
       {
