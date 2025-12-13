@@ -70,7 +70,7 @@ export async function middleware(request: NextRequest) {
 
   // Try subdomain routing first
   const hostname = request.headers.get("host") || "";
-  const subdomainInfo = await getSubdomainFromRequest();
+  const subdomainInfo = await getSubdomainFromRequest(request.headers);
   
   let tenantResult;
   
