@@ -4,7 +4,7 @@
 -- Stripe Customers Table (drop and recreate to fix schema)
 DROP TABLE IF EXISTS stripe_customers CASCADE;
 CREATE TABLE stripe_customers (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
   user_id UUID REFERENCES users(id) ON DELETE SET NULL,
   stripe_customer_id TEXT NOT NULL UNIQUE,
@@ -21,7 +21,7 @@ CREATE TABLE stripe_customers (
 -- Stripe Subscriptions Table (drop and recreate to fix schema)
 DROP TABLE IF EXISTS stripe_subscriptions CASCADE;
 CREATE TABLE stripe_subscriptions (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
   stripe_customer_id TEXT NOT NULL REFERENCES stripe_customers(stripe_customer_id) ON DELETE CASCADE,
   stripe_subscription_id TEXT NOT NULL UNIQUE,
@@ -46,7 +46,7 @@ CREATE TABLE stripe_subscriptions (
 -- Stripe Payment Methods Table (drop and recreate to fix schema)
 DROP TABLE IF EXISTS stripe_payment_methods CASCADE;
 CREATE TABLE stripe_payment_methods (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
   stripe_customer_id TEXT NOT NULL REFERENCES stripe_customers(stripe_customer_id) ON DELETE CASCADE,
   stripe_payment_method_id TEXT NOT NULL UNIQUE,
@@ -65,7 +65,7 @@ CREATE TABLE stripe_payment_methods (
 -- Stripe Invoices Table (drop and recreate to fix schema)
 DROP TABLE IF EXISTS stripe_invoices CASCADE;
 CREATE TABLE stripe_invoices (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
   stripe_customer_id TEXT NOT NULL REFERENCES stripe_customers(stripe_customer_id) ON DELETE CASCADE,
   stripe_subscription_id TEXT REFERENCES stripe_subscriptions(stripe_subscription_id) ON DELETE SET NULL,
@@ -91,7 +91,7 @@ CREATE TABLE stripe_invoices (
 -- Stripe Payment Intents Table (drop and recreate to fix schema)
 DROP TABLE IF EXISTS stripe_payment_intents CASCADE;
 CREATE TABLE stripe_payment_intents (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
   stripe_customer_id TEXT REFERENCES stripe_customers(stripe_customer_id) ON DELETE SET NULL,
   stripe_payment_intent_id TEXT NOT NULL UNIQUE,
@@ -107,7 +107,7 @@ CREATE TABLE stripe_payment_intents (
 -- Stripe Webhook Events Table (drop and recreate to fix schema)
 DROP TABLE IF EXISTS stripe_webhook_events CASCADE;
 CREATE TABLE stripe_webhook_events (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   stripe_event_id TEXT NOT NULL UNIQUE,
   event_type TEXT NOT NULL,
   livemode BOOLEAN DEFAULT FALSE,
@@ -122,7 +122,7 @@ CREATE TABLE stripe_webhook_events (
 DROP TABLE IF EXISTS stripe_products CASCADE;
 DROP TABLE IF EXISTS stripe_prices CASCADE;
 CREATE TABLE stripe_products (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   stripe_product_id TEXT NOT NULL UNIQUE,
   name TEXT NOT NULL,
   description TEXT,
@@ -133,7 +133,7 @@ CREATE TABLE stripe_products (
 );
 
 CREATE TABLE IF NOT EXISTS stripe_prices (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   stripe_price_id TEXT NOT NULL UNIQUE,
   stripe_product_id TEXT NOT NULL REFERENCES stripe_products(stripe_product_id) ON DELETE CASCADE,
   active BOOLEAN DEFAULT TRUE,

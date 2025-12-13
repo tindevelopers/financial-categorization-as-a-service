@@ -51,3 +51,4 @@ build/
 # Supabase local development
 supabase/.branches
 supabase/.temp
+.env*.local
