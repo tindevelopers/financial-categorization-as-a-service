@@ -1,7 +1,46 @@
 {
-  "name": "tinadmin-master-admin-panel",
+  "name": "@tindevelopers/tinadmin-saas-base",
   "version": "1.0.0",
-  "private": true,
+  "private": false,
+  "description": "Enterprise-ready SaaS admin dashboard with CRM, multi-tenancy, Stripe billing, and role-based access control",
+  "keywords": [
+    "saas",
+    "admin-dashboard",
+    "nextjs",
+    "tailwind",
+    "supabase",
+    "crm",
+    "multi-tenant",
+    "stripe",
+    "rbac"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tindevelopers/tinadmin-saas-base.git"
+  },
+  "bugs": {
+    "url": "https://github.com/tindevelopers/tinadmin-saas-base/issues"
+  },
+  "homepage": "https://github.com/tindevelopers/tinadmin-saas-base#readme",
+  "author": "Tin Developers",
+  "license": "MIT",
+  "main": "./src/app/page.tsx",
+  "files": [
+    "src",
+    "public",
+    "supabase/migrations",
+    "tailwind.config.ts",
+    "tsconfig.json",
+    "next.config.ts",
+    "postcss.config.mjs",
+    "README.md",
+    "README_LOCAL_SETUP.md",
+    "README_STRIPE.md"
+  ],
+  "engines": {
+    "node": ">=20.0.0",
+    "npm": ">=10.0.0"
+  },
   "scripts": {
     "dev": "next dev",
     "dev:local": "supabase start && npm run dev",

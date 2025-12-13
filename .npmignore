@@ -1,0 +1,61 @@
+# Dependencies
+node_modules/
+package-lock.json
+
+# Build outputs
+.next/
+out/
+dist/
+build/
+
+# Environment files
+.env
+.env.local
+.env*.local
+
+# Vercel
+.vercel/
+
+# Supabase local
+.supabase/
+
+# Git
+.git/
+.gitignore
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Testing
+coverage/
+.nyc_output/
+
+# Misc
+.DS_Store
+*.pem
+.cache/
+
+# Terminal files
+terminals/
+
+# Cursor/IDE specific
+.cursor/
+
+# Temporary files
+/tmp/
+*.tmp
+
+# Scripts
+/scripts/
+create-platform-admin-standalone.ts
