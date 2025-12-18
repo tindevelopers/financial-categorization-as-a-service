@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
-import { TenantProvider, OrganizationProvider } from "@tinadmin/core/multi-tenancy";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -10,6 +9,12 @@ export const metadata: Metadata = {
   description: "Consumer-facing portal for SaaS platform",
 };
 
+/**
+ * Root Layout for Consumer Portal
+ * 
+ * Note: TenantProvider and OrganizationProvider will be added
+ * when the city portal features are developed.
+ */
 export default function RootLayout({
   children,
 }: {
@@ -18,11 +23,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className={inter.className}>
-        <TenantProvider>
-          <OrganizationProvider>
-            {children}
-          </OrganizationProvider>
-        </TenantProvider>
+        {children}
       </body>
     </html>
   );

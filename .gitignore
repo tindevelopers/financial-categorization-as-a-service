@@ -52,3 +52,6 @@ build/
 supabase/.branches
 supabase/.temp
 .env*.local
+
+# Turborepo
+.turbo/

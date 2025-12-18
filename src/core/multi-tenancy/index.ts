@@ -39,14 +39,15 @@ export {
 // ============================================================================
 // TENANT RESOLUTION (Server-side - Import directly from files when needed)
 // ============================================================================
-// These are server-side functions - import directly from resolver.ts when needed
-// Dual-mode context resolution (can be used in middleware)
-export {
-  resolveContext,
-  getSystemMode,
-  getPlatformTenantId,
-  resolveOrganizationFromRequest,
-} from './resolver';
+// ⚠️ SERVER-ONLY: These are server-side functions - import directly from './resolver' in server-side code:
+//   import { resolveContext, getSystemMode, getPlatformTenantId, resolveOrganizationFromRequest } from '@/core/multi-tenancy/resolver';
+// 
+// These functions use createClient from '@/core/database/server' and should only be used in:
+// - Server Components
+// - Server Actions
+// - API Routes
+// - Middleware
+// Note: Not exported from index to prevent client bundling
 
 // ============================================================================
 // TENANT VALIDATION (Server-side - Import directly from files when needed)
