@@ -163,13 +163,38 @@ stripe trigger invoice.payment_succeeded
 
 ## 🚢 Production Checklist
 
-- [ ] Switch to live Stripe keys
-- [ ] Set up production webhook endpoint
-- [ ] Create products in live mode
-- [ ] Sync products to production database
-- [ ] Test with real card
-- [ ] Monitor webhook logs
-- [ ] Set up email notifications for failed payments
+### Environment Setup
+- [ ] Create live Stripe account at [dashboard.stripe.com](https://dashboard.stripe.com)
+- [ ] Add live keys to Vercel environment variables:
+  - `STRIPE_SECRET_KEY` → `sk_live_...`
+  - `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` → `pk_live_...`
+
+### Webhook Configuration
+- [ ] Add production webhook in Stripe Dashboard → Developers → Webhooks
+  - URL: `https://your-domain.com/api/webhooks/stripe`
+  - Events to enable:
+    - `customer.subscription.created`
+    - `customer.subscription.updated`
+    - `customer.subscription.deleted`
+    - `invoice.payment_succeeded`
+    - `invoice.payment_failed`
+    - `checkout.session.completed`
+- [ ] Copy webhook signing secret to Vercel as `STRIPE_WEBHOOK_SECRET`
+
+### Product Setup
+- [ ] Create products/prices in Stripe Dashboard (live mode)
+- [ ] Update product IDs in your application if hardcoded
+- [ ] Run product sync: `npx tsx scripts/sync-stripe-products.ts`
+
+### Testing
+- [ ] Test with a real card (small amount, refund after)
+- [ ] Verify webhook events are received in production logs
+- [ ] Confirm subscription appears in database
+
+### Monitoring
+- [ ] Set up Stripe email notifications for failed payments
+- [ ] Enable Stripe Radar for fraud protection
+- [ ] Configure payout schedule
 
 ## 💡 Usage Examples
 

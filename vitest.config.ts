@@ -5,8 +5,9 @@ export default defineConfig({
   test: {
     globals: true,
     environment: 'node',
+    include: ['packages/**/__tests__/**/*.test.ts'],
     alias: {
-      '@': path.resolve(__dirname, './src'),
+      '@/core': path.resolve(__dirname, './packages/@tinadmin/core/src'),
     },
   },
 });
