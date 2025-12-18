@@ -50,9 +50,11 @@ const nextConfig: NextConfig = {
     
     // Optimize bundle size with aliases for better tree-shaking
     const path = require('path');
+    const corePath = path.resolve(__dirname, '../../packages/@tinadmin/core/src');
     config.resolve.alias = {
       ...config.resolve.alias,
-      '@tinadmin/core': path.resolve(__dirname, '../../packages/@tinadmin/core/src'),
+      '@/core': corePath,
+      '@tinadmin/core': corePath,
       '@tinadmin/ui-admin': path.resolve(__dirname, '../../packages/@tinadmin/ui-admin/src'),
       '@tinadmin/config': path.resolve(__dirname, '../../packages/@tinadmin/config/src'),
     };
