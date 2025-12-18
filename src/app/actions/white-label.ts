@@ -68,6 +68,19 @@ export async function getBrandingSettings(): Promise<BrandingSettings> {
       return {};
     }
 
+    // Check if tenants table exists by attempting a simple query first
+    try {
+      const tableCheck = await supabase.from("tenants").select("id").limit(1);
+      if (tableCheck.error && (tableCheck.error.code === "42P01" || tableCheck.error.message?.includes("does not exist"))) {
+        console.warn("Tenants table does not exist yet - returning empty branding settings");
+        return {};
+      }
+    } catch (tableError) {
+      // Table might not exist, return empty settings
+      console.warn("Could not verify tenants table exists:", tableError);
+      return {};
+    }
+
     const result: { data: { branding: Record<string, unknown> | null } | null; error: any } = await supabase
       .from("tenants")
       .select("branding")
@@ -76,6 +89,11 @@ export async function getBrandingSettings(): Promise<BrandingSettings> {
 
     const tenant = result.data;
     if (result.error) {
+      // Handle missing column error (column doesn't exist in database yet)
+      if (result.error.code === "42703" || result.error.message?.includes("column") || result.error.message?.includes("does not exist")) {
+        console.warn("Branding column not found in tenants table - returning empty settings");
+        return {};
+      }
       console.error("Error fetching branding settings:", result.error);
       return {};
     }
@@ -149,6 +167,18 @@ export async function getThemeSettings(): Promise<ThemeSettings> {
       return {};
     }
 
+    // Check if tenants table exists
+    try {
+      const tableCheck = await supabase.from("tenants").select("id").limit(1);
+      if (tableCheck.error && (tableCheck.error.code === "42P01" || tableCheck.error.message?.includes("does not exist"))) {
+        console.warn("Tenants table does not exist yet - returning empty theme settings");
+        return {};
+      }
+    } catch (tableError) {
+      console.warn("Could not verify tenants table exists:", tableError);
+      return {};
+    }
+
     const result: { data: { theme_settings: Record<string, unknown> | null } | null; error: any } = await supabase
       .from("tenants")
       .select("theme_settings")
@@ -157,6 +187,11 @@ export async function getThemeSettings(): Promise<ThemeSettings> {
 
     const tenant = result.data;
     if (result.error) {
+      // Handle missing column error (column doesn't exist in database yet)
+      if (result.error.code === "42703" || result.error.message?.includes("column") || result.error.message?.includes("does not exist")) {
+        console.warn("Theme settings column not found in tenants table - returning empty settings");
+        return {};
+      }
       console.error("Error fetching theme settings:", result.error);
       return {};
     }
@@ -231,6 +266,11 @@ export async function getEmailSettings(): Promise<EmailSettings> {
 
     const tenant = result.data;
     if (result.error) {
+      // Handle missing column error (column doesn't exist in database yet)
+      if (result.error.code === "42703" || result.error.message?.includes("column") || result.error.message?.includes("does not exist")) {
+        console.warn("Email settings column not found in tenants table - returning empty settings");
+        return {};
+      }
       return {};
     }
 
@@ -295,6 +335,18 @@ export async function getCustomCSS(): Promise<string> {
       return "";
     }
 
+    // Check if tenants table exists
+    try {
+      const tableCheck = await supabase.from("tenants").select("id").limit(1);
+      if (tableCheck.error && (tableCheck.error.code === "42P01" || tableCheck.error.message?.includes("does not exist"))) {
+        console.warn("Tenants table does not exist yet - returning empty CSS");
+        return "";
+      }
+    } catch (tableError) {
+      console.warn("Could not verify tenants table exists:", tableError);
+      return "";
+    }
+
     const result: { data: { custom_css: string | null } | null; error: any } = await supabase
       .from("tenants")
       .select("custom_css")
@@ -303,6 +355,11 @@ export async function getCustomCSS(): Promise<string> {
 
     const tenant = result.data;
     if (result.error) {
+      // Handle missing column error (column doesn't exist in database yet)
+      if (result.error.code === "42703" || result.error.message?.includes("column") || result.error.message?.includes("does not exist")) {
+        console.warn("Custom CSS column not found in tenants table - returning empty string");
+        return "";
+      }
       return "";
     }
 
@@ -375,6 +432,11 @@ export async function getCustomDomains(): Promise<CustomDomain[]> {
 
     const tenant = result.data;
     if (result.error) {
+      // Handle missing column error (column doesn't exist in database yet)
+      if (result.error.code === "42703" || result.error.message?.includes("column") || result.error.message?.includes("does not exist")) {
+        console.warn("Custom domains column not found in tenants table - returning empty array");
+        return [];
+      }
       return [];
     }
 

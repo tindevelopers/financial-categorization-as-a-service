@@ -3,6 +3,17 @@ import { getTenantForCrm } from "@/app/actions/crm/tenant-helper";
 import { createAdminClient } from "@/core/database/admin-client";
 import { createClient } from "@/core/database/server";
 
+export async function OPTIONS() {
+  return new NextResponse(null, {
+    status: 200,
+    headers: {
+      "Access-Control-Allow-Origin": "*",
+      "Access-Control-Allow-Methods": "GET, OPTIONS",
+      "Access-Control-Allow-Headers": "Content-Type",
+    },
+  });
+}
+
 export async function GET() {
   try {
     // Test 0: Check auth status

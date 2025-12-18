@@ -7,6 +7,17 @@ import Stripe from "stripe";
  * Stripe webhook handler
  * Handles events from Stripe and updates the database accordingly
  */
+export async function OPTIONS() {
+  return new NextResponse(null, {
+    status: 200,
+    headers: {
+      "Access-Control-Allow-Origin": "*",
+      "Access-Control-Allow-Methods": "POST, OPTIONS",
+      "Access-Control-Allow-Headers": "Content-Type, stripe-signature",
+    },
+  });
+}
+
 export async function POST(req: NextRequest) {
   // Check if Stripe is configured
   if (!isStripeConfigured()) {

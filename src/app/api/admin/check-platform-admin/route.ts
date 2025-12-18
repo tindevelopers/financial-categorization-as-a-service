@@ -4,6 +4,17 @@ import { createAdminClient } from "@/core/database/admin-client";
 import { isPlatformAdmin } from "@/app/actions/organization-admins";
 import { getUserPermissions } from "@/core/permissions/permissions";
 
+export async function OPTIONS() {
+  return new NextResponse(null, {
+    status: 200,
+    headers: {
+      "Access-Control-Allow-Origin": "*",
+      "Access-Control-Allow-Methods": "GET, OPTIONS",
+      "Access-Control-Allow-Headers": "Content-Type",
+    },
+  });
+}
+
 export async function GET() {
   try {
     const supabase = await createClient();
