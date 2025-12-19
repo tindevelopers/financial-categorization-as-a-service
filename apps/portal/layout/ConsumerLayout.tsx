@@ -34,6 +34,12 @@ export default function ConsumerLayout({
               >
                 Upload
               </a>
+              <a
+                href="/signin"
+                className="text-white bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded-md text-sm font-medium"
+              >
+                Sign In
+              </a>
             </nav>
           </div>
         </div>

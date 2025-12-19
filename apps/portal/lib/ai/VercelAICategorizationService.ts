@@ -1,5 +1,5 @@
 import { generateObject } from "ai";
-import { openai } from "@ai-sdk/openai";
+import { gateway } from "@ai-sdk/gateway";
 import type { AICategorizationService, Transaction, CategoryResult } from "./AICategorizationService";
 
 export class VercelAICategorizationService implements AICategorizationService {
@@ -7,8 +7,9 @@ export class VercelAICategorizationService implements AICategorizationService {
   private userMappings?: Array<{ pattern: string; category: string; subcategory?: string }>;
 
   constructor(userMappings?: Array<{ pattern: string; category: string; subcategory?: string }>) {
-    // Use GPT-4 for better categorization accuracy
-    this.model = openai("gpt-4o-mini"); // Using mini for cost efficiency, can upgrade to gpt-4o if needed
+    // Use Vercel AI Gateway for better reliability and monitoring
+    // The gateway automatically routes to OpenAI models
+    this.model = gateway("openai/gpt-4o-mini"); // Using mini for cost efficiency, can upgrade to gpt-4o if needed
     this.userMappings = userMappings;
   }
 

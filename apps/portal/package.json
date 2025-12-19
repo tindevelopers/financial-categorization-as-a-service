@@ -11,6 +11,7 @@
     "type-check": "tsc --noEmit"
   },
   "dependencies": {
+    "@ai-sdk/gateway": "^2.0.22",
     "@ai-sdk/openai": "^2.0.88",
     "@heroicons/react": "^2.2.0",
     "@supabase/ssr": "^0.8.0",
