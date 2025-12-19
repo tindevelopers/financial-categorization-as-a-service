@@ -54,7 +54,7 @@ export async function POST(request: NextRequest) {
     const fileBuffer = Buffer.from(await file.arrayBuffer());
     const fileName = `${user.id}/${Date.now()}-${file.name}`;
     
-    const { data: uploadData, error: uploadError } = await supabase.storage
+    const { error: uploadError } = await supabase.storage
       .from("categorization-uploads")
       .upload(fileName, fileBuffer, {
         contentType: file.type,

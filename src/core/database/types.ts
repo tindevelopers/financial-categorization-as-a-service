@@ -602,6 +602,59 @@ export interface Database {
           updated_at?: string;
         };
       };
+      categorization_jobs: {
+        Row: {
+          id: string;
+          user_id: string;
+          tenant_id: string | null;
+          job_type: "spreadsheet" | "api" | "batch";
+          status: "uploaded" | "processing" | "completed" | "failed";
+          processing_mode: "sync" | "async";
+          original_filename: string | null;
+          file_url: string | null;
+          result_url: string | null;
+          error_message: string | null;
+          row_count: number | null;
+          processed_count: number | null;
+          metadata: Record<string, any> | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          tenant_id?: string | null;
+          job_type: "spreadsheet" | "api" | "batch";
+          status?: "uploaded" | "processing" | "completed" | "failed";
+          processing_mode?: "sync" | "async";
+          original_filename?: string | null;
+          file_url?: string | null;
+          result_url?: string | null;
+          error_message?: string | null;
+          row_count?: number | null;
+          processed_count?: number | null;
+          metadata?: Record<string, any> | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          user_id?: string;
+          tenant_id?: string | null;
+          job_type?: "spreadsheet" | "api" | "batch";
+          status?: "uploaded" | "processing" | "completed" | "failed";
+          processing_mode?: "sync" | "async";
+          original_filename?: string | null;
+          file_url?: string | null;
+          result_url?: string | null;
+          error_message?: string | null;
+          row_count?: number | null;
+          processed_count?: number | null;
+          metadata?: Record<string, any> | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+      };
     };
     audit_logs: {
       Row: {
