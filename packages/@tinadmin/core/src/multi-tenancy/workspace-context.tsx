@@ -55,7 +55,8 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
 
       // If workspace ID is stored, use it
       if (storedWorkspaceId) {
-        const { data: workspaceData, error: workspaceError } = await supabase
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const { data: workspaceData, error: workspaceError } = await (supabase as any)
           .from("workspaces")
           .select("*")
           .eq("id", storedWorkspaceId)
@@ -63,55 +64,57 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
           .single();
 
         if (!workspaceError && workspaceData) {
-          setWorkspace(workspaceData);
+          setWorkspace(workspaceData as Workspace);
           setIsLoading(false);
           return;
         }
       }
 
-      // Otherwise, get user's workspaces and use the first one
-      const workspaceUsersResult: { data: Array<{ workspace_id: string; workspaces: Workspace }> | null; error: any } = await supabase
-        .from("workspace_users")
-        .select(`
-          workspace_id,
-          workspaces!workspace_users_workspace_id_fkey (*)
-        `)
-        .eq("user_id", user.id)
-        .limit(1);
+      // Try to get default workspace for tenant directly (simpler approach)
+      // This avoids the complex join that may fail if tables don't exist
+      try {
+        // First try to get workspace from workspace_users
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const workspaceUsersResult = await (supabase as any)
+          .from("workspace_users")
+          .select("workspace_id")
+          .eq("user_id", user.id)
+          .limit(1);
 
-      const workspaceUsers = workspaceUsersResult.data;
-      if (workspaceUsersResult.error) {
-        // Try to get default workspace for tenant
-        const defaultResult: { data: Workspace | null; error: any } = await supabase
-          .from("workspaces")
-          .select("*")
-          .eq("tenant_id", tenantId)
-          .eq("slug", "default")
-          .single();
+        if (!workspaceUsersResult.error && workspaceUsersResult.data?.length > 0) {
+          const workspaceId = workspaceUsersResult.data[0].workspace_id;
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const { data: workspaceData, error: workspaceError } = await (supabase as any)
+            .from("workspaces")
+            .select("*")
+            .eq("id", workspaceId)
+            .single();
 
-        const defaultWorkspace = defaultResult.data;
-        if (!defaultResult.error && defaultWorkspace) {
-          setWorkspace(defaultWorkspace);
-        } else {
-          setWorkspace(null);
+          if (!workspaceError && workspaceData) {
+            setWorkspace(workspaceData as Workspace);
+            setIsLoading(false);
+            return;
+          }
         }
-      } else if (workspaceUsers && workspaceUsers.length > 0) {
-        const workspaceData = workspaceUsers[0].workspaces as Workspace;
-        setWorkspace(workspaceData);
+      } catch (workspaceUsersError) {
+        // workspace_users table might not exist, continue to fallback
+        console.warn("Could not query workspace_users:", workspaceUsersError);
+      }
+
+      // Fallback: get default workspace for tenant
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data: defaultWorkspace, error: defaultError } = await (supabase as any)
+        .from("workspaces")
+        .select("*")
+        .eq("tenant_id", tenantId)
+        .eq("slug", "default")
+        .single();
+
+      if (!defaultError && defaultWorkspace) {
+        setWorkspace(defaultWorkspace as Workspace);
       } else {
-        // No workspace found, try default
-        const { data: defaultWorkspace, error: defaultError } = await supabase
-          .from("workspaces")
-          .select("*")
-          .eq("tenant_id", tenantId)
-          .eq("slug", "default")
-          .single();
-
-        if (!defaultError && defaultWorkspace) {
-          setWorkspace(defaultWorkspace);
-        } else {
-          setWorkspace(null);
-        }
+        // No workspace found, that's okay
+        setWorkspace(null);
       }
     } catch (err) {
       console.error("Error loading workspace:", err);
