@@ -39,11 +39,20 @@ export async function getSubdomainFromRequest(headersList?: Headers | Map<string
   // Split by dots
   const parts = hostname.split(".");
   
-  // For localhost or IP addresses, no subdomain
+  // For plain localhost or IP addresses, no subdomain
   if (hostname === "localhost" || hostname.match(/^\d+\.\d+\.\d+\.\d+$/)) {
     return {
       subdomain: null,
       domain: hostname,
+      tenantId: null,
+    };
+  }
+  
+  // Handle localhost subdomains (e.g., admin.localhost -> subdomain: admin, domain: localhost)
+  if (parts.length === 2 && parts[1] === "localhost") {
+    return {
+      subdomain: parts[0],
+      domain: "localhost",
       tenantId: null,
     };
   }
@@ -60,7 +69,7 @@ export async function getSubdomainFromRequest(headersList?: Headers | Map<string
     };
   }
   
-  // No subdomain detected
+  // No subdomain detected (e.g., domain.tld with only 2 parts)
   return {
     subdomain: null,
     domain: hostname,
@@ -129,4 +138,3 @@ export async function getTenantContextFromSubdomain(): Promise<{
     source: "none",
   };
 }
-

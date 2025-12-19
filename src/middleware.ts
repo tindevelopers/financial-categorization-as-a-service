@@ -73,6 +73,13 @@ export async function middleware(request: NextRequest) {
   const subdomainInfo = await getSubdomainFromRequest(request.headers);
   const pathname = request.nextUrl.pathname;
   
+  console.log("[middleware] Routing check:", {
+    hostname,
+    subdomain: subdomainInfo.subdomain,
+    pathname,
+    hasUser: !!user,
+  });
+  
   // Domain-based routing logic
   // If no subdomain (domain.com), route to consumer routes
   // If subdomain is "admin" (admin.domain.com), route to admin routes
@@ -80,6 +87,7 @@ export async function middleware(request: NextRequest) {
     // domain.com - Consumer routes
     // Block access to admin routes, redirect to admin.domain.com
     if (pathname.startsWith('/saas') || pathname.startsWith('/admin') || pathname.startsWith('/crm') || pathname.startsWith('/entity-management')) {
+      console.log("[middleware] Blocking admin route on consumer domain, redirecting to admin subdomain");
       const adminUrl = new URL(request.url);
       adminUrl.hostname = `admin.${subdomainInfo.domain || hostname.split(':')[0]}`;
       return NextResponse.redirect(adminUrl);
@@ -176,4 +184,3 @@ export const config = {
     "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
   ],
 };
-

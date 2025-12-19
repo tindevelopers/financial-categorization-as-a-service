@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import Link from "next/link";
-import { createBrowserClient } from "@/core/database/client";
+import { createClient } from "@/core/database/client";
 import { Bars3Icon, XMarkIcon } from "@heroicons/react/24/outline";
 
 /**
@@ -25,7 +25,7 @@ export default function ConsumerLayout({
 
   useEffect(() => {
     async function checkAuth() {
-      const supabase = createBrowserClient();
+      const supabase = createClient();
       const { data: { user } } = await supabase.auth.getUser();
       setIsAuthenticated(!!user);
 
@@ -47,7 +47,7 @@ export default function ConsumerLayout({
   }, []);
 
   async function handleSignOut() {
-    const supabase = createBrowserClient();
+    const supabase = createClient();
     await supabase.auth.signOut();
     router.push("/");
   }

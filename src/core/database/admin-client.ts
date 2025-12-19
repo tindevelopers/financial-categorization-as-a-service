@@ -23,7 +23,8 @@ export function createAdminClient() {
   
   // #region agent log
   try {
-    fs.appendFileSync('/Users/gene/Projects/financial-categorization-as-a-service/.cursor/debug.log', JSON.stringify({location:'admin-client.ts:24',message:'Environment check',data:{hasServiceRole:!!serviceRoleKey,hasUrl:!!process.env.NEXT_PUBLIC_SUPABASE_URL},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'C'})+'n');
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    fs.appendFileSync('/Users/gene/Projects/financial-categorization-as-a-service/.cursor/debug.log', JSON.stringify({location:'admin-client.ts:25',message:'Environment check',data:{hasServiceRole:!!serviceRoleKey,hasUrl:!!supabaseUrl,url:supabaseUrl,isRemote:supabaseUrl?.includes('firwcvlikjltikdrmejq.supabase.co')},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'E'})+'\n');
   } catch {}
   // #endregion
   
