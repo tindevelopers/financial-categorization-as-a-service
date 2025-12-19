@@ -223,6 +223,8 @@ export const mainNavItems: NavItem[] = [
         name: "Integrations",
         subItems: [
           { name: "All Integrations", path: "/saas/integrations/list" },
+          { name: "AI Services", path: "/saas/integrations/ai-services", new: true },
+          { name: "Cloud Storage", path: "/saas/integrations/cloud-storage", new: true },
           { name: "CRM", path: "/saas/integrations/crm" },
           { name: "Email Marketing", path: "/saas/integrations/email-marketing" },
           { name: "Telephony", path: "/saas/integrations/telephony" },

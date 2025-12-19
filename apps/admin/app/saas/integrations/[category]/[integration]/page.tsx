@@ -382,6 +382,72 @@ const integrationConfigs: Record<string, IntegrationConfig> = {
       { name: "apiSecret", label: "API Secret", type: "password", required: true },
     ],
   },
+  
+  // AI Services
+  "google-document-ai": {
+    name: "Google Document AI",
+    category: "AI Services",
+    description: "Extract structured data from documents using Google's Document AI for invoice OCR and processing",
+    status: "disconnected",
+    fields: [
+      { name: "projectId", label: "GCP Project ID", type: "text", required: true, placeholder: "your-gcp-project-id" },
+      { name: "location", label: "Processor Location", type: "text", required: true, placeholder: "us" },
+      { name: "processorId", label: "Invoice Processor ID", type: "text", required: true, placeholder: "abc123def456" },
+      { name: "serviceAccountKey", label: "Service Account Key (JSON)", type: "password", required: true },
+    ],
+    additionalSettings: [
+      { name: "enableOcr", label: "Enable OCR", type: "switch" as const },
+      { name: "confidenceThreshold", label: "Confidence Threshold", type: "text" as const },
+    ],
+  },
+  "openai": {
+    name: "OpenAI / Vercel AI Gateway",
+    category: "AI Services",
+    description: "AI-powered transaction categorization using GPT models via Vercel AI Gateway",
+    status: "disconnected",
+    fields: [
+      { name: "apiKey", label: "OpenAI API Key", type: "password", required: true, placeholder: "sk-..." },
+      { name: "model", label: "Model", type: "select", required: false, options: ["gpt-4o-mini", "gpt-4o", "gpt-4-turbo", "gpt-3.5-turbo"] },
+    ],
+    additionalSettings: [
+      { name: "enableCategorization", label: "Enable AI Categorization", type: "switch" as const },
+      { name: "maxTokens", label: "Max Tokens", type: "text" as const },
+    ],
+  },
+  "google-sheets": {
+    name: "Google Sheets",
+    category: "AI Services",
+    description: "Export categorized transactions directly to Google Sheets",
+    status: "disconnected",
+    fields: [
+      { name: "clientId", label: "OAuth Client ID", type: "text", required: true },
+      { name: "clientSecret", label: "OAuth Client Secret", type: "password", required: true },
+    ],
+  },
+  
+  // Cloud Storage
+  "dropbox": {
+    name: "Dropbox",
+    category: "Cloud Storage",
+    description: "Connect user Dropbox accounts for document storage",
+    status: "disconnected",
+    fields: [
+      { name: "appKey", label: "App Key", type: "text", required: true },
+      { name: "appSecret", label: "App Secret", type: "password", required: true },
+      { name: "redirectUri", label: "Redirect URI", type: "url", required: true, placeholder: "https://yourdomain.com/api/storage/dropbox/callback" },
+    ],
+  },
+  "google-drive": {
+    name: "Google Drive",
+    category: "Cloud Storage",
+    description: "Connect user Google Drive accounts for document storage",
+    status: "disconnected",
+    fields: [
+      { name: "clientId", label: "OAuth Client ID", type: "text", required: true },
+      { name: "clientSecret", label: "OAuth Client Secret", type: "password", required: true },
+      { name: "redirectUri", label: "Redirect URI", type: "url", required: true, placeholder: "https://yourdomain.com/api/storage/drive/callback" },
+    ],
+  },
 };
 
 export default function IntegrationDetailPage() {
