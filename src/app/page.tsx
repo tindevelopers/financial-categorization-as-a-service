@@ -13,6 +13,12 @@ export default async function RootPage() {
     // Check subdomain to determine routing
     const subdomainInfo = await getSubdomainFromRequest();
     
+    // Debug logging (remove in production if needed)
+    console.log("[RootPage] Subdomain info:", {
+      subdomain: subdomainInfo.subdomain,
+      domain: subdomainInfo.domain,
+    });
+    
     // Only treat "admin" subdomain as admin route
     // Everything else (no subdomain, or other subdomains) shows consumer landing page
     const isAdminSubdomain = subdomainInfo.subdomain === 'admin';
