@@ -122,3 +122,11 @@ If deployment fails:
 3. Check that `pnpm-lock.yaml` is committed
 4. Ensure Google service account credentials are accessible
 5. Verify OAuth redirect URIs match exactly
+
+## ✅ Fixed Issues
+
+### Server Components Render Error on Signin (2025-01-XX)
+- **Problem**: 500 error on `/signin` page with "Server Components render" error
+- **Cause**: Incorrect relative image path in auth layout (`./images/logo/auth-logo.svg`)
+- **Solution**: Changed to absolute path (`/images/logo/auth-logo.svg`)
+- **Commit**: `8afd3ef`
