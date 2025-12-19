@@ -13,8 +13,14 @@ export default async function RootPage() {
     // Check subdomain to determine routing
     const subdomainInfo = await getSubdomainFromRequest();
     
-    // If no subdomain (domain.com), show consumer landing page
-    if (!subdomainInfo.subdomain || subdomainInfo.subdomain === '') {
+    // Only treat "admin" subdomain as admin route
+    // Everything else (no subdomain, or other subdomains) shows consumer landing page
+    const isAdminSubdomain = subdomainInfo.subdomain === 'admin';
+    
+    if (!isAdminSubdomain) {
+      // Show consumer landing page for:
+      // - No subdomain (domain.com)
+      // - Any subdomain that's not "admin"
       return (
         <>
           <HeroSection />
@@ -26,7 +32,7 @@ export default async function RootPage() {
       );
     }
     
-    // If admin subdomain or other subdomain, use admin flow
+    // If admin subdomain, use admin flow
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
 
