@@ -24,15 +24,28 @@ export function WhiteLabelProvider({ children }: { children: ReactNode }) {
     try {
       setLoading(true);
       const [brandingData, themeData, cssData] = await Promise.all([
-        getBrandingSettings(),
-        getThemeSettings(),
-        getCustomCSS(),
+        getBrandingSettings().catch((err) => {
+          console.warn("Failed to load branding settings:", err);
+          return {};
+        }),
+        getThemeSettings().catch((err) => {
+          console.warn("Failed to load theme settings:", err);
+          return {};
+        }),
+        getCustomCSS().catch((err) => {
+          console.warn("Failed to load custom CSS:", err);
+          return "";
+        }),
       ]);
       setBranding(brandingData);
       setTheme(themeData);
       setCustomCSS(cssData);
     } catch (error) {
       console.error("Error loading white label settings:", error);
+      // Set defaults on error to prevent UI from breaking
+      setBranding({});
+      setTheme({});
+      setCustomCSS("");
     } finally {
       setLoading(false);
     }

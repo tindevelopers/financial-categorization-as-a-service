@@ -155,3 +155,5 @@ SELECT id, email FROM auth.users WHERE email = 'systemadmin@tin.info';
 -- Then update password (requires service_role or admin privileges)
 -- This is better done via Dashboard → Authentication → Users → Edit User
 */
+
+

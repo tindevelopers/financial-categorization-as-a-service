@@ -130,3 +130,5 @@ If deployment fails:
 - **Cause**: Incorrect relative image path in auth layout (`./images/logo/auth-logo.svg`)
 - **Solution**: Changed to absolute path (`/images/logo/auth-logo.svg`)
 - **Commit**: `8afd3ef`
+
+
