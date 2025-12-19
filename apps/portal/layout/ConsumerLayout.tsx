@@ -28,8 +28,12 @@ export default function ConsumerLayout({
               </h1>
             </div>
             <nav className="flex items-center space-x-4">
-              {/* Consumer navigation items */}
-              {/* Add consumer-specific navigation here */}
+              <a
+                href="/upload"
+                className="text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white px-3 py-2 rounded-md text-sm font-medium"
+              >
+                Upload
+              </a>
             </nav>
           </div>
         </div>
