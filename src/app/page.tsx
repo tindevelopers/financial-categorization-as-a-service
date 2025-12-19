@@ -1,7 +1,7 @@
-import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { createClient } from "@/core/database/server";
 import { getSubdomainFromRequest } from "@/core/multi-tenancy/subdomain-routing";
+import ConsumerLayout from "@/layout/ConsumerLayout";
 import HeroSection from "@/components/consumer/HeroSection";
 import FeaturesSection from "@/components/consumer/FeaturesSection";
 import HowItWorks from "@/components/consumer/HowItWorks";
@@ -22,13 +22,13 @@ export default async function RootPage() {
       // - No subdomain (domain.com)
       // - Any subdomain that's not "admin"
       return (
-        <>
+        <ConsumerLayout>
           <HeroSection />
           <FeaturesSection />
           <HowItWorks />
           <PricingSection />
           <CTASection />
-        </>
+        </ConsumerLayout>
       );
     }
     
@@ -47,13 +47,13 @@ export default async function RootPage() {
     // If there's any error, show consumer landing page as fallback
     console.error("Error checking authentication:", error);
     return (
-      <>
+      <ConsumerLayout>
         <HeroSection />
         <FeaturesSection />
         <HowItWorks />
         <PricingSection />
         <CTASection />
-      </>
+      </ConsumerLayout>
     );
   }
 }
