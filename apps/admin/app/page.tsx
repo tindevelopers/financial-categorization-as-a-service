@@ -8,8 +8,28 @@ export default async function RootPage() {
     const { data: { user } } = await supabase.auth.getUser();
 
     if (user) {
-      // User is authenticated, redirect to dashboard
-      redirect("/saas/dashboard");
+      // User is authenticated - check role to determine redirect
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const userResult: { data: { tenant_id: string | null; roles: { name: string } | null } | null; error: any } = await (supabase as any)
+        .from("users")
+        .select("tenant_id, roles:role_id(name)")
+        .eq("id", user.id)
+        .single();
+
+      const userData = userResult.data;
+      const roleName = userData?.roles?.name;
+      const tenantId = userData?.tenant_id;
+      const isPlatformAdmin = roleName === "Platform Admin" && !tenantId;
+
+      console.log("[RootPage] User authenticated:", { roleName, tenantId, isPlatformAdmin });
+
+      if (isPlatformAdmin) {
+        // Platform Admin goes to admin dashboard
+        redirect("/saas/dashboard");
+      } else {
+        // Regular users (Organization Admin, Consumer, etc.) go to upload page
+        redirect("/upload");
+      }
     } else {
       // User is not authenticated, show landing page
       return <LandingPage />;

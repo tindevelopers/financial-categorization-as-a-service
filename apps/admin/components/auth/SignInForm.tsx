@@ -32,17 +32,27 @@ export default function SignInForm() {
         password: formData.password,
       });
 
+      const roleName = (result.user as any)?.roles?.name;
+      const tenantId = result.user?.tenant_id;
+      const isPlatformAdmin = roleName === "Platform Admin" && !tenantId;
+
       console.log("[SignInForm] Sign in successful:", {
         userId: result.user?.id,
         email: result.user?.email,
-        roleName: (result.user as any)?.roles?.name,
-        tenantId: result.user?.tenant_id,
-        isPlatformAdmin: (result.user as any)?.roles?.name === "Platform Admin" && result.user?.tenant_id === null,
+        roleName,
+        tenantId,
+        isPlatformAdmin,
       });
 
       // Force a page refresh to ensure session is properly set
-      // This helps ensure the correct user is loaded throughout the app
-      window.location.href = "/saas/dashboard";
+      // Redirect based on user role
+      if (isPlatformAdmin) {
+        // Platform Admin goes to admin dashboard
+        window.location.href = "/saas/dashboard";
+      } else {
+        // Regular users (Organization Admin, Consumer, etc.) go to upload page
+        window.location.href = "/upload";
+      }
     } catch (err) {
       console.error("[SignInForm] Sign in error:", err);
       setError(err instanceof Error ? err.message : "Failed to sign in. Please check your credentials.");
