@@ -107,7 +107,7 @@ export default function ConsumerSignInForm({ redirectTo = "/upload" }: SignInFor
       </form>
       <div className="mt-6 text-center">
         <p className="text-sm text-gray-600 dark:text-gray-400">
-          Don't have an account?{" "}
+          Don&apos;t have an account?{" "}
           <Link
             href="/signup"
             className="text-blue-600 hover:text-blue-700 dark:text-blue-400 font-medium"

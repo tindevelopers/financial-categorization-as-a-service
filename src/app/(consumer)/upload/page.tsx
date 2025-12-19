@@ -2,7 +2,7 @@
 
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { createBrowserClient } from "@/core/database/client";
+import { createClient } from "@/core/database/client";
 import SpreadsheetUpload from "@/components/consumer/SpreadsheetUpload";
 
 export default function UploadPage() {
@@ -10,7 +10,7 @@ export default function UploadPage() {
 
   useEffect(() => {
     async function checkAuth() {
-      const supabase = createBrowserClient();
+      const supabase = createClient();
       const { data: { user } } = await supabase.auth.getUser();
 
       if (!user) {

@@ -118,7 +118,7 @@ export default function SpreadsheetUpload() {
           Upload Your Bank Statement
         </h1>
         <p className="text-lg text-gray-600 dark:text-gray-300">
-          Upload your bank statement in CSV, XLS, or XLSX format. We'll automatically categorize your transactions.
+          Upload your bank statement in CSV, XLS, or XLSX format. We&apos;ll automatically categorize your transactions.
         </p>
       </div>
 
