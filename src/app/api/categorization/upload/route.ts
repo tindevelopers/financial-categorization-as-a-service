@@ -14,11 +14,12 @@ export async function POST(request: NextRequest) {
     }
 
     // Get tenant_id for the user
-    const { data: userData } = await supabase
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data: userData } = await (supabase as any)
       .from("users")
       .select("tenant_id")
       .eq("id", user.id)
-      .single();
+      .single() as { data: { tenant_id: string | null } | null };
 
     const formData = await request.formData();
     const file = formData.get("file") as File;
@@ -75,7 +76,8 @@ export async function POST(request: NextRequest) {
       .getPublicUrl(fileName);
 
     // Create categorization job
-    const { data: jobData, error: jobError } = await supabase
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data: jobData, error: jobError } = await (supabase as any)
       .from("categorization_jobs")
       .insert({
         user_id: user.id,

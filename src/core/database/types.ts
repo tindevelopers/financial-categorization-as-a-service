@@ -654,54 +654,59 @@ export interface Database {
           created_at?: string;
           updated_at?: string;
         };
+        Relationships: [];
+      };
+      audit_logs: {
+        Row: {
+          id: string;
+          user_id: string;
+          tenant_id: string | null;
+          workspace_id: string | null;
+          action: string;
+          resource: string;
+          permission: string;
+          allowed: boolean;
+          reason: string | null;
+          metadata: Record<string, any>;
+          ip_address: string | null;
+          user_agent: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          tenant_id?: string | null;
+          workspace_id?: string | null;
+          action: string;
+          resource: string;
+          permission: string;
+          allowed?: boolean;
+          reason?: string | null;
+          metadata?: Record<string, any>;
+          ip_address?: string | null;
+          user_agent?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          user_id?: string;
+          tenant_id?: string | null;
+          workspace_id?: string | null;
+          action?: string;
+          resource?: string;
+          permission?: string;
+          allowed?: boolean;
+          reason?: string | null;
+          metadata?: Record<string, any>;
+          ip_address?: string | null;
+          user_agent?: string | null;
+          created_at?: string;
+        };
       };
     };
-    audit_logs: {
-      Row: {
-        id: string;
-        user_id: string;
-        tenant_id: string | null;
-        workspace_id: string | null;
-        action: string;
-        resource: string;
-        permission: string;
-        allowed: boolean;
-        reason: string | null;
-        metadata: Record<string, any>;
-        ip_address: string | null;
-        user_agent: string | null;
-        created_at: string;
-      };
-      Insert: {
-        id?: string;
-        user_id: string;
-        tenant_id?: string | null;
-        workspace_id?: string | null;
-        action: string;
-        resource: string;
-        permission: string;
-        allowed?: boolean;
-        reason?: string | null;
-        metadata?: Record<string, any>;
-        ip_address?: string | null;
-        user_agent?: string | null;
-        created_at?: string;
-      };
-      Update: {
-        id?: string;
-        user_id?: string;
-        tenant_id?: string | null;
-        workspace_id?: string | null;
-        action?: string;
-        resource?: string;
-        permission?: string;
-        allowed?: boolean;
-        reason?: string | null;
-        metadata?: Record<string, any>;
-        ip_address?: string | null;
-        user_agent?: string | null;
-        created_at?: string;
-      };
-    };
+    Views: Record<string, never>;
+    Functions: Record<string, never>;
+    Enums: Record<string, never>;
+    CompositeTypes: Record<string, never>;
   };
 }
