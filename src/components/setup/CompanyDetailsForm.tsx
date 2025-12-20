@@ -63,11 +63,11 @@ export function CompanyDetailsForm({ data, onChange }: CompanyDetailsFormProps) 
               {data.companyType === 'partnership' && 'Business owned and run by two or more people'}
               {data.companyType === 'individual' && 'Personal finance tracking (not a business)'}
             </Text>
-          </div>
+          </Field>
 
           {/* Company Number (only for limited companies) */}
           {data.companyType === 'limited_company' && (
-            <div>
+            <Field>
               <Label>Companies House Number</Label>
               <Input
                 name="companyNumber"
@@ -81,7 +81,7 @@ export function CompanyDetailsForm({ data, onChange }: CompanyDetailsFormProps) 
               <Text className="mt-1 text-sm">
                 Your 8-digit company registration number from Companies House
               </Text>
-            </div>
+            </Field>
           )}
         </div>
       </Fieldset>
