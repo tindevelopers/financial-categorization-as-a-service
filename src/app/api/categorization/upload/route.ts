@@ -469,22 +469,35 @@ async function categorizeTransactions(
         const batchResults = await aiService.categorizeBatch(batch);
         
         // #region agent log
-        debugLog('upload/route.ts:categorizeTransactions', 'Batch completed', {
+        console.log("[AI] Batch completed:", JSON.stringify({
           batchNumber: Math.floor(i/BATCH_SIZE) + 1,
-          resultsCount: batchResults.length,
-          firstCategory: batchResults[0]?.category || 'none',
-        }, 'D');
+          batchInputSize: batch.length,
+          resultsCount: batchResults?.length || 0,
+          resultsType: typeof batchResults,
+          isArray: Array.isArray(batchResults),
+          firstResult: batchResults?.[0] || 'none',
+        }));
         // #endregion
         
         for (let j = 0; j < batch.length; j++) {
           const originalTx = transactions[i + j];
           const aiResult = batchResults[j];
-          results.push({
-            ...originalTx,
-            category: aiResult.category,
-            subcategory: aiResult.subcategory,
-            confidenceScore: aiResult.confidenceScore,
-          });
+          // Safety check: if AI didn't return a result for this transaction, use fallback
+          if (aiResult) {
+            results.push({
+              ...originalTx,
+              category: aiResult.category || "Uncategorized",
+              subcategory: aiResult.subcategory,
+              confidenceScore: aiResult.confidenceScore || 0.5,
+            });
+          } else {
+            console.log(`[AI] Missing result for transaction ${i + j}, using fallback`);
+            results.push({
+              ...originalTx,
+              category: "Uncategorized",
+              confidenceScore: 0.3,
+            });
+          }
         }
       }
       
