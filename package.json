@@ -71,6 +71,7 @@
   },
   "dependencies": {
     "@ai-sdk/gateway": "^2.0.22",
+    "@ai-sdk/openai": "^2.0.88",
     "@fullcalendar/core": "^6.1.15",
     "@fullcalendar/daygrid": "^6.1.15",
     "@fullcalendar/interaction": "^6.1.15",
