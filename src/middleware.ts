@@ -169,6 +169,28 @@ export async function middleware(request: NextRequest) {
     }
   }
 
+  // Company setup flow check (for new financial categorization features)
+  if (user && pathname.startsWith('/dashboard') && pathname !== '/dashboard/setup') {
+    // Check if user has completed company setup
+    const { data: companies } = await supabase
+      .from('companies')
+      .select('id, setup_completed')
+      .eq('user_id', user.id)
+      .order('created_at', { ascending: false })
+      .limit(1);
+
+    // If no company or setup not completed, redirect to setup
+    if (!companies || companies.length === 0 || !companies[0].setup_completed) {
+      const setupUrl = new URL('/dashboard/setup', request.url);
+      return NextResponse.redirect(setupUrl);
+    }
+  }
+
+  // Redirect authenticated users from root to dashboard
+  if (user && pathname === '/' && !subdomainInfo.subdomain) {
+    return NextResponse.redirect(new URL('/dashboard', request.url));
+  }
+
   return response;
 }
 
