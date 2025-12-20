@@ -16,7 +16,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json()
 
     // Get user's tenant_id if they have one
-    const { data: userData } = await supabase
+    const { data: userData } = await (supabase as any)
       .from('users')
       .select('tenant_id')
       .eq('id', user.id)
