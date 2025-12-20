@@ -23,8 +23,9 @@ export async function POST(request: NextRequest) {
       .single()
 
     // Create company profile
+    // @ts-ignore - company_profiles table not in generated types yet
     const { data: company, error: insertError } = await supabase
-      .from('company_profiles' as any)
+      .from('company_profiles')
       .insert({
         user_id: user.id,
         tenant_id: userData?.tenant_id || null,
@@ -76,8 +77,9 @@ export async function GET(request: NextRequest) {
     }
 
     // Get all company profiles for the user
+    // @ts-ignore - company_profiles table not in generated types yet
     const { data: companies, error } = await supabase
-      .from('company_profiles' as any)
+      .from('company_profiles')
       .select('*')
       .eq('user_id', user.id)
       .order('created_at', { ascending: false })
