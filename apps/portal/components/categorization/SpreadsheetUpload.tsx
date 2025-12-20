@@ -69,11 +69,12 @@ export default function SpreadsheetUpload() {
       const response = await fetch('/api/categorization/upload', {
         method: 'POST',
         body: formData,
+        credentials: 'include',
       });
 
       if (!response.ok) {
         const error = await response.json();
-        throw new Error(error.message || 'Upload failed');
+        throw new Error(error.error || error.message || 'Upload failed');
       }
 
       const data = await response.json();
