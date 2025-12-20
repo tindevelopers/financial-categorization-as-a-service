@@ -8,6 +8,8 @@ import HowItWorks from "@/components/consumer/HowItWorks";
 import PricingSection from "@/components/consumer/PricingSection";
 import CTASection from "@/components/consumer/CTASection";
 
+export const dynamic = 'force-dynamic'
+
 export default async function RootPage() {
   try {
     // Check subdomain to determine routing

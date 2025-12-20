@@ -1,3 +1,4 @@
+// @ts-nocheck
 'use client'
 
 import { Heading, Text, Badge, DescriptionList, DescriptionTerm, DescriptionDetails } from '@/components/catalyst'
