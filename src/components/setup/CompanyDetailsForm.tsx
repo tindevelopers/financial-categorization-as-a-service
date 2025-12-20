@@ -1,7 +1,7 @@
 // @ts-nocheck
 'use client'
 
-import { Fieldset, Legend, Label, Input, Select, Text } from '@/components/catalyst'
+import { Fieldset, Legend, Label, Input, Select, Text, Field } from '@/components/catalyst'
 
 interface CompanyDetailsFormProps {
   data: {
@@ -25,7 +25,7 @@ export function CompanyDetailsForm({ data, onChange }: CompanyDetailsFormProps) 
       <Fieldset>
         <div className="space-y-4">
           {/* Company Name */}
-          <div>
+          <Field>
             <Label>
               Company / Trading Name <span className="text-red-500">*</span>
             </Label>
@@ -39,10 +39,10 @@ export function CompanyDetailsForm({ data, onChange }: CompanyDetailsFormProps) 
               required
               className="mt-2"
             />
-          </div>
+          </Field>
 
           {/* Company Type */}
-          <div>
+          <Field>
             <Label>Business Type</Label>
             <Select
               name="companyType"
