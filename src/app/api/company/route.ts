@@ -24,7 +24,7 @@ export async function POST(request: NextRequest) {
 
     // Create company profile
     const { data: company, error: insertError } = await supabase
-      .from('company_profiles')
+      .from('company_profiles' as any)
       .insert({
         user_id: user.id,
         tenant_id: userData?.tenant_id || null,
@@ -77,7 +77,7 @@ export async function GET(request: NextRequest) {
 
     // Get all company profiles for the user
     const { data: companies, error } = await supabase
-      .from('company_profiles')
+      .from('company_profiles' as any)
       .select('*')
       .eq('user_id', user.id)
       .order('created_at', { ascending: false })
