@@ -133,8 +133,8 @@ export async function processDocument(
 
       // Calculate average confidence
       const confidences: number[] = [];
-      document.pages?.forEach((page) => {
-        page.blocks?.forEach((block) => {
+      document.pages?.forEach((page: any) => {
+        page.blocks?.forEach((block: any) => {
           if (block.layout?.confidence) {
             confidences.push(block.layout.confidence);
           }

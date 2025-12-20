@@ -3,3 +3,8 @@
 {"location":"VercelAICategorizationService.ts:categorizeBatch","message":"Method called","data":{"transactionCount":5,"firstTransaction":"UBER TRIP"},"timestamp":1766234563220,"sessionId":"debug-session","hypothesisId":"D"}
 {"location":"VercelAICategorizationService.ts:categorizeBatch","message":"Calling generateObject","data":{"promptLength":958,"promptPreview":"You are a financial categorization assistant. Categorize the following transactions into appropriate"},"timestamp":1766234563223,"sessionId":"debug-session","hypothesisId":"D"}
 {"location":"VercelAICategorizationService.ts:categorizeBatch","message":"generateObject SUCCESS","data":{"duration":4943,"categorizationsCount":5,"firstCategory":"Transportation"},"timestamp":1766234568166,"sessionId":"debug-session","hypothesisId":"D"}
+{"location":"layout.tsx:14","message":"AuthLayout rendering","data":{"hasChildren":true,"env":"server"},"timestamp":1766261392917,"sessionId":"debug-session","hypothesisId":"A,B,E"}
+{"location":"layout.tsx:14","message":"AuthLayout rendering","data":{"hasChildren":true,"env":"server"},"timestamp":1766261392953,"sessionId":"debug-session","hypothesisId":"A,B,E"}
+{"location":"layout.tsx:14","message":"AuthLayout rendering","data":{"hasChildren":true,"env":"server"},"timestamp":1766261392957,"sessionId":"debug-session","hypothesisId":"A,B,E"}
+{"location":"layout.tsx:14","message":"AuthLayout rendering","data":{"hasChildren":true,"env":"server"},"timestamp":1766261392960,"sessionId":"debug-session","hypothesisId":"A,B,E"}
+{"location":"layout.tsx:14","message":"AuthLayout rendering","data":{"hasChildren":true,"env":"server"},"timestamp":1766261392968,"sessionId":"debug-session","hypothesisId":"A,B,E"}
