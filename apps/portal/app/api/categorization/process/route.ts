@@ -313,7 +313,7 @@ async function categorizeTransactions(
   const useAI = process.env.USE_AI_CATEGORIZATION === "true";
   
   // #region agent log
-  fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'process/route.ts:categorizeTransactions',message:'AI config check',data:{useAI,USE_AI_CATEGORIZATION:process.env.USE_AI_CATEGORIZATION,OPENAI_API_KEY_EXISTS:!!process.env.OPENAI_API_KEY,AI_CATEGORIZATION_PROVIDER:process.env.AI_CATEGORIZATION_PROVIDER,transactionCount:transactions.length},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H1,H2'})}).catch(()=>{});
+  console.log("[DEBUG] AI Config Check:", JSON.stringify({useAI,USE_AI_CATEGORIZATION:process.env.USE_AI_CATEGORIZATION,OPENAI_API_KEY_EXISTS:!!process.env.OPENAI_API_KEY,AI_CATEGORIZATION_PROVIDER:process.env.AI_CATEGORIZATION_PROVIDER,transactionCount:transactions.length}));
   // #endregion
   
   if (useAI) {
@@ -321,7 +321,7 @@ async function categorizeTransactions(
       const { AICategorizationFactory } = await import("@/lib/ai/AICategorizationFactory");
       const provider = AICategorizationFactory.getDefaultProvider();
       // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'process/route.ts:categorizeTransactions',message:'AI factory loaded',data:{provider},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H4'})}).catch(()=>{});
+      console.log("[DEBUG] AI Factory Loaded:", JSON.stringify({provider}));
       // #endregion
       const userMappings = mappings?.map(m => ({
         pattern: m.pattern,
@@ -343,7 +343,7 @@ async function categorizeTransactions(
       const results: Array<Transaction & { category?: string; subcategory?: string; confidenceScore?: number }> = [];
       
       // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'process/route.ts:categorizeTransactions',message:'Starting AI batch processing',data:{totalTransactions:aiTransactions.length,batchSize:BATCH_SIZE},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H3,H5'})}).catch(()=>{});
+      console.log("[DEBUG] Starting AI Batch Processing:", JSON.stringify({totalTransactions:aiTransactions.length,batchSize:BATCH_SIZE}));
       // #endregion
       
       for (let i = 0; i < aiTransactions.length; i += BATCH_SIZE) {
@@ -351,7 +351,7 @@ async function categorizeTransactions(
         const batchResults = await aiService.categorizeBatch(batch);
         
         // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'process/route.ts:categorizeTransactions',message:'Batch completed',data:{batchIndex:i,batchResultCount:batchResults.length,sampleResult:batchResults[0]},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H5'})}).catch(()=>{});
+        console.log("[DEBUG] Batch Completed:", JSON.stringify({batchIndex:i,batchResultCount:batchResults.length,sampleResult:batchResults[0]}));
         // #endregion
         
         // Merge results back with original transactions
@@ -368,20 +368,20 @@ async function categorizeTransactions(
       }
       
       // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'process/route.ts:categorizeTransactions',message:'AI categorization complete',data:{totalResults:results.length},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H3'})}).catch(()=>{});
+      console.log("[DEBUG] AI Categorization Complete:", JSON.stringify({totalResults:results.length}));
       // #endregion
       
       return results;
     } catch (error: any) {
       // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'process/route.ts:categorizeTransactions',message:'AI categorization FAILED',data:{errorMessage:error?.message,errorName:error?.name,errorStack:error?.stack?.slice(0,500)},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H3,H4,H5'})}).catch(()=>{});
+      console.log("[DEBUG] AI Categorization FAILED:", JSON.stringify({errorMessage:error?.message,errorName:error?.name}));
       // #endregion
       console.error("AI categorization failed, falling back to rule-based:", error);
       // Fall through to rule-based categorization
     }
   } else {
     // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'process/route.ts:categorizeTransactions',message:'AI SKIPPED - using rule-based',data:{reason:'USE_AI_CATEGORIZATION is not true'},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H1'})}).catch(()=>{});
+    console.log("[DEBUG] AI SKIPPED - Using Rule-Based:", JSON.stringify({reason:'USE_AI_CATEGORIZATION is not true',envValue:process.env.USE_AI_CATEGORIZATION}));
     // #endregion
   }
 

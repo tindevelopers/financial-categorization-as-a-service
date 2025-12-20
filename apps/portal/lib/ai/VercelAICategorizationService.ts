@@ -20,14 +20,14 @@ export class VercelAICategorizationService implements AICategorizationService {
 
   async categorizeBatch(transactions: Transaction[]): Promise<CategoryResult[]> {
     // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'VercelAICategorizationService.ts:categorizeBatch',message:'Starting AI call',data:{transactionCount:transactions.length,modelInfo:String(this.model)},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H4,H5'})}).catch(()=>{});
+    console.log("[DEBUG] VercelAI: Starting AI call", JSON.stringify({transactionCount:transactions.length}));
     // #endregion
     try {
       // Build prompt with user mappings and transaction context
       const prompt = this.buildPrompt(transactions);
 
       // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'VercelAICategorizationService.ts:categorizeBatch',message:'Calling generateObject',data:{promptLength:prompt.length},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H5'})}).catch(()=>{});
+      console.log("[DEBUG] VercelAI: Calling generateObject", JSON.stringify({promptLength:prompt.length}));
       // #endregion
 
       const { object } = await generateObject({
@@ -72,7 +72,7 @@ export class VercelAICategorizationService implements AICategorizationService {
       const categorizations = (object as any).categorizations || [];
 
       // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'VercelAICategorizationService.ts:categorizeBatch',message:'AI response received',data:{categorizationCount:categorizations.length,sample:categorizations[0]},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H5'})}).catch(()=>{});
+      console.log("[DEBUG] VercelAI: Response received", JSON.stringify({categorizationCount:categorizations.length,sample:categorizations[0]}));
       // #endregion
 
       return categorizations.map((cat: any, index: number) => ({
@@ -83,7 +83,7 @@ export class VercelAICategorizationService implements AICategorizationService {
       }));
     } catch (error: any) {
       // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'VercelAICategorizationService.ts:categorizeBatch',message:'AI ERROR',data:{errorMessage:error?.message,errorName:error?.name,errorCode:error?.code,statusCode:error?.statusCode},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H2,H4,H5'})}).catch(()=>{});
+      console.log("[DEBUG] VercelAI: ERROR", JSON.stringify({errorMessage:error?.message,errorName:error?.name,errorCode:error?.code}));
       // #endregion
       console.error("Vercel AI categorization error:", error);
       // Fallback to basic categorization

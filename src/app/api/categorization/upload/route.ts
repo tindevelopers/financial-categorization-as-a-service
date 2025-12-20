@@ -413,13 +413,13 @@ async function categorizeTransactions(
   const useAI = useAIValue === "true";
   
   // #region agent log
-  debugLog('upload/route.ts:categorizeTransactions', 'Function entry', {
-    USE_AI_CATEGORIZATION_raw: useAIValue,
-    USE_AI_CATEGORIZATION_type: typeof useAIValue,
-    USE_AI_CATEGORIZATION_exactMatch: useAIValue === "true",
-    useAI_boolean: useAI,
+  console.log("[DEBUG] AI Config:", JSON.stringify({
+    USE_AI_CATEGORIZATION: useAIValue,
+    useAI: useAI,
+    OPENAI_API_KEY_EXISTS: !!process.env.OPENAI_API_KEY,
+    AI_PROVIDER: process.env.AI_CATEGORIZATION_PROVIDER,
     transactionCount: transactions.length,
-  }, 'A');
+  }));
   // #endregion
   
   if (useAI) {
