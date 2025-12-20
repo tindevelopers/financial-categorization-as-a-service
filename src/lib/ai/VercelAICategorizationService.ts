@@ -1,5 +1,5 @@
 import { generateObject } from "ai";
-import { createOpenAI } from "@ai-sdk/openai";
+import { gateway } from "@ai-sdk/gateway";
 import { z } from "zod";
 import type { AICategorizationService, Transaction, CategoryResult } from "./AICategorizationService";
 
@@ -13,10 +13,16 @@ const categorizationSchema = z.object({
   })),
 });
 
-// Clean environment variable (remove \n and trim)
-function cleanEnvVar(value: string | undefined): string | undefined {
-  if (!value) return undefined;
-  return value.replace(/\\n/g, "").replace(/\n/g, "").trim();
+// Debug logging helper
+const DEBUG_ENDPOINT = 'http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e';
+function debugLog(location: string, message: string, data: Record<string, unknown>, hypothesisId: string) {
+  // #region agent log
+  fetch(DEBUG_ENDPOINT, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ location, message, data, timestamp: Date.now(), sessionId: 'debug-session', hypothesisId })
+  }).catch(() => {});
+  // #endregion
 }
 
 export class VercelAICategorizationService implements AICategorizationService {
@@ -25,29 +31,29 @@ export class VercelAICategorizationService implements AICategorizationService {
   private userMappings?: Array<{ pattern: string; category: string; subcategory?: string }>;
 
   constructor(userMappings?: Array<{ pattern: string; category: string; subcategory?: string }>) {
-    // Get and clean the API key
-    const apiKey = cleanEnvVar(process.env.OPENAI_API_KEY);
-    
-    console.log("[VercelAI] Initializing OpenAI provider");
-    console.log("[VercelAI] API Key present:", !!apiKey);
-    console.log("[VercelAI] API Key length:", apiKey?.length || 0);
-    console.log("[VercelAI] API Key prefix:", apiKey?.substring(0, 10) || "N/A");
-    
-    if (!apiKey) {
-      console.error("[VercelAI] ERROR: OPENAI_API_KEY is not set!");
-      throw new Error("OPENAI_API_KEY is not configured");
-    }
-    
-    // Create OpenAI provider with explicit API key
-    const openai = createOpenAI({
-      apiKey: apiKey,
-    });
-    
-    // Use gpt-4o-mini for cost efficiency
-    this.model = openai("gpt-4o-mini");
+    // #region agent log
+    const aiGatewayKey = process.env.AI_GATEWAY_API_KEY;
+    const vercelAiGatewayKey = process.env.VERCEL_AI_GATEWAY_API_KEY;
+    debugLog('VercelAICategorizationService.ts:constructor', 'Constructor called', {
+      AI_GATEWAY_API_KEY_set: !!aiGatewayKey,
+      AI_GATEWAY_API_KEY_length: aiGatewayKey?.length || 0,
+      AI_GATEWAY_API_KEY_hasNewline: aiGatewayKey?.includes('\n') || aiGatewayKey?.includes('\\n'),
+      VERCEL_AI_GATEWAY_API_KEY_set: !!vercelAiGatewayKey,
+      VERCEL_AI_GATEWAY_API_KEY_length: vercelAiGatewayKey?.length || 0,
+      userMappingsCount: userMappings?.length || 0,
+    }, 'B,E');
+    // #endregion
+
+    // Use Vercel AI Gateway
+    this.model = gateway("openai/gpt-4o-mini");
     this.userMappings = userMappings;
-    
-    console.log("[VercelAI] Model initialized successfully");
+
+    // #region agent log
+    debugLog('VercelAICategorizationService.ts:constructor', 'Model created', {
+      modelType: typeof this.model,
+      modelExists: !!this.model,
+    }, 'C');
+    // #endregion
   }
 
   async categorizeTransaction(transaction: Transaction): Promise<CategoryResult> {
@@ -56,33 +62,41 @@ export class VercelAICategorizationService implements AICategorizationService {
   }
 
   async categorizeBatch(transactions: Transaction[]): Promise<CategoryResult[]> {
-    console.log("[VercelAI] categorizeBatch called with", transactions.length, "transactions");
-    
-    try {
-      // Build prompt with user mappings and transaction context
-      const prompt = this.buildPrompt(transactions);
-      console.log("[VercelAI] Prompt built, length:", prompt.length);
-      console.log("[VercelAI] Sample prompt (first 200 chars):", prompt.substring(0, 200));
+    // #region agent log
+    debugLog('VercelAICategorizationService.ts:categorizeBatch', 'Method called', {
+      transactionCount: transactions.length,
+      firstTransaction: transactions[0]?.original_description || 'none',
+    }, 'D');
+    // #endregion
 
-      console.log("[VercelAI] Calling generateObject...");
-      const startTime = Date.now();
+    try {
+      const prompt = this.buildPrompt(transactions);
       
+      // #region agent log
+      debugLog('VercelAICategorizationService.ts:categorizeBatch', 'Calling generateObject', {
+        promptLength: prompt.length,
+        promptPreview: prompt.substring(0, 100),
+      }, 'D');
+      // #endregion
+
+      const startTime = Date.now();
       const { object } = await generateObject({
         model: this.model,
         schema: categorizationSchema,
         prompt,
         temperature: 0.3,
       });
-      
       const duration = Date.now() - startTime;
-      console.log("[VercelAI] generateObject returned in", duration, "ms");
-      
-      const categorizations = object.categorizations || [];
-      console.log("[VercelAI] Categorizations count:", categorizations.length);
 
-      if (categorizations.length > 0) {
-        console.log("[VercelAI] First categorization:", JSON.stringify(categorizations[0]));
-      }
+      // #region agent log
+      debugLog('VercelAICategorizationService.ts:categorizeBatch', 'generateObject SUCCESS', {
+        duration,
+        categorizationsCount: object.categorizations?.length || 0,
+        firstCategory: object.categorizations?.[0]?.category || 'none',
+      }, 'D');
+      // #endregion
+
+      const categorizations = object.categorizations || [];
 
       return categorizations.map((cat) => ({
         category: cat.category || "Uncategorized",
@@ -91,13 +105,16 @@ export class VercelAICategorizationService implements AICategorizationService {
         reasoning: cat.reasoning,
       }));
     } catch (error: unknown) {
-      console.error("[VercelAI] ERROR in categorizeBatch:", error);
-      if (error instanceof Error) {
-        console.error("[VercelAI] Error name:", error.name);
-        console.error("[VercelAI] Error message:", error.message);
-        console.error("[VercelAI] Error stack:", error.stack);
-      }
-      // Re-throw the error so it's not silently swallowed
+      // #region agent log
+      debugLog('VercelAICategorizationService.ts:categorizeBatch', 'generateObject ERROR', {
+        errorType: typeof error,
+        errorName: error instanceof Error ? error.name : 'unknown',
+        errorMessage: error instanceof Error ? error.message : String(error),
+        errorStack: error instanceof Error ? error.stack?.substring(0, 500) : 'no stack',
+      }, 'D');
+      // #endregion
+
+      // Re-throw to let caller handle
       throw error;
     }
   }
@@ -107,7 +124,7 @@ export class VercelAICategorizationService implements AICategorizationService {
   }
 
   getProviderName(): string {
-    return "openai";
+    return "vercel_ai_gateway";
   }
 
   private buildPrompt(transactions: Transaction[]): string {
@@ -133,7 +150,6 @@ Common categories: ${commonCategories.join(", ")}
 
 `;
 
-    // Add user mappings if available
     if (this.userMappings && this.userMappings.length > 0) {
       prompt += `User-specific category mappings:\n`;
       for (const mapping of this.userMappings) {

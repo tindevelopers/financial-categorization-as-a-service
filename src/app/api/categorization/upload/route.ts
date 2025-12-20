@@ -384,6 +384,18 @@ function isDateLike(value: any): boolean {
   return false;
 }
 
+// Debug logging helper
+const DEBUG_ENDPOINT = 'http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e';
+function debugLog(location: string, message: string, data: Record<string, unknown>, hypothesisId: string) {
+  // #region agent log
+  fetch(DEBUG_ENDPOINT, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ location, message, data, timestamp: Date.now(), sessionId: 'debug-session', hypothesisId })
+  }).catch(() => {});
+  // #endregion
+}
+
 async function categorizeTransactions(
   transactions: Transaction[],
   userId: string,
@@ -400,16 +412,24 @@ async function categorizeTransactions(
   const useAIValue = process.env.USE_AI_CATEGORIZATION;
   const useAI = useAIValue === "true";
   
-  console.log("[AI] USE_AI_CATEGORIZATION env value:", JSON.stringify(useAIValue));
-  console.log("[AI] AI enabled:", useAI);
-  console.log("[AI] Transactions to categorize:", transactions.length);
+  // #region agent log
+  debugLog('upload/route.ts:categorizeTransactions', 'Function entry', {
+    USE_AI_CATEGORIZATION_raw: useAIValue,
+    USE_AI_CATEGORIZATION_type: typeof useAIValue,
+    USE_AI_CATEGORIZATION_exactMatch: useAIValue === "true",
+    useAI_boolean: useAI,
+    transactionCount: transactions.length,
+  }, 'A');
+  // #endregion
   
   if (useAI) {
-    console.log("[AI] Starting AI categorization...");
+    // #region agent log
+    debugLog('upload/route.ts:categorizeTransactions', 'AI branch entered', {}, 'A');
+    // #endregion
+    
     try {
       const { AICategorizationFactory } = await import("@/lib/ai/AICategorizationFactory");
       const provider = AICategorizationFactory.getDefaultProvider();
-      console.log("[AI] Provider:", provider);
       
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const userMappings = mappings?.map((m: any) => ({
@@ -417,10 +437,15 @@ async function categorizeTransactions(
         category: m.category,
         subcategory: m.subcategory || undefined,
       }));
-      console.log("[AI] User mappings count:", userMappings?.length || 0);
+      
+      // #region agent log
+      debugLog('upload/route.ts:categorizeTransactions', 'Creating AI service', {
+        provider,
+        userMappingsCount: userMappings?.length || 0,
+      }, 'C');
+      // #endregion
       
       const aiService = AICategorizationFactory.create(provider, userMappings);
-      console.log("[AI] AI service created");
       
       const aiTransactions = transactions.map(tx => ({
         original_description: tx.description,
@@ -433,10 +458,23 @@ async function categorizeTransactions(
       
       for (let i = 0; i < aiTransactions.length; i += BATCH_SIZE) {
         const batch = aiTransactions.slice(i, i + BATCH_SIZE);
-        console.log(`[AI] Processing batch ${Math.floor(i/BATCH_SIZE) + 1}, size: ${batch.length}`);
+        
+        // #region agent log
+        debugLog('upload/route.ts:categorizeTransactions', 'Processing batch', {
+          batchNumber: Math.floor(i/BATCH_SIZE) + 1,
+          batchSize: batch.length,
+        }, 'D');
+        // #endregion
         
         const batchResults = await aiService.categorizeBatch(batch);
-        console.log(`[AI] Batch ${Math.floor(i/BATCH_SIZE) + 1} completed, results:`, batchResults.length);
+        
+        // #region agent log
+        debugLog('upload/route.ts:categorizeTransactions', 'Batch completed', {
+          batchNumber: Math.floor(i/BATCH_SIZE) + 1,
+          resultsCount: batchResults.length,
+          firstCategory: batchResults[0]?.category || 'none',
+        }, 'D');
+        // #endregion
         
         for (let j = 0; j < batch.length; j++) {
           const originalTx = transactions[i + j];
@@ -450,15 +488,33 @@ async function categorizeTransactions(
         }
       }
       
-      console.log("[AI] AI categorization complete. Sample result:", JSON.stringify(results[0]));
+      // #region agent log
+      debugLog('upload/route.ts:categorizeTransactions', 'AI categorization SUCCESS', {
+        totalResults: results.length,
+        sampleCategory: results[0]?.category || 'none',
+        sampleConfidence: results[0]?.confidenceScore || 0,
+      }, 'D');
+      // #endregion
+      
       return results;
     } catch (error) {
+      // #region agent log
+      debugLog('upload/route.ts:categorizeTransactions', 'AI categorization FAILED', {
+        errorType: typeof error,
+        errorName: error instanceof Error ? error.name : 'unknown',
+        errorMessage: error instanceof Error ? error.message : String(error),
+      }, 'D');
+      // #endregion
+      
       console.error("[AI] AI categorization FAILED:", error);
-      console.error("[AI] Error details:", error instanceof Error ? error.stack : String(error));
-      console.log("[AI] Falling back to rule-based categorization");
     }
   } else {
-    console.log("[AI] AI disabled, using rule-based categorization");
+    // #region agent log
+    debugLog('upload/route.ts:categorizeTransactions', 'AI disabled - using rules', {
+      reason: 'USE_AI_CATEGORIZATION not true',
+      actualValue: useAIValue,
+    }, 'A');
+    // #endregion
   }
 
   // Rule-based categorization fallback
