@@ -16,14 +16,14 @@ export async function POST(request: NextRequest) {
     const body = await request.json()
 
     // Get user's tenant_id if they have one
-    const { data: userData } = await (supabase as any)
+    const { data: userData } = await supabase
       .from('users')
       .select('tenant_id')
       .eq('id', user.id)
       .single()
 
     // Create company profile
-    const { data: company, error: insertError } = await (supabase as any)
+    const { data: company, error: insertError } = await supabase
       .from('company_profiles')
       .insert({
         user_id: user.id,
@@ -76,7 +76,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Get all company profiles for the user
-    const { data: companies, error } = await (supabase as any)
+    const { data: companies, error } = await supabase
       .from('company_profiles')
       .select('*')
       .eq('user_id', user.id)

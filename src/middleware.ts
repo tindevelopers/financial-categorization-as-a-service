@@ -172,7 +172,7 @@ export async function middleware(request: NextRequest) {
   // Company setup flow check (for new financial categorization features)
   if (user && pathname.startsWith('/dashboard') && pathname !== '/dashboard/setup') {
     // Check if user has completed company setup
-    const { data: companies } = await (supabase as any)
+    const { data: companies } = await supabase
       .from('company_profiles')
       .select('id, setup_completed')
       .eq('user_id', user.id)
