@@ -339,6 +339,10 @@ async function categorizeTransactions(
         const batch = aiTransactions.slice(i, i + BATCH_SIZE);
         const batchResults = await aiService.categorizeBatch(batch);
         
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'process/route.ts:340',message:'AI batch categorization success',data:{batchSize:batch.length,resultsCount:batchResults.length},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'A'})}).catch(()=>{});
+        // #endregion
+        
         // Merge results back with original transactions
         for (let j = 0; j < batch.length; j++) {
           const originalTx = transactions[i + j];
@@ -352,8 +356,15 @@ async function categorizeTransactions(
         }
       }
       
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'process/route.ts:355',message:'AI categorization completed successfully',data:{totalResults:results.length},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'A'})}).catch(()=>{});
+      // #endregion
+      
       return results;
     } catch (error: any) {
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'process/route.ts:357',message:'AI categorization failed, using fallback',data:{errorMessage:error.message,errorType:error.name},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'A'})}).catch(()=>{});
+      // #endregion
       console.error("AI categorization failed, falling back to rule-based:", error);
       // Fall through to rule-based categorization
     }

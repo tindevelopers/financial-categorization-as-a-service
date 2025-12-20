@@ -61,16 +61,25 @@ export default function SpreadsheetUpload() {
 
   const handleUpload = async (file: File) => {
     setUploadState(prev => ({ ...prev, uploading: true, progress: 0 }));
+  const startTime = Date.now();
+
+  // #region agent log
+  fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'SpreadsheetUpload.tsx:67',message:'handleUpload start',data:{fileName:file.name,fileSize:file.size,fileType:file.type},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'A'})}).catch(()=>{});
+  // #endregion
 
     try {
       const formData = new FormData();
       formData.append('file', file);
 
-      const response = await fetch('/api/categorization/upload', {
+    const response = await fetch('/api/categorization/upload', {
         method: 'POST',
         body: formData,
         credentials: 'include',
       });
+
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'SpreadsheetUpload.tsx:75',message:'handleUpload response',data:{status:response.status,ok:response.ok,durationMs:Date.now()-startTime},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'A'})}).catch(()=>{});
+    // #endregion
 
       if (!response.ok) {
         const error = await response.json();
@@ -93,7 +102,10 @@ export default function SpreadsheetUpload() {
           window.location.href = `/review/${data.jobId}`;
         }
       }, 1000);
-    } catch (error: any) {
+  } catch (error: any) {
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'SpreadsheetUpload.tsx:96',message:'handleUpload error',data:{errorMessage:error?.message || 'unknown',durationMs:Date.now()-startTime},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'C'})}).catch(()=>{});
+    // #endregion
       setUploadState(prev => ({
         ...prev,
         uploading: false,
