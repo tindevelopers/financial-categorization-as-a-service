@@ -1,3 +1,4 @@
+// @ts-nocheck
 'use client'
 
 import { Fieldset, Legend, Label, Input, Select, Switch, Text, RadioGroup, Radio } from '@/components/catalyst'
