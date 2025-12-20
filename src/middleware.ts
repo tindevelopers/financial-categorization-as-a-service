@@ -171,6 +171,8 @@ export async function middleware(request: NextRequest) {
   }
 
   // Company setup flow check (for new financial categorization features)
+  // TODO: Re-enable after regenerating Supabase types
+  /*
   if (user && pathname.startsWith('/dashboard') && pathname !== '/dashboard/setup') {
     // Check if user has completed company setup
     const { data: companies } = await supabase
@@ -186,6 +188,7 @@ export async function middleware(request: NextRequest) {
       return NextResponse.redirect(setupUrl);
     }
   }
+  */
 
   // Redirect authenticated users from root to dashboard
   if (user && pathname === '/' && !subdomainInfo.subdomain) {
