@@ -37,14 +37,23 @@ export async function POST(
       );
     }
 
-    if (document.storage_tier !== "archive") {
+    // Type assertion for document
+    type DocumentRow = {
+      id: string;
+      storage_tier: string | null;
+      gcs_archive_path: string | null;
+      original_filename: string | null;
+    };
+    const doc = document as DocumentRow;
+
+    if (doc.storage_tier !== "archive") {
       return NextResponse.json(
         { error: "Document is not in archive storage" },
         { status: 400 }
       );
     }
 
-    if (!document.gcs_archive_path) {
+    if (!doc.gcs_archive_path) {
       return NextResponse.json(
         { error: "Archive path not found" },
         { status: 500 }
@@ -52,7 +61,7 @@ export async function POST(
     }
 
     // Check current status
-    const status = await checkRestoreStatus(document.gcs_archive_path);
+    const status = await checkRestoreStatus(doc.gcs_archive_path);
 
     if (status.ready) {
       return NextResponse.json({
@@ -64,7 +73,7 @@ export async function POST(
     }
 
     // Initiate restore
-    const restoreResult = await restoreFromGCS(document.gcs_archive_path);
+    const restoreResult = await restoreFromGCS(doc.gcs_archive_path);
 
     if (!restoreResult.success) {
       return NextResponse.json(
@@ -123,23 +132,31 @@ export async function GET(
       );
     }
 
-    if (document.storage_tier !== "archive") {
+    // Type assertion for document
+    type DocumentRow = {
+      id: string;
+      storage_tier: string | null;
+      gcs_archive_path: string | null;
+    };
+    const doc = document as DocumentRow;
+
+    if (doc.storage_tier !== "archive") {
       return NextResponse.json({
         success: true,
-        storageTier: document.storage_tier,
+        storageTier: doc.storage_tier,
         message: "Document is not in archive storage",
         isArchived: false,
       });
     }
 
-    if (!document.gcs_archive_path) {
+    if (!doc.gcs_archive_path) {
       return NextResponse.json(
         { error: "Archive path not found" },
         { status: 500 }
       );
     }
 
-    const status = await checkRestoreStatus(document.gcs_archive_path);
+    const status = await checkRestoreStatus(doc.gcs_archive_path);
 
     return NextResponse.json({
       success: true,

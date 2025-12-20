@@ -23,6 +23,16 @@ export async function GET(
       );
     }
 
+    // Define document type
+    type DocumentRow = {
+      id: string;
+      storage_tier: string | null;
+      supabase_path: string | null;
+      gcs_archive_path: string | null;
+      original_filename: string | null;
+      mime_type: string | null;
+    };
+
     // Fetch document
     const { data: document, error: fetchError } = await supabase
       .from("financial_documents")
@@ -31,16 +41,26 @@ export async function GET(
       .eq("is_deleted", false)
       .single();
 
-    if (fetchError || !document) {
+    if (fetchError) {
       return NextResponse.json(
         { error: "Document not found" },
         { status: 404 }
       );
     }
 
+    if (!document) {
+      return NextResponse.json(
+        { error: "Document not found" },
+        { status: 404 }
+      );
+    }
+
+    // Type assertion for document - TypeScript needs this after the null check
+    const doc: DocumentRow = document as DocumentRow;
+
     // Hot storage - return signed URL
-    if (document.storage_tier === "hot" && document.supabase_path) {
-      const urlResult = await getSignedUrl(supabase, document.supabase_path, 3600);
+    if (doc.storage_tier === "hot" && doc.supabase_path) {
+      const urlResult = await getSignedUrl(supabase, doc.supabase_path, 3600);
 
       if (!urlResult.success) {
         return NextResponse.json(
@@ -52,16 +72,16 @@ export async function GET(
       return NextResponse.json({
         success: true,
         downloadUrl: urlResult.url,
-        filename: document.original_filename,
-        mimeType: document.mime_type,
+        filename: doc.original_filename,
+        mimeType: doc.mime_type,
         storageTier: "hot",
         expiresIn: 3600,
       });
     }
 
     // Archive storage - check if restore is needed
-    if (document.storage_tier === "archive" && document.gcs_archive_path) {
-      const status = await checkRestoreStatus(document.gcs_archive_path);
+    if (doc.storage_tier === "archive" && doc.gcs_archive_path) {
+      const status = await checkRestoreStatus(doc.gcs_archive_path);
 
       if (!status.ready) {
         // Need to initiate restore
@@ -76,7 +96,7 @@ export async function GET(
       }
 
       // File is restored and ready
-      const restoreResult = await restoreFromGCS(document.gcs_archive_path);
+      const restoreResult = await restoreFromGCS(doc.gcs_archive_path);
 
       if (!restoreResult.success) {
         return NextResponse.json(
@@ -90,23 +110,23 @@ export async function GET(
       return NextResponse.json({
         success: true,
         storageTier: "archive",
-        filename: document.original_filename,
-        mimeType: document.mime_type,
+        filename: doc.original_filename,
+        mimeType: doc.mime_type,
         message: "Document is ready for download. Use the restore endpoint for the actual file.",
         restoreEndpoint: `/api/documents/${id}/restore`,
       });
     }
 
     // Pending archive - file might still be in Supabase
-    if (document.storage_tier === "pending_archive" && document.supabase_path) {
-      const urlResult = await getSignedUrl(supabase, document.supabase_path, 3600);
+    if (doc.storage_tier === "pending_archive" && doc.supabase_path) {
+      const urlResult = await getSignedUrl(supabase, doc.supabase_path, 3600);
 
       if (urlResult.success) {
         return NextResponse.json({
           success: true,
           downloadUrl: urlResult.url,
-          filename: document.original_filename,
-          mimeType: document.mime_type,
+          filename: doc.original_filename,
+          mimeType: doc.mime_type,
           storageTier: "pending_archive",
           expiresIn: 3600,
         });

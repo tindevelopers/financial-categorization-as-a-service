@@ -68,40 +68,68 @@ export async function GET(
       );
     }
 
+    // Type assertion for document
+    const doc = document as Record<string, unknown> & {
+      id: string;
+      entity_id: string | null;
+      tenant_id: string | null;
+      original_filename: string;
+      file_type: string;
+      mime_type: string;
+      file_size_bytes: number | null;
+      storage_tier: string;
+      document_date: string | null;
+      vendor_name: string | null;
+      total_amount: number | null;
+      currency: string | null;
+      ocr_status: string;
+      ocr_confidence: number | null;
+      extracted_text: string | null;
+      extracted_data: Record<string, unknown> | null;
+      description: string | null;
+      tags: string[] | null;
+      category: string | null;
+      is_verified: boolean | null;
+      created_at: string;
+      updated_at: string;
+      supabase_path?: string | null;
+      gcs_archive_path?: string | null;
+    };
+
     const response: DocumentResponse = {
-      id: document.id,
-      entity_id: document.entity_id,
-      tenant_id: document.tenant_id,
-      original_filename: document.original_filename,
-      file_type: document.file_type,
-      mime_type: document.mime_type,
-      file_size_bytes: document.file_size_bytes,
-      storage_tier: document.storage_tier,
-      document_date: document.document_date,
-      vendor_name: document.vendor_name,
-      total_amount: document.total_amount,
-      currency: document.currency || "USD",
-      ocr_status: document.ocr_status,
-      ocr_confidence: document.ocr_confidence,
-      extracted_text: document.extracted_text,
-      extracted_data: document.extracted_data,
-      description: document.description,
-      tags: document.tags || [],
-      category: document.category,
-      is_verified: document.is_verified || false,
-      created_at: document.created_at,
-      updated_at: document.updated_at,
+      id: doc.id,
+      entity_id: doc.entity_id,
+      tenant_id: doc.tenant_id,
+      original_filename: doc.original_filename,
+      file_type: doc.file_type,
+      mime_type: doc.mime_type,
+      file_size_bytes: doc.file_size_bytes,
+      storage_tier: doc.storage_tier,
+      document_date: doc.document_date,
+      vendor_name: doc.vendor_name,
+      total_amount: doc.total_amount,
+      currency: doc.currency || "USD",
+      ocr_status: doc.ocr_status,
+      ocr_confidence: doc.ocr_confidence,
+      extracted_text: doc.extracted_text,
+      extracted_data: doc.extracted_data,
+      description: doc.description,
+      tags: doc.tags || [],
+      category: doc.category,
+      is_verified: doc.is_verified || false,
+      created_at: doc.created_at,
+      updated_at: doc.updated_at,
     };
 
     // Get download URL based on storage tier
-    if (document.storage_tier === "hot" && document.supabase_path) {
-      const urlResult = await getSignedUrl(supabase, document.supabase_path, 3600);
+    if (doc.storage_tier === "hot" && doc.supabase_path) {
+      const urlResult = await getSignedUrl(supabase, doc.supabase_path, 3600);
       if (urlResult.success) {
         response.downloadUrl = urlResult.url;
       }
-    } else if (document.storage_tier === "archive" && document.gcs_archive_path) {
+    } else if (doc.storage_tier === "archive" && doc.gcs_archive_path) {
       // Check archive restore status
-      const status = await checkRestoreStatus(document.gcs_archive_path);
+      const status = await checkRestoreStatus(doc.gcs_archive_path);
       response.archiveStatus = {
         ready: status.ready,
         isRestoring: !status.ready,
@@ -220,7 +248,7 @@ export async function PATCH(
     // Update document
     const { data: document, error: updateError } = await supabase
       .from("financial_documents")
-      .update(updates)
+      .update(updates as never)
       .eq("id", id)
       .select()
       .single();
