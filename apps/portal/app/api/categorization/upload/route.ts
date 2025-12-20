@@ -4,6 +4,18 @@ import { writeFile } from "fs/promises";
 import { join } from "path";
 import { tmpdir } from "os";
 
+export async function OPTIONS() {
+  return new NextResponse(null, {
+    status: 200,
+    headers: {
+      "Access-Control-Allow-Origin": "*",
+      "Access-Control-Allow-Methods": "POST, OPTIONS",
+      "Access-Control-Allow-Headers": "Content-Type, Authorization",
+      "Access-Control-Max-Age": "86400",
+    },
+  });
+}
+
 export async function POST(request: NextRequest) {
   try {
     const supabase = await createClient();
@@ -53,9 +65,17 @@ export async function POST(request: NextRequest) {
       );
     }
 
+  // #region agent log
+  fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'upload/route.ts:64',message:'Upload request received',data:{fileName:file.name,fileSize:file.size,fileType:file.type,userId:user.id},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'C'})}).catch(()=>{});
+  // #endregion
+
     // Upload to Supabase Storage
     const fileBuffer = Buffer.from(await file.arrayBuffer());
     const fileName = `${user.id}/${Date.now()}-${file.name}`;
+    
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'upload/route.ts:70',message:'File storage location',data:{fileName,storageBucket:'categorization-uploads',userId:user.id,fileSize:file.size},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'B'})}).catch(()=>{});
+    // #endregion
     
     const { data: uploadData, error: uploadError } = await supabase.storage
       .from("categorization-uploads")
@@ -65,6 +85,9 @@ export async function POST(request: NextRequest) {
       });
 
     if (uploadError) {
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'upload/route.ts:79',message:'Storage upload error',data:{error:uploadError.message,fileName},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'B'})}).catch(()=>{});
+      // #endregion
       console.error("Storage upload error:", uploadError);
       return NextResponse.json(
         { error: "Failed to upload file" },
@@ -76,6 +99,10 @@ export async function POST(request: NextRequest) {
     const { data: urlData } = supabase.storage
       .from("categorization-uploads")
       .getPublicUrl(fileName);
+    
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'upload/route.ts:88',message:'File uploaded successfully',data:{fileName,publicUrl:urlData.publicUrl},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'B'})}).catch(()=>{});
+    // #endregion
 
     // Create categorization job
     const { data: jobData, error: jobError } = await supabase

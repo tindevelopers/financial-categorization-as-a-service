@@ -26,6 +26,7 @@ import {
   TableIcon,
   TaskIcon,
   UserCircleIcon,
+  DocsIcon,
 } from "@/icons";
 
 export type NavItem = {
@@ -48,6 +49,15 @@ export const mainNavItems: NavItem[] = [
     icon: <GridIcon />,
     name: "Dashboard",
     path: "/saas/dashboard",
+  },
+  {
+    icon: <DocsIcon />,
+    name: "Documents",
+    new: true,
+    subItems: [
+      { name: "Financial Documents", path: "/financial-documents" },
+      { name: "Entities", path: "/entities" },
+    ],
   },
   {
     name: "AI Assistant",

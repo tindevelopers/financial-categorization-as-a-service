@@ -1,0 +1,17 @@
+{
+  "lifecycle": {
+    "rule": [
+      {
+        "action": {
+          "type": "SetStorageClass",
+          "storageClass": "ARCHIVE"
+        },
+        "condition": {
+          "age": 30,
+          "matchesStorageClass": ["STANDARD"]
+        }
+      }
+    ]
+  }
+}
+

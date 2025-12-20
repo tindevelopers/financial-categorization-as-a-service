@@ -266,27 +266,12 @@ export async function signIn(data: SignInData) {
   const supabase = await createClient();
   const adminClient = createAdminClient();
 
-  // #region agent log
-  const fs = require('fs');
-  const path = require('path');
-  const logPath = path.join(process.cwd(), '.cursor', 'debug.log');
-  try {
-    fs.appendFileSync(logPath, JSON.stringify({location:'src/app/actions/auth.ts:265',message:'signIn action called',data:{email:data.email,supabaseUrl:process.env.NEXT_PUBLIC_SUPABASE_URL,isRemote:process.env.NEXT_PUBLIC_SUPABASE_URL?.includes('firwcvlikjltikdrmejq.supabase.co')},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D,E'})+'\n');
-  } catch {}
-  // #endregion
-
   console.log("[signIn] Starting sign in for:", data.email);
 
   const { data: authData, error } = await supabase.auth.signInWithPassword({
     email: data.email,
     password: data.password,
   });
-
-  // #region agent log
-  try {
-    fs.appendFileSync(logPath, JSON.stringify({location:'src/app/actions/auth.ts:276',message:'Auth signInWithPassword result',data:{success:!!authData.user,userId:authData.user?.id,error:error?.message,errorCode:error?.status},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D,E'})+'\n');
-  } catch {}
-  // #endregion
 
   if (error || !authData.user) {
     console.error("[signIn] Auth error:", error);
@@ -333,15 +318,6 @@ export async function signIn(data: SignInData) {
   console.log("[signIn]   - Role ID:", user.role_id);
   console.log("[signIn]   - Role Name:", roleName || "None");
   console.log("[signIn]   - Tenant ID:", tenantId);
-
-  // #region agent log
-  try {
-    const fs = require('fs');
-    const path = require('path');
-    const logPath = path.join(process.cwd(), '.cursor', 'debug.log');
-    fs.appendFileSync(logPath, JSON.stringify({location:'src/app/actions/auth.ts:317',message:'User data fetched in signIn',data:{userId:user.id,email:user.email,roleName,tenantId,isPlatformAdmin:roleName === "Platform Admin" && tenantId === null,isOrganizationAdmin:roleName === "Organization Admin" && tenantId !== null},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D,E'})+'\n');
-  } catch {}
-  // #endregion
 
   // Update last active timestamp
   const updateResult: { error: any } = await adminClient
