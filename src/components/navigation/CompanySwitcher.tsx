@@ -38,8 +38,14 @@ export function CompanySwitcher() {
         const data = await response.json()
         setCompanies(data.companies || [])
         if (data.companies && data.companies.length > 0) {
-          // Set the first company as current (in future, get from localStorage or user preference)
-          setCurrentCompany(data.companies[0])
+          // Check for saved active company in localStorage
+          const savedCompanyId = localStorage.getItem('activeCompanyId')
+          const savedCompany = savedCompanyId 
+            ? data.companies.find((c: Company) => c.id === savedCompanyId)
+            : null
+          
+          // Set saved company or default to first
+          setCurrentCompany(savedCompany || data.companies[0])
         }
       }
     } catch (error) {

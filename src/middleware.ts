@@ -173,7 +173,7 @@ export async function middleware(request: NextRequest) {
   if (user && pathname.startsWith('/dashboard') && pathname !== '/dashboard/setup') {
     // Check if user has completed company setup
     const { data: companies } = await supabase
-      .from('companies')
+      .from('company_profiles')
       .select('id, setup_completed')
       .eq('user_id', user.id)
       .order('created_at', { ascending: false })
