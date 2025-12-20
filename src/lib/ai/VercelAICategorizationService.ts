@@ -31,9 +31,12 @@ export class VercelAICategorizationService implements AICategorizationService {
   }
 
   async categorizeBatch(transactions: Transaction[]): Promise<CategoryResult[]> {
+    console.log("[VercelAI] categorizeBatch called with", transactions.length, "transactions");
     try {
       // Build prompt with user mappings and transaction context
       const prompt = this.buildPrompt(transactions);
+      console.log("[VercelAI] Prompt built, length:", prompt.length);
+      console.log("[VercelAI] Calling generateObject with model:", this.model);
 
       const { object } = await generateObject({
         model: this.model,
@@ -42,7 +45,13 @@ export class VercelAICategorizationService implements AICategorizationService {
         temperature: 0.3, // Lower temperature for more consistent categorization
       });
 
+      console.log("[VercelAI] generateObject returned successfully");
       const categorizations = object.categorizations || [];
+      console.log("[VercelAI] Categorizations count:", categorizations.length);
+
+      if (categorizations.length > 0) {
+        console.log("[VercelAI] First categorization:", JSON.stringify(categorizations[0]));
+      }
 
       return categorizations.map((cat) => ({
         category: cat.category || "Uncategorized",
@@ -51,7 +60,11 @@ export class VercelAICategorizationService implements AICategorizationService {
         reasoning: cat.reasoning,
       }));
     } catch (error: unknown) {
-      console.error("Vercel AI categorization error:", error);
+      console.error("[VercelAI] ERROR in categorizeBatch:", error);
+      console.error("[VercelAI] Error type:", typeof error);
+      console.error("[VercelAI] Error name:", error instanceof Error ? error.name : "unknown");
+      console.error("[VercelAI] Error message:", error instanceof Error ? error.message : String(error));
+      console.error("[VercelAI] Error stack:", error instanceof Error ? error.stack : "no stack");
       // Fallback to basic categorization
       return transactions.map(() => ({
         category: "Uncategorized",

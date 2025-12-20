@@ -397,20 +397,31 @@ async function categorizeTransactions(
     .eq("user_id", userId);
 
   // Use AI categorization if enabled
-  const useAI = process.env.USE_AI_CATEGORIZATION === "true";
+  const useAIValue = process.env.USE_AI_CATEGORIZATION;
+  const useAI = useAIValue === "true";
+  
+  console.log("[AI] USE_AI_CATEGORIZATION env value:", JSON.stringify(useAIValue));
+  console.log("[AI] AI enabled:", useAI);
+  console.log("[AI] Transactions to categorize:", transactions.length);
   
   if (useAI) {
+    console.log("[AI] Starting AI categorization...");
     try {
       const { AICategorizationFactory } = await import("@/lib/ai/AICategorizationFactory");
       const provider = AICategorizationFactory.getDefaultProvider();
+      console.log("[AI] Provider:", provider);
+      
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const userMappings = mappings?.map((m: any) => ({
         pattern: m.pattern,
         category: m.category,
         subcategory: m.subcategory || undefined,
       }));
+      console.log("[AI] User mappings count:", userMappings?.length || 0);
       
       const aiService = AICategorizationFactory.create(provider, userMappings);
+      console.log("[AI] AI service created");
+      
       const aiTransactions = transactions.map(tx => ({
         original_description: tx.description,
         amount: tx.amount,
@@ -422,7 +433,10 @@ async function categorizeTransactions(
       
       for (let i = 0; i < aiTransactions.length; i += BATCH_SIZE) {
         const batch = aiTransactions.slice(i, i + BATCH_SIZE);
+        console.log(`[AI] Processing batch ${Math.floor(i/BATCH_SIZE) + 1}, size: ${batch.length}`);
+        
         const batchResults = await aiService.categorizeBatch(batch);
+        console.log(`[AI] Batch ${Math.floor(i/BATCH_SIZE) + 1} completed, results:`, batchResults.length);
         
         for (let j = 0; j < batch.length; j++) {
           const originalTx = transactions[i + j];
@@ -436,13 +450,19 @@ async function categorizeTransactions(
         }
       }
       
+      console.log("[AI] AI categorization complete. Sample result:", JSON.stringify(results[0]));
       return results;
     } catch (error) {
-      console.error("AI categorization failed, falling back to rule-based:", error);
+      console.error("[AI] AI categorization FAILED:", error);
+      console.error("[AI] Error details:", error instanceof Error ? error.stack : String(error));
+      console.log("[AI] Falling back to rule-based categorization");
     }
+  } else {
+    console.log("[AI] AI disabled, using rule-based categorization");
   }
 
   // Rule-based categorization fallback
+  console.log("[RULES] Starting rule-based categorization");
   return transactions.map(tx => {
     let category: string | undefined;
     let subcategory: string | undefined;
