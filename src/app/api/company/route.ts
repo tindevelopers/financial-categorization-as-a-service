@@ -1,4 +1,4 @@
-// @ts-nocheck - company_profiles table types not yet in generated schema
+// @ts-nocheck
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/core/database/server'
 
