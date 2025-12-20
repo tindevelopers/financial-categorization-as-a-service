@@ -19,16 +19,9 @@ export class VercelAICategorizationService implements AICategorizationService {
   }
 
   async categorizeBatch(transactions: Transaction[]): Promise<CategoryResult[]> {
-    // #region agent log
-    console.log("[DEBUG] VercelAI: Starting AI call", JSON.stringify({transactionCount:transactions.length}));
-    // #endregion
     try {
       // Build prompt with user mappings and transaction context
       const prompt = this.buildPrompt(transactions);
-
-      // #region agent log
-      console.log("[DEBUG] VercelAI: Calling generateObject", JSON.stringify({promptLength:prompt.length}));
-      // #endregion
 
       const { object } = await generateObject({
         model: this.model,
@@ -71,10 +64,6 @@ export class VercelAICategorizationService implements AICategorizationService {
 
       const categorizations = (object as any).categorizations || [];
 
-      // #region agent log
-      console.log("[DEBUG] VercelAI: Response received", JSON.stringify({categorizationCount:categorizations.length,sample:categorizations[0]}));
-      // #endregion
-
       return categorizations.map((cat: any, index: number) => ({
         category: cat.category || "Uncategorized",
         subcategory: cat.subcategory,
@@ -82,9 +71,6 @@ export class VercelAICategorizationService implements AICategorizationService {
         reasoning: cat.reasoning,
       }));
     } catch (error: any) {
-      // #region agent log
-      console.log("[DEBUG] VercelAI: ERROR", JSON.stringify({errorMessage:error?.message,errorName:error?.name,errorCode:error?.code}));
-      // #endregion
       console.error("Vercel AI categorization error:", error);
       // Fallback to basic categorization
       return transactions.map(() => ({

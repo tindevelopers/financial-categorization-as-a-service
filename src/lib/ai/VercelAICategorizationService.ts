@@ -13,47 +13,15 @@ const categorizationSchema = z.object({
   })),
 });
 
-// Debug logging helper
-const DEBUG_ENDPOINT = 'http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e';
-function debugLog(location: string, message: string, data: Record<string, unknown>, hypothesisId: string) {
-  // #region agent log
-  fetch(DEBUG_ENDPOINT, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ location, message, data, timestamp: Date.now(), sessionId: 'debug-session', hypothesisId })
-  }).catch(() => {});
-  // #endregion
-}
-
 export class VercelAICategorizationService implements AICategorizationService {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private model: any;
   private userMappings?: Array<{ pattern: string; category: string; subcategory?: string }>;
 
   constructor(userMappings?: Array<{ pattern: string; category: string; subcategory?: string }>) {
-    // #region agent log
-    const aiGatewayKey = process.env.AI_GATEWAY_API_KEY;
-    const vercelAiGatewayKey = process.env.VERCEL_AI_GATEWAY_API_KEY;
-    debugLog('VercelAICategorizationService.ts:constructor', 'Constructor called', {
-      AI_GATEWAY_API_KEY_set: !!aiGatewayKey,
-      AI_GATEWAY_API_KEY_length: aiGatewayKey?.length || 0,
-      AI_GATEWAY_API_KEY_hasNewline: aiGatewayKey?.includes('\n') || aiGatewayKey?.includes('\\n'),
-      VERCEL_AI_GATEWAY_API_KEY_set: !!vercelAiGatewayKey,
-      VERCEL_AI_GATEWAY_API_KEY_length: vercelAiGatewayKey?.length || 0,
-      userMappingsCount: userMappings?.length || 0,
-    }, 'B,E');
-    // #endregion
-
     // Use Vercel AI Gateway
     this.model = gateway("openai/gpt-4o-mini");
     this.userMappings = userMappings;
-
-    // #region agent log
-    debugLog('VercelAICategorizationService.ts:constructor', 'Model created', {
-      modelType: typeof this.model,
-      modelExists: !!this.model,
-    }, 'C');
-    // #endregion
   }
 
   async categorizeTransaction(transaction: Transaction): Promise<CategoryResult> {
@@ -62,39 +30,15 @@ export class VercelAICategorizationService implements AICategorizationService {
   }
 
   async categorizeBatch(transactions: Transaction[]): Promise<CategoryResult[]> {
-    // #region agent log
-    debugLog('VercelAICategorizationService.ts:categorizeBatch', 'Method called', {
-      transactionCount: transactions.length,
-      firstTransaction: transactions[0]?.original_description || 'none',
-    }, 'D');
-    // #endregion
-
     try {
       const prompt = this.buildPrompt(transactions);
-      
-      // #region agent log
-      debugLog('VercelAICategorizationService.ts:categorizeBatch', 'Calling generateObject', {
-        promptLength: prompt.length,
-        promptPreview: prompt.substring(0, 100),
-      }, 'D');
-      // #endregion
 
-      const startTime = Date.now();
       const { object } = await generateObject({
         model: this.model,
         schema: categorizationSchema,
         prompt,
         temperature: 0.3,
       });
-      const duration = Date.now() - startTime;
-
-      // #region agent log
-      debugLog('VercelAICategorizationService.ts:categorizeBatch', 'generateObject SUCCESS', {
-        duration,
-        categorizationsCount: object.categorizations?.length || 0,
-        firstCategory: object.categorizations?.[0]?.category || 'none',
-      }, 'D');
-      // #endregion
 
       const categorizations = object.categorizations || [];
 
@@ -105,15 +49,7 @@ export class VercelAICategorizationService implements AICategorizationService {
         reasoning: cat.reasoning,
       }));
     } catch (error: unknown) {
-      // #region agent log
-      debugLog('VercelAICategorizationService.ts:categorizeBatch', 'generateObject ERROR', {
-        errorType: typeof error,
-        errorName: error instanceof Error ? error.name : 'unknown',
-        errorMessage: error instanceof Error ? error.message : String(error),
-        errorStack: error instanceof Error ? error.stack?.substring(0, 500) : 'no stack',
-      }, 'D');
-      // #endregion
-
+      console.error("Vercel AI categorization error:", error);
       // Re-throw to let caller handle
       throw error;
     }

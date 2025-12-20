@@ -312,17 +312,10 @@ async function categorizeTransactions(
   // Use AI categorization service if available
   const useAI = process.env.USE_AI_CATEGORIZATION === "true";
   
-  // #region agent log
-  console.log("[DEBUG] AI Config Check:", JSON.stringify({useAI,USE_AI_CATEGORIZATION:process.env.USE_AI_CATEGORIZATION,OPENAI_API_KEY_EXISTS:!!process.env.OPENAI_API_KEY,AI_CATEGORIZATION_PROVIDER:process.env.AI_CATEGORIZATION_PROVIDER,transactionCount:transactions.length}));
-  // #endregion
-  
   if (useAI) {
     try {
       const { AICategorizationFactory } = await import("@/lib/ai/AICategorizationFactory");
       const provider = AICategorizationFactory.getDefaultProvider();
-      // #region agent log
-      console.log("[DEBUG] AI Factory Loaded:", JSON.stringify({provider}));
-      // #endregion
       const userMappings = mappings?.map(m => ({
         pattern: m.pattern,
         category: m.category,
@@ -342,17 +335,9 @@ async function categorizeTransactions(
       const BATCH_SIZE = 20;
       const results: Array<Transaction & { category?: string; subcategory?: string; confidenceScore?: number }> = [];
       
-      // #region agent log
-      console.log("[DEBUG] Starting AI Batch Processing:", JSON.stringify({totalTransactions:aiTransactions.length,batchSize:BATCH_SIZE}));
-      // #endregion
-      
       for (let i = 0; i < aiTransactions.length; i += BATCH_SIZE) {
         const batch = aiTransactions.slice(i, i + BATCH_SIZE);
         const batchResults = await aiService.categorizeBatch(batch);
-        
-        // #region agent log
-        console.log("[DEBUG] Batch Completed:", JSON.stringify({batchIndex:i,batchResultCount:batchResults.length,sampleResult:batchResults[0]}));
-        // #endregion
         
         // Merge results back with original transactions
         for (let j = 0; j < batch.length; j++) {
@@ -367,22 +352,11 @@ async function categorizeTransactions(
         }
       }
       
-      // #region agent log
-      console.log("[DEBUG] AI Categorization Complete:", JSON.stringify({totalResults:results.length}));
-      // #endregion
-      
       return results;
     } catch (error: any) {
-      // #region agent log
-      console.log("[DEBUG] AI Categorization FAILED:", JSON.stringify({errorMessage:error?.message,errorName:error?.name}));
-      // #endregion
       console.error("AI categorization failed, falling back to rule-based:", error);
       // Fall through to rule-based categorization
     }
-  } else {
-    // #region agent log
-    console.log("[DEBUG] AI SKIPPED - Using Rule-Based:", JSON.stringify({reason:'USE_AI_CATEGORIZATION is not true',envValue:process.env.USE_AI_CATEGORIZATION}));
-    // #endregion
   }
 
   // Basic rule-based categorization (fallback)

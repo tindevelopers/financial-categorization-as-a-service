@@ -9,57 +9,40 @@ interface Transaction {
 }
 
 export async function POST(request: NextRequest) {
-  console.log("[UPLOAD] Starting upload request");
-  
   try {
-    console.log("[UPLOAD] Creating Supabase client");
     const supabase = await createClient();
-    
-    console.log("[UPLOAD] Getting user");
     const { data: { user }, error: authError } = await supabase.auth.getUser();
 
     if (authError || !user) {
-      console.log("[UPLOAD] Auth error:", authError?.message || "No user");
       return NextResponse.json(
         { error: "Unauthorized" },
         { status: 401 }
       );
     }
-    console.log("[UPLOAD] User authenticated:", user.id);
 
     // Get tenant_id for the user
-    console.log("[UPLOAD] Getting user tenant_id");
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { data: userData, error: userError } = await (supabase as any)
+    const { data: userData } = await (supabase as any)
       .from("users")
       .select("tenant_id")
       .eq("id", user.id)
       .single() as { data: { tenant_id: string | null } | null; error: unknown };
-    
-    if (userError) {
-      console.log("[UPLOAD] User lookup warning (continuing anyway):", userError);
-    }
-    console.log("[UPLOAD] User tenant_id:", userData?.tenant_id || "none");
 
-    console.log("[UPLOAD] Getting form data");
     const formData = await request.formData();
     const file = formData.get("file") as File;
 
     if (!file) {
-      console.log("[UPLOAD] No file in form data");
       return NextResponse.json(
         { error: "No file provided" },
         { status: 400 }
       );
     }
-    console.log("[UPLOAD] File received:", file.name, "Size:", file.size, "Type:", file.type);
 
     // Validate file type
     const validExtensions = [".xlsx", ".xls", ".csv"];
     const fileExtension = file.name.substring(file.name.lastIndexOf(".")).toLowerCase();
     
     if (!validExtensions.includes(fileExtension)) {
-      console.log("[UPLOAD] Invalid file type:", fileExtension);
       return NextResponse.json(
         { error: "Invalid file type. Please upload .xlsx, .xls, or .csv" },
         { status: 400 }
@@ -69,7 +52,6 @@ export async function POST(request: NextRequest) {
     // Validate file size (max 10MB)
     const maxSize = 10 * 1024 * 1024; // 10MB
     if (file.size > maxSize) {
-      console.log("[UPLOAD] File too large:", file.size);
       return NextResponse.json(
         { error: "File size exceeds 10MB limit" },
         { status: 400 }
@@ -77,10 +59,8 @@ export async function POST(request: NextRequest) {
     }
 
     // Upload to Supabase Storage
-    console.log("[UPLOAD] Reading file buffer");
     const fileBuffer = Buffer.from(await file.arrayBuffer());
     const fileName = `${user.id}/${Date.now()}-${file.name}`;
-    console.log("[UPLOAD] Uploading to Supabase Storage:", fileName);
     
     const { error: uploadError } = await supabase.storage
       .from("categorization-uploads")
@@ -90,23 +70,19 @@ export async function POST(request: NextRequest) {
       });
 
     if (uploadError) {
-      console.error("[UPLOAD] Storage upload error:", uploadError);
+      console.error("Storage upload error:", uploadError);
       return NextResponse.json(
         { error: "Failed to upload file: " + uploadError.message },
         { status: 500 }
       );
     }
-    console.log("[UPLOAD] File uploaded to storage successfully");
 
     // Get public URL
-    console.log("[UPLOAD] Getting public URL");
     const { data: urlData } = supabase.storage
       .from("categorization-uploads")
       .getPublicUrl(fileName);
-    console.log("[UPLOAD] Public URL:", urlData.publicUrl);
 
     // Create categorization job
-    console.log("[UPLOAD] Creating categorization job");
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { data: jobData, error: jobError } = await (supabase as any)
       .from("categorization_jobs")
@@ -124,31 +100,25 @@ export async function POST(request: NextRequest) {
       .single();
 
     if (jobError) {
-      console.error("[UPLOAD] Job creation error:", jobError);
+      console.error("Job creation error:", jobError);
       return NextResponse.json(
         { error: "Failed to create job: " + (jobError.message || JSON.stringify(jobError)) },
         { status: 500 }
       );
     }
-    console.log("[UPLOAD] Job created:", jobData.id);
 
     // Process the file inline
     try {
       // Parse spreadsheet from buffer directly (no need to re-download)
-      console.log("[UPLOAD] Parsing spreadsheet");
       const workbook = XLSX.read(fileBuffer, { type: "buffer" });
       const sheetName = workbook.SheetNames[0];
-      console.log("[UPLOAD] Sheet name:", sheetName);
       const worksheet = workbook.Sheets[sheetName];
       const data = XLSX.utils.sheet_to_json(worksheet, { raw: false });
-      console.log("[UPLOAD] Parsed rows:", data.length);
 
       // Extract transactions
       const transactions = extractTransactions(data);
-      console.log("[UPLOAD] Extracted transactions:", transactions.length);
 
       if (transactions.length === 0) {
-        console.log("[UPLOAD] No transactions found in spreadsheet");
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         await (supabase as any)
           .from("categorization_jobs")
@@ -166,7 +136,6 @@ export async function POST(request: NextRequest) {
       }
 
       // Update job with total items
-      console.log("[UPLOAD] Updating job with total items");
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       await (supabase as any)
         .from("categorization_jobs")
@@ -174,16 +143,13 @@ export async function POST(request: NextRequest) {
         .eq("id", jobData.id);
 
       // Categorize transactions
-      console.log("[UPLOAD] Categorizing transactions");
       const categorizedTransactions = await categorizeTransactions(
         transactions,
         user.id,
         supabase
       );
-      console.log("[UPLOAD] Categorization complete");
 
       // Insert categorized transactions
-      console.log("[UPLOAD] Inserting transactions into database");
       const transactionsToInsert = categorizedTransactions.map(tx => ({
         job_id: jobData.id,
         original_description: tx.description,
@@ -201,7 +167,7 @@ export async function POST(request: NextRequest) {
         .insert(transactionsToInsert);
 
       if (insertError) {
-        console.error("[UPLOAD] Insert error:", insertError);
+        console.error("Insert error:", insertError);
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         await (supabase as any)
           .from("categorization_jobs")
@@ -217,10 +183,8 @@ export async function POST(request: NextRequest) {
           error: "Failed to save transactions: " + (insertError.message || JSON.stringify(insertError)),
         });
       }
-      console.log("[UPLOAD] Transactions inserted successfully");
 
       // Update job status to reviewing
-      console.log("[UPLOAD] Updating job status to reviewing");
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       await (supabase as any)
         .from("categorization_jobs")
@@ -231,7 +195,6 @@ export async function POST(request: NextRequest) {
         })
         .eq("id", jobData.id);
 
-      console.log("[UPLOAD] SUCCESS - returning response");
       return NextResponse.json({
         success: true,
         jobId: jobData.id,
@@ -239,7 +202,7 @@ export async function POST(request: NextRequest) {
         message: "File uploaded and processed successfully",
       });
     } catch (processError) {
-      console.error("[UPLOAD] Processing error:", processError);
+      console.error("Processing error:", processError);
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       await (supabase as any)
         .from("categorization_jobs")
@@ -256,7 +219,7 @@ export async function POST(request: NextRequest) {
       });
     }
   } catch (error: unknown) {
-    console.error("[UPLOAD] Top-level error:", error);
+    console.error("Upload error:", error);
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Internal server error" },
       { status: 500 }
@@ -384,18 +347,6 @@ function isDateLike(value: any): boolean {
   return false;
 }
 
-// Debug logging helper
-const DEBUG_ENDPOINT = 'http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e';
-function debugLog(location: string, message: string, data: Record<string, unknown>, hypothesisId: string) {
-  // #region agent log
-  fetch(DEBUG_ENDPOINT, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ location, message, data, timestamp: Date.now(), sessionId: 'debug-session', hypothesisId })
-  }).catch(() => {});
-  // #endregion
-}
-
 async function categorizeTransactions(
   transactions: Transaction[],
   userId: string,
@@ -409,24 +360,9 @@ async function categorizeTransactions(
     .eq("user_id", userId);
 
   // Use AI categorization if enabled
-  const useAIValue = process.env.USE_AI_CATEGORIZATION;
-  const useAI = useAIValue === "true";
-  
-  // #region agent log
-  console.log("[DEBUG] AI Config:", JSON.stringify({
-    USE_AI_CATEGORIZATION: useAIValue,
-    useAI: useAI,
-    OPENAI_API_KEY_EXISTS: !!process.env.OPENAI_API_KEY,
-    AI_PROVIDER: process.env.AI_CATEGORIZATION_PROVIDER,
-    transactionCount: transactions.length,
-  }));
-  // #endregion
+  const useAI = process.env.USE_AI_CATEGORIZATION === "true";
   
   if (useAI) {
-    // #region agent log
-    debugLog('upload/route.ts:categorizeTransactions', 'AI branch entered', {}, 'A');
-    // #endregion
-    
     try {
       const { AICategorizationFactory } = await import("@/lib/ai/AICategorizationFactory");
       const provider = AICategorizationFactory.getDefaultProvider();
@@ -437,13 +373,6 @@ async function categorizeTransactions(
         category: m.category,
         subcategory: m.subcategory || undefined,
       }));
-      
-      // #region agent log
-      debugLog('upload/route.ts:categorizeTransactions', 'Creating AI service', {
-        provider,
-        userMappingsCount: userMappings?.length || 0,
-      }, 'C');
-      // #endregion
       
       const aiService = AICategorizationFactory.create(provider, userMappings);
       
@@ -458,26 +387,7 @@ async function categorizeTransactions(
       
       for (let i = 0; i < aiTransactions.length; i += BATCH_SIZE) {
         const batch = aiTransactions.slice(i, i + BATCH_SIZE);
-        
-        // #region agent log
-        debugLog('upload/route.ts:categorizeTransactions', 'Processing batch', {
-          batchNumber: Math.floor(i/BATCH_SIZE) + 1,
-          batchSize: batch.length,
-        }, 'D');
-        // #endregion
-        
         const batchResults = await aiService.categorizeBatch(batch);
-        
-        // #region agent log
-        console.log("[AI] Batch completed:", JSON.stringify({
-          batchNumber: Math.floor(i/BATCH_SIZE) + 1,
-          batchInputSize: batch.length,
-          resultsCount: batchResults?.length || 0,
-          resultsType: typeof batchResults,
-          isArray: Array.isArray(batchResults),
-          firstResult: batchResults?.[0] || 'none',
-        }));
-        // #endregion
         
         for (let j = 0; j < batch.length; j++) {
           const originalTx = transactions[i + j];
@@ -491,7 +401,6 @@ async function categorizeTransactions(
               confidenceScore: aiResult.confidenceScore || 0.5,
             });
           } else {
-            console.log(`[AI] Missing result for transaction ${i + j}, using fallback`);
             results.push({
               ...originalTx,
               category: "Uncategorized",
@@ -501,37 +410,13 @@ async function categorizeTransactions(
         }
       }
       
-      // #region agent log
-      debugLog('upload/route.ts:categorizeTransactions', 'AI categorization SUCCESS', {
-        totalResults: results.length,
-        sampleCategory: results[0]?.category || 'none',
-        sampleConfidence: results[0]?.confidenceScore || 0,
-      }, 'D');
-      // #endregion
-      
       return results;
     } catch (error) {
-      // #region agent log
-      debugLog('upload/route.ts:categorizeTransactions', 'AI categorization FAILED', {
-        errorType: typeof error,
-        errorName: error instanceof Error ? error.name : 'unknown',
-        errorMessage: error instanceof Error ? error.message : String(error),
-      }, 'D');
-      // #endregion
-      
-      console.error("[AI] AI categorization FAILED:", error);
+      console.error("AI categorization failed, falling back to rule-based:", error);
     }
-  } else {
-    // #region agent log
-    debugLog('upload/route.ts:categorizeTransactions', 'AI disabled - using rules', {
-      reason: 'USE_AI_CATEGORIZATION not true',
-      actualValue: useAIValue,
-    }, 'A');
-    // #endregion
   }
 
   // Rule-based categorization fallback
-  console.log("[RULES] Starting rule-based categorization");
   return transactions.map(tx => {
     let category: string | undefined;
     let subcategory: string | undefined;
