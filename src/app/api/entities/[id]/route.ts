@@ -154,8 +154,8 @@ export async function PATCH(
     }
 
     // Update entity
-    const { data: entity, error: updateError } = await supabase
-      .from("entities")
+    const { data: entity, error: updateError } = await (supabase
+      .from("entities") as any)
       .update(updates)
       .eq("id", id)
       .select()
@@ -230,9 +230,9 @@ export async function DELETE(
     }
 
     // Soft delete by setting is_active = false
-    const { error: updateError } = await supabase
-      .from("entities")
-      .update({ is_active: false })
+    const { error: updateError } = await (supabase
+      .from("entities") as any)
+      .update({ is_active: false } as never)
       .eq("id", id);
 
     if (updateError) {

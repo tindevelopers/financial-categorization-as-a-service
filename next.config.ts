@@ -57,6 +57,13 @@ const nextConfig: NextConfig = {
       '@tinadmin/core': path.resolve(__dirname, 'packages/@tinadmin/core/src'),
     };
     
+    // Handle optional dependencies that may not be installed
+    config.resolve.fallback = {
+      ...config.resolve.fallback,
+      '@google-cloud/documentai': false,
+      '@google-cloud/storage': false,
+    };
+    
     // Optimize bundle size
     if (!isServer) {
       config.resolve.fallback = {

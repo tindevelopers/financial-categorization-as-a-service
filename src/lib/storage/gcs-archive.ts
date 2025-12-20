@@ -131,7 +131,9 @@ async function uploadToGCSArchive(
     // Dynamic import of Google Cloud Storage SDK
     // This allows the code to work even if the SDK isn't installed
     try {
-      const { Storage } = await import("@google-cloud/storage");
+      // Optional dependency, may not be installed
+      const storageModule = await import("@google-cloud/storage") as any;
+      const { Storage } = storageModule;
       const storage = new Storage({
         projectId: GCS_PROJECT_ID,
         keyFilename: credentials,

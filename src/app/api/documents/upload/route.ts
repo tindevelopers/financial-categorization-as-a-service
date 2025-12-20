@@ -29,13 +29,16 @@ export async function POST(request: NextRequest): Promise<NextResponse<UploadRes
     }
 
     // Get tenant_id for the user
+    type UserData = {
+      tenant_id: string | null;
+    };
     const { data: userData } = await supabase
       .from("users")
       .select("tenant_id")
       .eq("id", user.id)
       .single();
 
-    const tenantId = userData?.tenant_id || null;
+    const tenantId = (userData as UserData | null)?.tenant_id || null;
 
     // Parse form data
     const formData = await request.formData();
@@ -94,6 +97,10 @@ export async function POST(request: NextRequest): Promise<NextResponse<UploadRes
     const fileHash = calculateFileHash(fileBuffer);
 
     // Check for duplicate (same hash for same user)
+    type ExistingDocument = {
+      id: string;
+      original_filename: string | null;
+    };
     const { data: existingDoc } = await supabase
       .from("financial_documents")
       .select("id, original_filename")
@@ -103,11 +110,12 @@ export async function POST(request: NextRequest): Promise<NextResponse<UploadRes
       .single();
 
     if (existingDoc) {
+      const doc = existingDoc as ExistingDocument;
       return NextResponse.json(
         { 
           success: false, 
-          error: `Duplicate file detected. This file was already uploaded as "${existingDoc.original_filename}"`,
-          documentId: existingDoc.id,
+          error: `Duplicate file detected. This file was already uploaded as "${doc.original_filename || "unknown"}"`,
+          documentId: doc.id,
         },
         { status: 409 }
       );
@@ -135,8 +143,8 @@ export async function POST(request: NextRequest): Promise<NextResponse<UploadRes
     }
 
     // Create document record
-    const { data: document, error: insertError } = await supabase
-      .from("financial_documents")
+    const { data: document, error: insertError } = await (supabase
+      .from("financial_documents") as any)
       .insert({
         entity_id: entityId || null,
         tenant_id: tenantId,

@@ -53,9 +53,17 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       const result = await processDocumentOCR(supabase, documentId);
       results.push(result);
     } else {
+      // Define document type
+      type PendingDocument = {
+        id: string;
+        supabase_path: string | null;
+        mime_type: string | null;
+        file_type: string | null;
+      };
+
       // Process pending documents
-      const { data: pendingDocs, error: fetchError } = await supabase
-        .from("financial_documents")
+      const { data: pendingDocs, error: fetchError } = await (supabase
+        .from("financial_documents") as any)
         .select("id, supabase_path, mime_type, file_type")
         .eq("ocr_status", "pending")
         .eq("is_deleted", false)
@@ -70,7 +78,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         );
       }
 
-      if (!pendingDocs || pendingDocs.length === 0) {
+      if (!pendingDocs) {
         return NextResponse.json({
           success: true,
           message: "No pending documents to process",
@@ -78,14 +86,25 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         });
       }
 
+      if (pendingDocs.length === 0) {
+        return NextResponse.json({
+          success: true,
+          message: "No pending documents to process",
+          processed: 0,
+        });
+      }
+
+      // Type assertion for documents
+      const docs: PendingDocument[] = pendingDocs as PendingDocument[];
+
       // Process each document
-      for (const doc of pendingDocs) {
+      for (const doc of docs) {
         const result = await processDocumentOCR(
           supabase,
           doc.id,
-          doc.supabase_path,
-          doc.mime_type,
-          doc.file_type
+          doc.supabase_path || undefined,
+          doc.mime_type || undefined,
+          doc.file_type || undefined
         );
         results.push(result);
       }
@@ -124,8 +143,8 @@ async function processDocumentOCR(
   try {
     // If not provided, fetch document details
     if (!supabasePath || !mimeType) {
-      const { data: doc, error: fetchError } = await supabase
-        .from("financial_documents")
+      const { data: doc, error: fetchError } = await (supabase
+        .from("financial_documents") as any)
         .select("supabase_path, mime_type, file_type")
         .eq("id", documentId)
         .single();
@@ -152,8 +171,8 @@ async function processDocumentOCR(
     }
 
     // Mark as processing
-    await supabase
-      .from("financial_documents")
+    await (supabase
+      .from("financial_documents") as any)
       .update({
         ocr_status: "processing",
         ocr_started_at: new Date().toISOString(),
@@ -166,8 +185,8 @@ async function processDocumentOCR(
       .download(supabasePath);
 
     if (downloadError || !fileData) {
-      await supabase
-        .from("financial_documents")
+      await (supabase
+        .from("financial_documents") as any)
         .update({
           ocr_status: "failed",
           ocr_error: `Download failed: ${downloadError?.message || "No data"}`,
@@ -188,8 +207,8 @@ async function processDocumentOCR(
     const ocrResult = await processDocument(buffer, mimeType!, fileType || "other");
 
     if (!ocrResult.success) {
-      await supabase
-        .from("financial_documents")
+      await (supabase
+        .from("financial_documents") as any)
         .update({
           ocr_status: "failed",
           ocr_error: ocrResult.error,
@@ -238,8 +257,8 @@ async function processDocumentOCR(
       }
     }
 
-    await supabase
-      .from("financial_documents")
+    await (supabase
+      .from("financial_documents") as any)
       .update(updates)
       .eq("id", documentId);
 
@@ -251,8 +270,8 @@ async function processDocumentOCR(
     console.error(`OCR error for document ${documentId}:`, error);
 
     try {
-      await supabase
-        .from("financial_documents")
+      await (supabase
+        .from("financial_documents") as any)
         .update({
           ocr_status: "failed",
           ocr_error: error instanceof Error ? error.message : "Unknown error",
@@ -283,8 +302,8 @@ export async function GET(): Promise<NextResponse> {
     const counts: Record<string, number> = {};
 
     for (const status of statuses) {
-      const { count } = await supabase
-        .from("financial_documents")
+      const { count } = await (supabase
+        .from("financial_documents") as any)
         .select("*", { count: "exact", head: true })
         .eq("ocr_status", status)
         .eq("is_deleted", false);

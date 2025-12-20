@@ -124,13 +124,16 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     }
 
     // Get tenant_id for the user
+    type UserData = {
+      tenant_id: string | null;
+    };
     const { data: userData } = await supabase
       .from("users")
       .select("tenant_id")
       .eq("id", user.id)
       .single();
 
-    const tenantId = userData?.tenant_id || null;
+    const tenantId = (userData as UserData | null)?.tenant_id || null;
 
     // Parse request body
     const body: EntityInput = await request.json();
@@ -159,8 +162,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     }
 
     // Create entity
-    const { data: entity, error: insertError } = await supabase
-      .from("entities")
+    const { data: entity, error: insertError } = await (supabase
+      .from("entities") as any)
       .insert({
         tenant_id: tenantId,
         owner_user_id: user.id,

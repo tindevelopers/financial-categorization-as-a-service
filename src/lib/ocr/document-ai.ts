@@ -97,9 +97,11 @@ export async function processDocument(
 
     // Dynamic import of Document AI SDK
     try {
-      const { DocumentProcessorServiceClient } = await import(
+      // Optional dependency, may not be installed
+      const documentaiModule = await import(
         "@google-cloud/documentai"
-      );
+      ) as any;
+      const { DocumentProcessorServiceClient } = documentaiModule;
 
       const client = new DocumentProcessorServiceClient({
         keyFilename: credentials,

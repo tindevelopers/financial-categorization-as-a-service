@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useCallback } from "react";
-import { useDropzone } from "react-dropzone";
+import { useDropzone, type FileRejection } from "react-dropzone";
 
 interface DocumentUploaderProps {
   entityId?: string;
@@ -139,7 +139,7 @@ export default function DocumentUploader({
   };
 
   const onDrop = useCallback(
-    (acceptedFiles: File[], rejectedFiles: { file: File; errors: { code: string; message: string }[] }[]) => {
+    (acceptedFiles: File[], rejectedFiles: FileRejection[]) => {
       // Handle rejected files
       if (rejectedFiles.length > 0) {
         const errors = rejectedFiles.map(

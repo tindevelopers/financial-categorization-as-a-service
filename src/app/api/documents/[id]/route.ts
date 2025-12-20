@@ -308,13 +308,20 @@ export async function DELETE(
       );
     }
 
+    // Type assertion for existing
+    const existingDoc = existing as {
+      id: string;
+      supabase_path: string | null;
+      storage_tier: string | null;
+    };
+
     // Soft delete the document record
     const { error: deleteError } = await supabase
       .from("financial_documents")
       .update({
         is_deleted: true,
         deleted_at: new Date().toISOString(),
-      })
+      } as never)
       .eq("id", id);
 
     if (deleteError) {
@@ -326,8 +333,8 @@ export async function DELETE(
     }
 
     // Optionally delete from storage (or let a cleanup job handle it)
-    if (existing.storage_tier === "hot" && existing.supabase_path) {
-      await deleteFromSupabase(supabase, existing.supabase_path);
+    if (existingDoc.storage_tier === "hot" && existingDoc.supabase_path) {
+      await deleteFromSupabase(supabase, existingDoc.supabase_path);
     }
 
     return NextResponse.json({
