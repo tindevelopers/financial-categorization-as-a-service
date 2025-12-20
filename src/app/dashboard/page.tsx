@@ -23,7 +23,7 @@ export default function DashboardPage() {
       {/* Header */}
       <div>
         <Heading>Dashboard</Heading>
-        <Text>Welcome back! Here's your overview for today.</Text>
+        <Text>Welcome back! Here&apos;s your overview for today.</Text>
       </div>
 
       {/* Metrics Cards */}

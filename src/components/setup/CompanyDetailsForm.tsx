@@ -17,7 +17,7 @@ export function CompanyDetailsForm({ data, onChange }: CompanyDetailsFormProps) 
       <div>
         <Legend>Company Details</Legend>
         <Text className="mt-2">
-          Let's start with the basics about your business
+          Let&apos;s start with the basics about your business
         </Text>
       </div>
 

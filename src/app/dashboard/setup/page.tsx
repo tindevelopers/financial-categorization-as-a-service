@@ -78,7 +78,7 @@ export default function SetupWizardPage() {
       <div className="max-w-2xl w-full">
         {/* Header */}
         <div className="text-center mb-8">
-          <Heading level={1}>Welcome! Let's set up your account</Heading>
+          <Heading level={1}>Welcome! Let&apos;s set up your account</Heading>
           <Text className="mt-2">
             Step {currentStep} of {totalSteps}
           </Text>
