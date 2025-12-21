@@ -6,12 +6,22 @@ import { ArrowUpTrayIcon, DocumentTextIcon, ClockIcon } from '@heroicons/react/2
 import Link from 'next/link'
 import { createClient } from '@/core/database/client'
 
+interface StorageInfo {
+  tier: 'hot' | 'archive' | 'restoring'
+  total_size_bytes: number
+  document_count: number
+  archived_at: string | null
+}
+
 interface Upload {
   id: string
-  filename: string
+  original_filename: string
   status: string
   created_at: string
-  transaction_count?: number
+  job_type: string
+  total_items?: number
+  processed_items?: number
+  storage_info?: StorageInfo
 }
 
 export default function UploadsPage() {
@@ -20,20 +30,23 @@ export default function UploadsPage() {
 
   useEffect(() => {
     async function fetchUploads() {
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'uploads/page.tsx:23',message:'fetchUploads started',data:{hasSupabaseUrl:!!process.env.NEXT_PUBLIC_SUPABASE_URL,hasSupabaseKey:!!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'A'})}).catch(()=>{});
+      // #endregion
       try {
-        const supabase = createClient()
-        const { data, error } = await supabase
-          .from('categorization_jobs')
-          .select('id, filename, status, created_at')
-          .order('created_at', { ascending: false })
-          .limit(20)
-
-        if (error) {
-          console.error('Error fetching uploads:', error)
-        } else {
-          setUploads(data || [])
+        // Use the new API endpoint that includes storage info
+        const response = await fetch('/api/categorization/jobs?limit=20')
+        
+        if (!response.ok) {
+          throw new Error('Failed to fetch uploads')
         }
-      } catch (error) {
+
+        const result = await response.json()
+        setUploads(result.jobs || [])
+      } catch (error: any) {
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'uploads/page.tsx:50',message:'fetchUploads exception',data:{errorMessage:error?.message || 'unknown',errorType:error?.constructor?.name || 'unknown'},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'C'})}).catch(()=>{});
+        // #endregion
         console.error('Error fetching uploads:', error)
       } finally {
         setLoading(false)
@@ -52,8 +65,31 @@ export default function UploadsPage() {
       case 'failed':
         return 'text-red-600 dark:text-red-400'
       default:
-        return 'text-gray-600 dark:text-gray-400'
+    return 'text-gray-600 dark:text-gray-400'
+  }
+}
+
+  const getStorageTierBadge = (tier?: 'hot' | 'archive' | 'restoring') => {
+    if (!tier) return null
+    
+    const badges = {
+      hot: { color: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400', label: 'Hot Storage' },
+      archive: { color: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400', label: 'Archived' },
+      restoring: { color: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400', label: 'Restoring' },
     }
+    
+    const badge = badges[tier]
+    return (
+      <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${badge.color}`}>
+        {badge.label}
+      </span>
+    )
+  }
+
+  const formatFileSize = (bytes?: number) => {
+    if (!bytes) return '—'
+    const mb = bytes / (1024 * 1024)
+    return mb < 1 ? `${(bytes / 1024).toFixed(1)} KB` : `${mb.toFixed(2)} MB`
   }
 
   const formatDate = (dateString: string) => {
@@ -120,6 +156,12 @@ export default function UploadsPage() {
                     Status
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                    Storage
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                    Size
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                     Uploaded
                   </th>
                   <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
@@ -135,7 +177,10 @@ export default function UploadsPage() {
                         <DocumentTextIcon className="h-5 w-5 text-gray-400" />
                         <div>
                           <div className="text-sm font-medium text-gray-900 dark:text-white">
-                            {upload.filename}
+                            {upload.original_filename}
+                          </div>
+                          <div className="text-xs text-gray-500 dark:text-gray-400 capitalize">
+                            {upload.job_type.replace('_', ' ')}
                           </div>
                         </div>
                       </div>
@@ -144,6 +189,12 @@ export default function UploadsPage() {
                       <span className={`text-sm font-medium capitalize ${getStatusColor(upload.status)}`}>
                         {upload.status}
                       </span>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      {getStorageTierBadge(upload.storage_info?.tier)}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
+                      {formatFileSize(upload.storage_info?.total_size_bytes)}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
                       {formatDate(upload.created_at)}
