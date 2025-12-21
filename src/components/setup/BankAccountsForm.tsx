@@ -2,7 +2,7 @@
 'use client'
 
 import { useState } from 'react'
-import { Fieldset, Legend, Label, Input, Button, Text } from '@/components/catalyst'
+import { Fieldset, Legend, Input, Button, Text } from '@/components/catalyst'
 import { PlusIcon, TrashIcon } from '@heroicons/react/24/outline'
 
 interface BankAccount {

@@ -1,7 +1,7 @@
 // @ts-nocheck
 'use client'
 
-import { Fieldset, Legend, Label, Input, Select, Switch, Text, RadioGroup, Radio } from '@/components/catalyst'
+import { Fieldset, Legend, Input, Select, Switch, Text, RadioGroup, Radio } from '@/components/catalyst'
 
 interface TaxSettingsFormProps {
   data: {
