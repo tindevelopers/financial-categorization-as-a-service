@@ -35,7 +35,7 @@ export async function POST(request: NextRequest) {
       .eq('id', transaction_id)
       .single();
 
-    if (txError || !transaction || transaction.job.user_id !== user.id) {
+    if (txError || !transaction || (transaction as any).job.user_id !== user.id) {
       return NextResponse.json(
         { error: 'Transaction not found or unauthorized' },
         { status: 404 }
@@ -121,7 +121,7 @@ export async function DELETE(request: NextRequest) {
       .eq('id', transaction_id)
       .single();
 
-    if (txError || !transaction || transaction.job.user_id !== user.id) {
+    if (txError || !transaction || (transaction as any).job.user_id !== user.id) {
       return NextResponse.json(
         { error: 'Transaction not found or unauthorized' },
         { status: 404 }

@@ -62,9 +62,9 @@ export async function GET(request: NextRequest) {
     }
 
     // Find potential matches for each transaction
-    const transactionsWithMatches = transactions.map(tx => {
-      const potentialMatches = documents
-        .filter(doc => {
+    const transactionsWithMatches = (transactions || []).map((tx: any) => {
+      const potentialMatches = (documents || [])
+        .filter((doc: any) => {
           const amountDiff = Math.abs((tx.amount || 0) - (doc.total_amount || 0));
           const dateDiff = doc.invoice_date 
             ? Math.abs(
@@ -76,7 +76,7 @@ export async function GET(request: NextRequest) {
           // Only show matches within reasonable thresholds
           return amountDiff < 100 && dateDiff <= 60;
         })
-        .map(doc => {
+        .map((doc: any) => {
           const amountDiff = Math.abs((tx.amount || 0) - (doc.total_amount || 0));
           const dateDiff = doc.invoice_date
             ? Math.abs(
@@ -118,17 +118,19 @@ export async function GET(request: NextRequest) {
     });
 
     // Get summary stats
+    const jobIds = (transactions || []).map((t: any) => t.job_id);
+    
     const { count: totalUnreconciled } = await supabase
       .from('categorized_transactions')
       .select('*', { count: 'exact', head: true })
       .eq('reconciliation_status', 'unreconciled')
-      .in('job_id', transactions.map(t => t.job_id));
+      .in('job_id', jobIds);
 
     const { count: totalMatched } = await supabase
       .from('categorized_transactions')
       .select('*', { count: 'exact', head: true })
       .eq('reconciliation_status', 'matched')
-      .in('job_id', transactions.map(t => t.job_id));
+      .in('job_id', jobIds);
 
     return NextResponse.json({
       transactions: transactionsWithMatches,

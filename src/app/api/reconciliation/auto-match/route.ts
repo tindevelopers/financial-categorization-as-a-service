@@ -57,22 +57,24 @@ export async function POST(request: NextRequest) {
     const matchedPairs: Array<{ transaction_id: string; document_id: string }> = [];
 
     // Auto-match high-confidence matches
-    for (const tx of transactions) {
+    for (const tx of (transactions || [])) {
       // Skip if already matched
-      if (tx.matched_document_id) continue;
+      if ((tx as any).matched_document_id) continue;
 
       // Find best match
       let bestMatch: any = null;
       let bestScore = 0;
 
-      for (const doc of documents) {
+      for (const doc of (documents || [])) {
         // Skip if already matched
-        if (doc.matched_transaction_id) continue;
+        if ((doc as any).matched_transaction_id) continue;
 
-        const amountDiff = Math.abs((tx.amount || 0) - (doc.total_amount || 0));
-        const dateDiff = doc.invoice_date 
+        const txAny = tx as any;
+        const docAny = doc as any;
+        const amountDiff = Math.abs((txAny.amount || 0) - (docAny.total_amount || 0));
+        const dateDiff = docAny.invoice_date 
           ? Math.abs(
-              (new Date(tx.date).getTime() - new Date(doc.invoice_date).getTime()) / 
+              (new Date(txAny.date).getTime() - new Date(docAny.invoice_date).getTime()) / 
               (1000 * 60 * 60 * 24)
             )
           : 999;
@@ -83,8 +85,8 @@ export async function POST(request: NextRequest) {
           const amountScore = 100 - amountDiff;
           const dateScore = 100 - dateDiff;
           const descriptionScore = calculateDescriptionMatch(
-            tx.original_description,
-            doc.vendor_name || doc.original_filename
+            txAny.original_description,
+            docAny.vendor_name || docAny.original_filename
           );
           
           const totalScore = amountScore * 0.5 + dateScore * 0.3 + descriptionScore * 0.2;
@@ -98,23 +100,24 @@ export async function POST(request: NextRequest) {
 
       // If we found a high-confidence match, create it
       if (bestMatch) {
+        const txAny = tx as any;
         const { error: matchError } = await supabase.rpc(
           'match_transaction_with_document',
           {
-            p_transaction_id: tx.id,
-            p_document_id: bestMatch.id,
+            p_transaction_id: txAny.id,
+            p_document_id: (bestMatch as any).id,
           }
         );
 
         if (!matchError) {
           matchedCount++;
           matchedPairs.push({
-            transaction_id: tx.id,
-            document_id: bestMatch.id,
+            transaction_id: txAny.id,
+            document_id: (bestMatch as any).id,
           });
           
           // Mark document as matched to avoid duplicate matches
-          bestMatch.matched_transaction_id = tx.id;
+          (bestMatch as any).matched_transaction_id = txAny.id;
         }
       }
     }
