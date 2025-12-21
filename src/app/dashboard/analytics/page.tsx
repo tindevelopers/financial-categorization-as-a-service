@@ -191,25 +191,25 @@ export default function AnalyticsPage() {
         
         <div className="flex gap-2">
           <Button
-            outline={period !== '7d'}
+            {...(period !== '7d' ? { outline: true } : {})}
             onClick={() => setPeriod('7d')}
           >
             7 Days
           </Button>
           <Button
-            outline={period !== '30d'}
+            {...(period !== '30d' ? { outline: true } : {})}
             onClick={() => setPeriod('30d')}
           >
             30 Days
           </Button>
           <Button
-            outline={period !== '90d'}
+            {...(period !== '90d' ? { outline: true } : {})}
             onClick={() => setPeriod('90d')}
           >
             90 Days
           </Button>
           <Button
-            outline={period !== '12m'}
+            {...(period !== '12m' ? { outline: true } : {})}
             onClick={() => setPeriod('12m')}
           >
             12 Months
