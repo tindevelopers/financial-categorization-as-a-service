@@ -100,11 +100,11 @@ export async function GET(request: NextRequest) {
             days_difference: dateDiff,
           };
         })
-        .sort((a, b) => {
+        .sort((a: any, b: any) => {
           // Sort by confidence, then by amount difference
-          const confidenceScore = { high: 3, medium: 2, low: 1 };
-          const aScore = confidenceScore[a.match_confidence];
-          const bScore = confidenceScore[b.match_confidence];
+          const confidenceScore: { [key: string]: number } = { high: 3, medium: 2, low: 1 };
+          const aScore = confidenceScore[a.match_confidence] || 0;
+          const bScore = confidenceScore[b.match_confidence] || 0;
           
           if (aScore !== bScore) return bScore - aScore;
           return a.amount_difference - b.amount_difference;
