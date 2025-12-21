@@ -151,7 +151,7 @@ export default function UploadsPage() {
                     <td className="px-6 py-4 whitespace-nowrap text-right text-sm">
                       {upload.status === 'completed' && (
                         <Link href={`/review/${upload.id}`}>
-                          <Button color="blue" size="sm">
+                          <Button color="blue">
                             View
                           </Button>
                         </Link>
