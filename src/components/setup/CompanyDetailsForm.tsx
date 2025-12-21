@@ -1,7 +1,7 @@
 // @ts-nocheck
 'use client'
 
-import { Fieldset, Legend, Label, Input, Select, Text, Field } from '@/components/catalyst'
+import { Fieldset, Legend, Input, Select, Text, Field } from '@/components/catalyst'
 
 interface CompanyDetailsFormProps {
   data: {
@@ -25,10 +25,10 @@ export function CompanyDetailsForm({ data, onChange }: CompanyDetailsFormProps) 
       <Fieldset>
         <div className="space-y-4">
           {/* Company Name */}
-          <Field>
-            <Label>
+          <div>
+            <div className="font-medium mb-2">
               Company / Trading Name <span className="text-red-500">*</span>
-            </Label>
+            </div>
             <Input
               name="companyName"
               value={data.companyName}
@@ -37,20 +37,18 @@ export function CompanyDetailsForm({ data, onChange }: CompanyDetailsFormProps) 
               }
               placeholder="e.g., Smith & Co Accounting"
               required
-              className="mt-2"
             />
-          </Field>
+          </div>
 
           {/* Company Type */}
-          <Field>
-            <Label>Business Type</Label>
+          <div>
+            <div className="font-medium mb-2">Business Type</div>
             <Select
               name="companyType"
               value={data.companyType}
               onChange={(e: React.ChangeEvent<HTMLSelectElement>) =>
                 onChange({ companyType: e.target.value as typeof data.companyType })
               }
-              className="mt-2"
             >
               <option value="sole_trader">Sole Trader</option>
               <option value="limited_company">Limited Company</option>
@@ -63,12 +61,12 @@ export function CompanyDetailsForm({ data, onChange }: CompanyDetailsFormProps) 
               {data.companyType === 'partnership' && 'Business owned and run by two or more people'}
               {data.companyType === 'individual' && 'Personal finance tracking (not a business)'}
             </Text>
-          </Field>
+          </div>
 
           {/* Company Number (only for limited companies) */}
           {data.companyType === 'limited_company' && (
-            <Field>
-              <Label>Companies House Number</Label>
+            <div>
+              <div className="font-medium mb-2">Companies House Number</div>
               <Input
                 name="companyNumber"
                 value={data.companyNumber}
@@ -76,12 +74,11 @@ export function CompanyDetailsForm({ data, onChange }: CompanyDetailsFormProps) 
                   onChange({ companyNumber: e.target.value })
                 }
                 placeholder="e.g., 12345678"
-                className="mt-2"
               />
               <Text className="mt-1 text-sm">
                 Your 8-digit company registration number from Companies House
               </Text>
-            </Field>
+            </div>
           )}
         </div>
       </Fieldset>
