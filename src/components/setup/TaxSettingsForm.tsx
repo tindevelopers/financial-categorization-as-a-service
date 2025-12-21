@@ -30,7 +30,7 @@ export function TaxSettingsForm({ data, onChange }: TaxSettingsFormProps) {
           {/* VAT Registered */}
           <div className="flex items-center justify-between">
             <div>
-              <Label>VAT Registered?</Label>
+              <div className="font-medium">VAT Registered?</div>
               <Text className="mt-1 text-sm">
                 Are you registered for VAT with HMRC?
               </Text>
@@ -46,7 +46,7 @@ export function TaxSettingsForm({ data, onChange }: TaxSettingsFormProps) {
             <>
               {/* VAT Number */}
               <div>
-                <Label>VAT Registration Number</Label>
+                <div className="font-medium mb-2">VAT Registration Number</div>
                 <Input
                   name="vatNumber"
                   value={data.vatNumber}
@@ -54,19 +54,17 @@ export function TaxSettingsForm({ data, onChange }: TaxSettingsFormProps) {
                     onChange({ vatNumber: e.target.value })
                   }
                   placeholder="GB123456789"
-                  className="mt-2"
                 />
               </div>
 
               {/* VAT Scheme */}
               <div>
-                <Label>VAT Scheme</Label>
+                <div className="font-medium mb-3">VAT Scheme</div>
                 <RadioGroup
                   value={data.vatScheme}
                   onChange={(value: string) =>
                     onChange({ vatScheme: value as typeof data.vatScheme })
                   }
-                  className="mt-3"
                 >
                   <Radio value="standard">
                     <div>
@@ -98,8 +96,8 @@ export function TaxSettingsForm({ data, onChange }: TaxSettingsFormProps) {
               {/* Flat Rate Percentage (only if flat rate selected) */}
               {data.vatScheme === 'flat_rate' && (
                 <div>
-                  <Label>Flat Rate Percentage</Label>
-                  <div className="mt-2 flex items-center gap-2">
+                  <div className="font-medium mb-2">Flat Rate Percentage</div>
+                  <div className="flex items-center gap-2">
                     <Input
                       name="flatRatePercentage"
                       type="number"
@@ -128,7 +126,7 @@ export function TaxSettingsForm({ data, onChange }: TaxSettingsFormProps) {
 
           {/* Financial Year End */}
           <div>
-            <Label>Financial Year End</Label>
+            <div className="font-medium mb-2">Financial Year End</div>
             <Input
               name="financialYearEnd"
               type="date"
@@ -136,7 +134,6 @@ export function TaxSettingsForm({ data, onChange }: TaxSettingsFormProps) {
               onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
                 onChange({ financialYearEnd: e.target.value })
               }
-              className="mt-2"
             />
             <Text className="mt-1 text-sm">
               For sole traders, this is typically 5th April (tax year end)
@@ -145,13 +142,12 @@ export function TaxSettingsForm({ data, onChange }: TaxSettingsFormProps) {
 
           {/* Accounting Basis */}
           <div>
-            <Label>Accounting Method</Label>
+            <div className="font-medium mb-3">Accounting Method</div>
             <RadioGroup
               value={data.accountingBasis}
               onChange={(value: string) =>
                 onChange({ accountingBasis: value as typeof data.accountingBasis })
               }
-              className="mt-3"
             >
               <Radio value="cash">
                 <div>

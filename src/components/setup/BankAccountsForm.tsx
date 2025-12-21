@@ -82,51 +82,47 @@ export function BankAccountsForm({ data, onChange }: BankAccountsFormProps) {
         {/* Add New Bank Account */}
         <div className="space-y-4">
           <div>
-            <Label>Account Name</Label>
+            <div className="font-medium mb-2">Account Name</div>
             <Input
               value={newAccount.name}
               onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
                 setNewAccount({ ...newAccount, name: e.target.value })
               }
               placeholder="e.g., Business Current Account"
-              className="mt-2"
             />
           </div>
 
           <div>
-            <Label>Bank Name</Label>
+            <div className="font-medium mb-2">Bank Name</div>
             <Input
               value={newAccount.bank}
               onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
                 setNewAccount({ ...newAccount, bank: e.target.value })
               }
               placeholder="e.g., Barclays"
-              className="mt-2"
             />
           </div>
 
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <Label>Sort Code (Optional)</Label>
+              <div className="font-medium mb-2">Sort Code (Optional)</div>
               <Input
                 value={newAccount.sortCode}
                 onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
                   setNewAccount({ ...newAccount, sortCode: e.target.value })
                 }
                 placeholder="12-34-56"
-                className="mt-2"
               />
             </div>
 
             <div>
-              <Label>Account Number (Optional)</Label>
+              <div className="font-medium mb-2">Account Number (Optional)</div>
               <Input
                 value={newAccount.accountNumber}
                 onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
                   setNewAccount({ ...newAccount, accountNumber: e.target.value })
                 }
                 placeholder="12345678"
-                className="mt-2"
               />
             </div>
           </div>
