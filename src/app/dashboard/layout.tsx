@@ -25,6 +25,7 @@ import {
   ArrowUpTrayIcon,
   ChatBubbleLeftRightIcon,
   Cog6ToothIcon,
+  ChartBarIcon,
 } from '@heroicons/react/24/outline'
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
@@ -75,6 +76,14 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               </SidebarItem>
 
               <SidebarItem
+                href="/dashboard/transactions"
+                current={pathname.startsWith('/dashboard/transactions')}
+              >
+                <ArrowsRightLeftIcon />
+                <SidebarLabel>Transactions</SidebarLabel>
+              </SidebarItem>
+
+              <SidebarItem
                 href="/dashboard/reconciliation"
                 current={pathname.startsWith('/dashboard/reconciliation')}
               >
@@ -88,6 +97,14 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               >
                 <FolderOpenIcon />
                 <SidebarLabel>Uploads</SidebarLabel>
+              </SidebarItem>
+
+              <SidebarItem
+                href="/dashboard/analytics"
+                current={pathname.startsWith('/dashboard/analytics')}
+              >
+                <ChartBarIcon />
+                <SidebarLabel>Analytics</SidebarLabel>
               </SidebarItem>
 
               <SidebarItem
