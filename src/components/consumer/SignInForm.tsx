@@ -12,7 +12,7 @@ interface SignInFormProps {
   redirectTo?: string;
 }
 
-export default function ConsumerSignInForm({ redirectTo = "/upload" }: SignInFormProps) {
+export default function ConsumerSignInForm({ redirectTo = "/dashboard" }: SignInFormProps) {
   const router = useRouter();
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);

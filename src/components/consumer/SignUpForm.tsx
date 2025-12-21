@@ -47,8 +47,8 @@ export default function ConsumerSignUpForm() {
         region: "us-east-1",
       });
 
-      // Redirect to upload page after successful signup (consumer flow)
-      router.push("/upload");
+      // Redirect to dashboard after successful signup (consumer flow)
+      router.push("/dashboard");
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : "Failed to sign up";
       setError(errorMessage);
