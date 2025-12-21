@@ -57,7 +57,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Use the database function to match
-    const { data: result, error: matchError } = await supabase.rpc(
+    const { data: result, error: matchError } = await (supabase.rpc as any)(
       'match_transaction_with_document',
       {
         p_transaction_id: transaction_id,
@@ -129,7 +129,7 @@ export async function DELETE(request: NextRequest) {
     }
 
     // Use the database function to unmatch
-    const { data: result, error: unmatchError } = await supabase.rpc(
+    const { data: result, error: unmatchError } = await (supabase.rpc as any)(
       'unmatch_transaction',
       {
         p_transaction_id: transaction_id,

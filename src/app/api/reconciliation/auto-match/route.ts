@@ -101,7 +101,7 @@ export async function POST(request: NextRequest) {
       // If we found a high-confidence match, create it
       if (bestMatch) {
         const txAny = tx as any;
-        const { error: matchError } = await supabase.rpc(
+        const { error: matchError } = await (supabase.rpc as any)(
           'match_transaction_with_document',
           {
             p_transaction_id: txAny.id,
