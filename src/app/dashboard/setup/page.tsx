@@ -12,6 +12,18 @@ import { BankAccountsForm } from '@/components/setup/BankAccountsForm'
 import { CompletionStep } from '@/components/setup/CompletionStep'
 
 export default function SetupWizardPage() {
+  // Temporary simple version to test build
+  return (
+    <div className="min-h-screen flex items-center justify-center">
+      <div className="text-center">
+        <h1 className="text-2xl font-bold">Setup Page</h1>
+        <p>Coming soon...</p>
+      </div>
+    </div>
+  )
+}
+
+function SetupWizardPageOld() {
   const router = useRouter()
   const [currentStep, setCurrentStep] = useState(1)
   const [formData, setFormData] = useState({
