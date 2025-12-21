@@ -28,7 +28,7 @@ export async function GET(request: Request) {
     if (error) throw error
 
     // Group by category
-    const categoryMap = transactions?.reduce((acc: any, t) => {
+    const categoryMap = (transactions || []).reduce((acc: any, t: any) => {
       const category = t.category || 'Uncategorized'
       const subcategory = t.subcategory || 'Other'
       
@@ -56,7 +56,7 @@ export async function GET(request: Request) {
       acc[category].subcategories[subcategory].count++
 
       return acc
-    }, {}) || {}
+    }, {})
 
     // Convert to array and sort by total
     const categories = Object.values(categoryMap)

@@ -41,12 +41,12 @@ export async function GET(request: Request) {
     if (transError) throw transError
 
     // Calculate metrics
-    const totalAmount = transactions?.reduce((sum, t) => sum + parseFloat(t.amount || '0'), 0) || 0
-    const confirmedTransactions = transactions?.filter(t => t.confirmed).length || 0
+    const totalAmount = (transactions || []).reduce((sum: number, t: any) => sum + parseFloat(t.amount || '0'), 0)
+    const confirmedTransactions = (transactions || []).filter((t: any) => t.confirmed).length
     const unconfirmedTransactions = (totalTransactions || 0) - confirmedTransactions
 
     // Get category breakdown
-    const categoryBreakdown = transactions?.reduce((acc: any, t) => {
+    const categoryBreakdown = (transactions || []).reduce((acc: any, t: any) => {
       const category = t.category || 'Uncategorized'
       if (!acc[category]) {
         acc[category] = { count: 0, amount: 0 }
@@ -54,12 +54,12 @@ export async function GET(request: Request) {
       acc[category].count++
       acc[category].amount += parseFloat(t.amount || '0')
       return acc
-    }, {}) || {}
+    }, {})
 
     // Get completed jobs
-    const completedJobs = jobs?.filter(j => j.status === 'completed').length || 0
-    const processingJobs = jobs?.filter(j => j.status === 'processing').length || 0
-    const failedJobs = jobs?.filter(j => j.status === 'failed').length || 0
+    const completedJobs = (jobs || []).filter((j: any) => j.status === 'completed').length
+    const processingJobs = (jobs || []).filter((j: any) => j.status === 'processing').length
+    const failedJobs = (jobs || []).filter((j: any) => j.status === 'failed').length
 
     return NextResponse.json({
       summary: {

@@ -48,7 +48,7 @@ export async function GET(request: Request) {
     if (error) throw error
 
     // Group transactions by time period
-    const trends = transactions?.reduce((acc: any, t) => {
+    const trends = (transactions || []).reduce((acc: any, t: any) => {
       const date = new Date(t.transaction_date || t.created_at)
       let key = ''
 
@@ -86,7 +86,7 @@ export async function GET(request: Request) {
       acc[key].categories[category] += amount
 
       return acc
-    }, {}) || {}
+    }, {})
 
     // Convert to array and sort by date
     const trendsArray = Object.values(trends).sort((a: any, b: any) => 

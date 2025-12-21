@@ -95,30 +95,30 @@ export async function POST(request: Request) {
 }
 
 function generateSummaryReport(transactions: any[]) {
-  const totalAmount = transactions.reduce((sum, t) => sum + parseFloat(t.amount || '0'), 0)
-  const categories = [...new Set(transactions.map(t => t.category))]
+  const totalAmount = transactions.reduce((sum: number, t: any) => sum + parseFloat(t.amount || '0'), 0)
+  const categories = [...new Set(transactions.map((t: any) => t.category))]
   
   return {
     summary: {
       totalTransactions: transactions.length,
       totalAmount: totalAmount.toFixed(2),
       uniqueCategories: categories.length,
-      confirmedCount: transactions.filter(t => t.confirmed).length,
-      unconfirmedCount: transactions.filter(t => !t.confirmed).length,
+      confirmedCount: transactions.filter((t: any) => t.confirmed).length,
+      unconfirmedCount: transactions.filter((t: any) => !t.confirmed).length,
     },
     categories: categories.map(cat => {
-      const catTransactions = transactions.filter(t => t.category === cat)
+      const catTransactions = transactions.filter((t: any) => t.category === cat)
       return {
         category: cat,
         count: catTransactions.length,
-        amount: catTransactions.reduce((sum, t) => sum + parseFloat(t.amount || '0'), 0).toFixed(2),
+        amount: catTransactions.reduce((sum: number, t: any) => sum + parseFloat(t.amount || '0'), 0).toFixed(2),
       }
     }),
   }
 }
 
 function generateCategoryReport(transactions: any[]) {
-  const categoryMap = transactions.reduce((acc: any, t) => {
+  const categoryMap = transactions.reduce((acc: any, t: any) => {
     const cat = t.category || 'Uncategorized'
     if (!acc[cat]) {
       acc[cat] = {
@@ -144,7 +144,7 @@ function generateCategoryReport(transactions: any[]) {
 }
 
 function generateMonthlyReport(transactions: any[]) {
-  const monthlyMap = transactions.reduce((acc: any, t) => {
+  const monthlyMap = transactions.reduce((acc: any, t: any) => {
     const date = new Date(t.transaction_date || t.created_at)
     const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
     
@@ -185,7 +185,7 @@ function generateCSV(transactions: any[]) {
     'Notes',
   ]
 
-  const rows = transactions.map(t => [
+  const rows = transactions.map((t: any) => [
     t.transaction_date || '',
     t.description || '',
     t.category || '',

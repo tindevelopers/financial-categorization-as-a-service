@@ -88,7 +88,7 @@ export async function GET(request: Request) {
       .not('category', 'is', null)
       .limit(1000)
 
-    const uniqueCategories = [...new Set(categories?.map(c => c.category) || [])]
+    const uniqueCategories = [...new Set((categories || []).map((c: any) => c.category))]
 
     return NextResponse.json({
       transactions: transactions || [],
