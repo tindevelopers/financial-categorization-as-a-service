@@ -119,6 +119,7 @@ export class TransactionMergeService {
       inserted: insertResult.inserted,
       skipped: 0,
       updated: 0,
+      similarityScore: 0,
       jobId: jobId,
       message: `Inserted ${insertResult.inserted} transaction(s)`,
     };
