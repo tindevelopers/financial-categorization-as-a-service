@@ -15,8 +15,33 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Check for active syncs - warn user if sync is in progress
+    const { data: activeSyncs } = await supabase
+      .from('sync_metadata')
+      .select('id, source_name')
+      .eq('user_id', user.id)
+      .eq('sync_status', 'syncing');
+
+    const hasSyncInProgress = (activeSyncs?.length || 0) > 0;
+
+    // Check for pending conflicts that should be resolved first
+    const { count: pendingConflicts } = await supabase
+      .from('sync_conflicts')
+      .select('*', { count: 'exact', head: true })
+      .eq('user_id', user.id)
+      .eq('resolution_status', 'pending');
+
+    // Get optional source filter from request
+    let sourceFilter: string | null = null;
+    try {
+      const body = await request.json();
+      sourceFilter = body.sourceType || null;
+    } catch {
+      // No body provided, that's fine
+    }
+
     // Get unreconciled transactions for user
-    const { data: transactions, error: txError } = await supabase
+    let txQuery = supabase
       .from('categorized_transactions')
       .select(`
         *,
@@ -28,6 +53,13 @@ export async function POST(request: NextRequest) {
       .eq('job.user_id', user.id)
       .eq('reconciliation_status', 'unreconciled')
       .order('date', { ascending: false });
+
+    // Apply source filter if specified
+    if (sourceFilter) {
+      txQuery = txQuery.eq('source_type', sourceFilter);
+    }
+
+    const { data: transactions, error: txError } = await txQuery;
 
     if (txError) {
       console.error('Error fetching transactions:', txError);
@@ -122,11 +154,25 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // Build warnings array
+    const warnings: string[] = [];
+    if (hasSyncInProgress) {
+      warnings.push('A sync is currently in progress. Some transactions may not be included.');
+    }
+    if (pendingConflicts && pendingConflicts > 0) {
+      warnings.push(`${pendingConflicts} sync conflict(s) should be resolved for complete reconciliation.`);
+    }
+
     return NextResponse.json({
       success: true,
       matched_count: matchedCount,
       matches: matchedPairs,
       message: `Successfully auto-matched ${matchedCount} transaction(s)`,
+      sync_status: {
+        has_sync_in_progress: hasSyncInProgress,
+        pending_conflicts: pendingConflicts || 0,
+        warnings: warnings.length > 0 ? warnings : undefined,
+      },
     });
   } catch (error) {
     console.error('Auto-match error:', error);

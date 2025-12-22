@@ -21,8 +21,13 @@ export async function GET(request: NextRequest) {
     const limit = parseInt(searchParams.get('limit') || '100');
     const offset = parseInt(searchParams.get('offset') || '0');
 
+    // Get source filter if provided
+    const sourceType = searchParams.get('sourceType'); // 'upload', 'google_sheets', 'manual', 'api'
+    const excludeSyncing = searchParams.get('excludeSyncing') === 'true';
+
     // Get unreconciled transactions with potential matches
-    const { data: transactions, error: txError } = await supabase
+    // Now includes source tracking fields for sync-aware reconciliation
+    let txQuery = supabase
       .from('categorized_transactions')
       .select(`
         *,
@@ -36,6 +41,13 @@ export async function GET(request: NextRequest) {
       .eq('reconciliation_status', status)
       .order('date', { ascending: false })
       .range(offset, offset + limit - 1);
+
+    // Filter by source type if specified
+    if (sourceType) {
+      txQuery = txQuery.eq('source_type', sourceType);
+    }
+
+    const { data: transactions, error: txError } = await txQuery;
 
     if (txError) {
       console.error('Error fetching transactions:', txError);
@@ -114,8 +126,24 @@ export async function GET(request: NextRequest) {
       return {
         ...tx,
         potential_matches: potentialMatches,
+        // Include sync status info for UI
+        sync_info: {
+          source_type: tx.source_type || 'upload',
+          source_identifier: tx.source_identifier,
+          last_synced_at: tx.last_synced_at,
+          sync_version: tx.sync_version || 1,
+        },
       };
     });
+
+    // Check for active syncs that might affect reconciliation
+    const { data: activeSyncs } = await supabase
+      .from('sync_metadata')
+      .select('id, source_name, sync_status')
+      .eq('user_id', user.id)
+      .eq('sync_status', 'syncing');
+
+    const hasSyncInProgress = (activeSyncs?.length || 0) > 0;
 
     // Get summary stats
     const jobIds = (transactions || []).map((t: any) => t.job_id);
@@ -132,12 +160,29 @@ export async function GET(request: NextRequest) {
       .eq('reconciliation_status', 'matched')
       .in('job_id', jobIds);
 
+    // Get sync conflict count for warning
+    const { count: pendingConflicts } = await supabase
+      .from('sync_conflicts')
+      .select('*', { count: 'exact', head: true })
+      .eq('user_id', user.id)
+      .eq('resolution_status', 'pending');
+
     return NextResponse.json({
       transactions: transactionsWithMatches,
       summary: {
         total_unreconciled: totalUnreconciled || 0,
         total_matched: totalMatched || 0,
         total_documents: documents.length,
+      },
+      sync_status: {
+        has_sync_in_progress: hasSyncInProgress,
+        active_syncs: activeSyncs || [],
+        pending_conflicts: pendingConflicts || 0,
+        warning: hasSyncInProgress 
+          ? 'A sync is currently in progress. Reconciliation results may be incomplete.' 
+          : pendingConflicts && pendingConflicts > 0
+            ? `${pendingConflicts} sync conflict(s) need resolution before full reconciliation.`
+            : null,
       },
     });
   } catch (error) {
