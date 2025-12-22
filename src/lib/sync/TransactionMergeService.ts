@@ -119,7 +119,7 @@ export class TransactionMergeService {
       inserted: insertResult.inserted,
       skipped: 0,
       updated: 0,
-      newJobId: jobId,
+      jobId: jobId,
       message: `Inserted ${insertResult.inserted} transaction(s)`,
     };
   }
@@ -178,7 +178,7 @@ export class TransactionMergeService {
       updated: 0,
       similarityScore: similarity.similarityScore,
       matchedJobId: similarity.existingJobId,
-      newJobId: jobId,
+      jobId: jobId,
       message: `Merged: ${insertResult.inserted} new, ${similarity.matchingCount} skipped (duplicates)`,
     };
   }
