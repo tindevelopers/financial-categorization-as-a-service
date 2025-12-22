@@ -94,10 +94,11 @@ export class TransactionMergeService {
 
     if (!jobId) {
       return {
-        mode: 'rejected',
+        mode: 'reject',
         inserted: 0,
         skipped: 0,
         updated: 0,
+        similarityScore: 0,
         message: 'Failed to create categorization job',
       };
     }
@@ -153,10 +154,11 @@ export class TransactionMergeService {
 
     if (!jobId) {
       return {
-        mode: 'rejected',
+        mode: 'reject',
         inserted: 0,
         skipped: 0,
         updated: 0,
+        similarityScore: 0,
         message: 'Failed to create categorization job',
       };
     }
