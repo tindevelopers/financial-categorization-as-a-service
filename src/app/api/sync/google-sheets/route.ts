@@ -36,7 +36,7 @@ export async function GET(request: NextRequest) {
 
     // Get sync history for each connection
     const connectionsWithHistory = await Promise.all(
-      (syncMetadata || []).map(async (meta) => {
+      (syncMetadata || []).map(async (meta: any) => {
         const { data: history } = await supabase
           .from('sync_history')
           .select('*')
