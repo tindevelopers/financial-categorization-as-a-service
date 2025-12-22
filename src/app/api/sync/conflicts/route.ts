@@ -151,8 +151,7 @@ export async function POST(request: NextRequest) {
     // If 'db' resolution, no changes needed to the transaction
 
     // Mark conflict as resolved
-    const { error: updateError } = await supabase
-      .from('sync_conflicts')
+    const { error: updateError } = await (supabase.from('sync_conflicts') as any)
       .update({
         resolution_status: 'resolved',
         resolved_by: user.id,
@@ -210,8 +209,7 @@ export async function DELETE(request: NextRequest) {
       );
     }
 
-    const { error } = await supabase
-      .from('sync_conflicts')
+    const { error } = await (supabase.from('sync_conflicts') as any)
       .update({
         resolution_status: 'ignored',
         resolved_by: user.id,
