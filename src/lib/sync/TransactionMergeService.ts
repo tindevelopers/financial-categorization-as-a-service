@@ -87,7 +87,7 @@ export class TransactionMergeService {
     options: MergeOptions
   ): Promise<MergeResult> {
     // Ensure we have a job ID
-    let jobId = options.jobId;
+    let jobId: string | null | undefined = options.jobId;
     if (!jobId && options.createJob !== false) {
       jobId = await this.createJob(options);
     }
