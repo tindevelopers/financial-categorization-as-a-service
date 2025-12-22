@@ -62,6 +62,17 @@ export async function getSubdomainFromRequest(headersList?: Headers | Map<string
     const subdomain = parts[0];
     const domain = parts.slice(1).join(".");
     
+    // Special handling for Vercel preview/deployment URLs
+    // These look like: project-name-git-branch-team.vercel.app
+    // We should NOT treat the project name as a subdomain
+    if (domain === "vercel.app" || domain.endsWith(".vercel.app")) {
+      return {
+        subdomain: null,
+        domain: hostname,
+        tenantId: null,
+      };
+    }
+    
     return {
       subdomain,
       domain,

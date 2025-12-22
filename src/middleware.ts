@@ -190,8 +190,12 @@ export async function middleware(request: NextRequest) {
   */
 
   // Redirect authenticated users from root to dashboard
-  if (user && pathname === '/' && !subdomainInfo.subdomain) {
-    return NextResponse.redirect(new URL('/dashboard', request.url));
+  // This applies to all cases - including Vercel preview URLs
+  if (user && pathname === '/') {
+    // Only redirect if NOT on admin subdomain (admin subdomain users go to /saas/dashboard)
+    if (subdomainInfo.subdomain !== 'admin') {
+      return NextResponse.redirect(new URL('/dashboard', request.url));
+    }
   }
 
   return response;
