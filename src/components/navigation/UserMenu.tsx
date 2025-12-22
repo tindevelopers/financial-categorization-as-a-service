@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   Dropdown,
@@ -22,11 +22,19 @@ export function UserMenu() {
   const router = useRouter()
   const [user, setUser] = useState<any>(null)
   const [loading, setLoading] = useState(true)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const supabaseRef = useRef<any>(null)
 
-  const supabase = createBrowserClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  )
+  // Create Supabase client lazily to avoid issues during SSR/static generation
+  const getSupabase = () => {
+    if (!supabaseRef.current && typeof window !== 'undefined') {
+      supabaseRef.current = createBrowserClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+      )
+    }
+    return supabaseRef.current
+  }
 
   useEffect(() => {
     loadUser()
@@ -34,6 +42,11 @@ export function UserMenu() {
 
   const loadUser = async () => {
     try {
+      const supabase = getSupabase()
+      if (!supabase) {
+        setLoading(false)
+        return
+      }
       const {
         data: { user },
       } = await supabase.auth.getUser()
@@ -47,7 +60,10 @@ export function UserMenu() {
 
   const handleSignOut = async () => {
     try {
-      await supabase.auth.signOut()
+      const supabase = getSupabase()
+      if (supabase) {
+        await supabase.auth.signOut()
+      }
       router.push('/signin')
       router.refresh()
     } catch (error) {
