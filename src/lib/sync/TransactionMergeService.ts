@@ -67,7 +67,7 @@ export class TransactionMergeService {
     }
 
     // Detect duplicates
-    const similarity = await this.duplicateDetector.detectSimilarity(transactions);
+    const similarity = await this.duplicateDetector.detectSimilarity(transactions, this.userId);
 
     // Decide on merge strategy based on similarity
     if (similarity.action === 'proceed' && !options.forceMerge) {
