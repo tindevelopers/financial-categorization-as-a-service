@@ -140,7 +140,7 @@ export class TransactionMergeService {
         skipped: similarity.matchingCount,
         updated: 0,
         similarityScore: similarity.similarityScore,
-        matchedJobId: similarity.existingJobId,
+        matchedJobId: similarity.existingJobId ?? undefined,
         message: `All ${similarity.matchingCount} transactions already exist. No new data added.`,
       };
     }
