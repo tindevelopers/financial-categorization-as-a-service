@@ -10,7 +10,7 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { SpreadsheetDuplicateDetector } from './SpreadsheetDuplicateDetector';
-import { calculateFingerprints, calculateFingerprint } from './fingerprint';
+import { generateFingerprints, generateTransactionFingerprint } from './fingerprint';
 import type { 
   Transaction, 
   TransactionWithFingerprint,
@@ -104,7 +104,7 @@ export class TransactionMergeService {
     }
 
     // Add fingerprints
-    const transactionsWithFingerprints = calculateFingerprints(transactions);
+    const transactionsWithFingerprints = generateFingerprints(transactions);
 
     // Insert all transactions
     const insertResult = await this.insertTransactions(
