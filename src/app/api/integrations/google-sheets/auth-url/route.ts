@@ -1,5 +1,68 @@
 import { createClient } from '@/core/database/server'
 import { NextResponse } from 'next/server'
+import { decrypt } from '@/lib/encryption'
+
+/**
+ * Get Google OAuth credentials
+ * Priority: 1) Custom tenant credentials, 2) Environment variables
+ */
+async function getGoogleCredentials(supabase: any, userId: string): Promise<{
+  clientId: string | null;
+  clientSecret: string | null;
+  redirectUri: string;
+  source: 'tenant' | 'platform';
+}> {
+  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 
+    (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000')
+  const defaultRedirectUri = `${baseUrl}/api/integrations/google-sheets/callback`
+
+  // Get user's tenant ID
+  const { data: userData } = await supabase
+    .from('users')
+    .select('tenant_id')
+    .eq('id', userId)
+    .single()
+
+  const tenantId = userData?.tenant_id
+
+  // Check for custom tenant credentials if user has a tenant
+  if (tenantId) {
+    const { data: tenantSettings } = await (supabase as any)
+      .from('tenant_integration_settings')
+      .select('*')
+      .eq('tenant_id', tenantId)
+      .eq('provider', 'google_sheets')
+      .eq('use_custom_credentials', true)
+      .single()
+
+    if (tenantSettings?.custom_client_id && tenantSettings?.custom_client_secret) {
+      // Decrypt the client secret
+      let decryptedSecret = null
+      try {
+        decryptedSecret = decrypt(tenantSettings.custom_client_secret)
+      } catch (error) {
+        console.error('Failed to decrypt client secret:', error)
+      }
+
+      if (decryptedSecret) {
+        return {
+          clientId: tenantSettings.custom_client_id,
+          clientSecret: decryptedSecret,
+          redirectUri: tenantSettings.custom_redirect_uri || defaultRedirectUri,
+          source: 'tenant',
+        }
+      }
+    }
+  }
+
+  // Fall back to platform-level environment variables
+  return {
+    clientId: process.env.GOOGLE_CLIENT_ID || null,
+    clientSecret: process.env.GOOGLE_CLIENT_SECRET || null,
+    redirectUri: process.env.GOOGLE_REDIRECT_URI || defaultRedirectUri,
+    source: 'platform',
+  }
+}
 
 export async function GET() {
   try {
@@ -10,27 +73,27 @@ export async function GET() {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    // Check for required environment variables
-    const clientId = process.env.GOOGLE_CLIENT_ID
-    const redirectUri = process.env.GOOGLE_REDIRECT_URI || `${process.env.NEXT_PUBLIC_APP_URL || process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000'}/api/integrations/google-sheets/callback`
+    // Get credentials (checks tenant settings first, then env vars)
+    const credentials = await getGoogleCredentials(supabase, user.id)
 
-    if (!clientId) {
+    if (!credentials.clientId) {
       return NextResponse.json({
         error: 'Google Sheets integration not configured',
-        message: 'Please contact the administrator to set up Google Sheets integration. Required environment variables: GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET',
+        message: 'Please contact the administrator to set up Google Sheets integration, or configure your own credentials in Settings.',
         configurationRequired: true,
       }, { status: 503 })
     }
 
     // Generate state parameter for CSRF protection
+    // Include credential source in state so callback knows which credentials to use
     const state = Buffer.from(JSON.stringify({
       userId: user.id,
       timestamp: Date.now(),
       nonce: Math.random().toString(36).substring(7),
+      credentialSource: credentials.source,
     })).toString('base64')
 
     // Store state in database for verification
-    // Note: Using type assertion because oauth_states table may not be in generated types yet
     await (supabase as any)
       .from('oauth_states')
       .upsert({
@@ -49,15 +112,18 @@ export async function GET() {
     ]
 
     const authUrl = new URL('https://accounts.google.com/o/oauth2/v2/auth')
-    authUrl.searchParams.set('client_id', clientId)
-    authUrl.searchParams.set('redirect_uri', redirectUri)
+    authUrl.searchParams.set('client_id', credentials.clientId)
+    authUrl.searchParams.set('redirect_uri', credentials.redirectUri)
     authUrl.searchParams.set('response_type', 'code')
     authUrl.searchParams.set('scope', scopes.join(' '))
     authUrl.searchParams.set('access_type', 'offline')
     authUrl.searchParams.set('prompt', 'consent')
     authUrl.searchParams.set('state', state)
 
-    return NextResponse.json({ authUrl: authUrl.toString() })
+    return NextResponse.json({ 
+      authUrl: authUrl.toString(),
+      credentialSource: credentials.source,
+    })
   } catch (error) {
     console.error('Error generating auth URL:', error)
     return NextResponse.json(

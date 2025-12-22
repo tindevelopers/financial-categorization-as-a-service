@@ -1,5 +1,67 @@
 import { createClient } from '@/core/database/server'
 import { NextResponse } from 'next/server'
+import { decrypt } from '@/lib/encryption'
+
+/**
+ * Get Google OAuth credentials based on source
+ */
+async function getGoogleCredentials(
+  supabase: any, 
+  userId: string, 
+  source: 'tenant' | 'platform'
+): Promise<{
+  clientId: string | null;
+  clientSecret: string | null;
+  redirectUri: string;
+}> {
+  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 
+    (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000')
+  const defaultRedirectUri = `${baseUrl}/api/integrations/google-sheets/callback`
+
+  if (source === 'tenant') {
+    // Get user's tenant ID
+    const { data: userData } = await supabase
+      .from('users')
+      .select('tenant_id')
+      .eq('id', userId)
+      .single()
+
+    const tenantId = userData?.tenant_id
+
+    if (tenantId) {
+      const { data: tenantSettings } = await (supabase as any)
+        .from('tenant_integration_settings')
+        .select('*')
+        .eq('tenant_id', tenantId)
+        .eq('provider', 'google_sheets')
+        .single()
+
+      if (tenantSettings?.custom_client_id && tenantSettings?.custom_client_secret) {
+        let decryptedSecret = null
+        try {
+          decryptedSecret = decrypt(tenantSettings.custom_client_secret)
+        } catch (error) {
+          console.error('Failed to decrypt client secret:', error)
+        }
+
+        if (decryptedSecret) {
+          return {
+            clientId: tenantSettings.custom_client_id,
+            clientSecret: decryptedSecret,
+            redirectUri: tenantSettings.custom_redirect_uri || defaultRedirectUri,
+          }
+        }
+      }
+    }
+  }
+
+  // Fall back to platform-level environment variables
+  return {
+    clientId: process.env.GOOGLE_CLIENT_ID || null,
+    clientSecret: process.env.GOOGLE_CLIENT_SECRET || null,
+    redirectUri: process.env.GOOGLE_REDIRECT_URI || defaultRedirectUri,
+  }
+}
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url)
@@ -22,7 +84,6 @@ export async function GET(request: Request) {
     const supabase = await createClient()
     
     // Verify state and get user
-    // Note: Using type assertion because oauth_states table may not be in generated types yet
     const { data: oauthState, error: stateError } = await (supabase as any)
       .from('oauth_states')
       .select('*')
@@ -42,23 +103,31 @@ export async function GET(request: Request) {
 
     const userId = oauthState.user_id
 
-    // Exchange code for tokens
-    const clientId = process.env.GOOGLE_CLIENT_ID
-    const clientSecret = process.env.GOOGLE_CLIENT_SECRET
-    const redirectUri = process.env.GOOGLE_REDIRECT_URI || `${baseUrl}/api/integrations/google-sheets/callback`
+    // Parse the state to get credential source
+    let credentialSource: 'tenant' | 'platform' = 'platform'
+    try {
+      const stateData = JSON.parse(Buffer.from(state, 'base64').toString())
+      credentialSource = stateData.credentialSource || 'platform'
+    } catch (e) {
+      console.error('Failed to parse state:', e)
+    }
 
-    if (!clientId || !clientSecret) {
+    // Get the appropriate credentials
+    const credentials = await getGoogleCredentials(supabase, userId, credentialSource)
+
+    if (!credentials.clientId || !credentials.clientSecret) {
       return NextResponse.redirect(`${baseUrl}/dashboard/settings?error=configuration_error`)
     }
 
+    // Exchange code for tokens
     const tokenResponse = await fetch('https://oauth2.googleapis.com/token', {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams({
         code,
-        client_id: clientId,
-        client_secret: clientSecret,
-        redirect_uri: redirectUri,
+        client_id: credentials.clientId,
+        client_secret: credentials.clientSecret,
+        redirect_uri: credentials.redirectUri,
         grant_type: 'authorization_code',
       }),
     })
@@ -86,7 +155,6 @@ export async function GET(request: Request) {
     }
 
     // Store tokens in database
-    // Note: Using type assertion because user_integrations table may not be in generated types yet
     const { error: upsertError } = await (supabase as any)
       .from('user_integrations')
       .upsert({
@@ -98,6 +166,9 @@ export async function GET(request: Request) {
           ? new Date(Date.now() + tokens.expires_in * 1000).toISOString()
           : null,
         provider_email: providerEmail,
+        metadata: {
+          credential_source: credentialSource,
+        },
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       }, {
