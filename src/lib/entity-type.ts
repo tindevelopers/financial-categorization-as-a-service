@@ -50,18 +50,28 @@ export async function getEntityInfo(): Promise<EntityInfo> {
     .from('users')
     .select('tenant_id')
     .eq('id', user.id)
-    .single();
+    .single() as { data: { tenant_id: string | null } | null };
   
   const tenantId = userData?.tenant_id || null;
   
   // Check for company profile
+  type CompanyProfileRow = {
+    id: string;
+    user_id: string;
+    tenant_id: string | null;
+    company_name: string;
+    company_type: 'sole_trader' | 'limited_company' | 'partnership' | 'individual';
+    vat_registered: boolean;
+    setup_completed: boolean;
+  };
+  
   const { data: profile, error: profileError } = await supabase
     .from('company_profiles')
-    .select('*')
+    .select('id, user_id, tenant_id, company_name, company_type, vat_registered, setup_completed')
     .eq('user_id', user.id)
     .order('created_at', { ascending: false })
     .limit(1)
-    .single();
+    .single() as { data: CompanyProfileRow | null; error: any };
   
   if (profileError || !profile) {
     // No company profile - treat as individual
