@@ -11,7 +11,8 @@ export async function GET() {
     }
 
     // Check if user has Google Sheets integration in the database
-    const { data: integration, error } = await supabase
+    // Note: Using type assertion because user_integrations table may not be in generated types yet
+    const { data: integration, error } = await (supabase as any)
       .from('user_integrations')
       .select('*')
       .eq('user_id', user.id)
@@ -33,4 +34,3 @@ export async function GET() {
     return NextResponse.json({ connected: false })
   }
 }
-

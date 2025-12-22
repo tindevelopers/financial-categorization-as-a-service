@@ -11,7 +11,8 @@ export async function POST() {
     }
 
     // Delete user's Google Sheets integration
-    const { error } = await supabase
+    // Note: Using type assertion because user_integrations table may not be in generated types yet
+    const { error } = await (supabase as any)
       .from('user_integrations')
       .delete()
       .eq('user_id', user.id)
@@ -34,4 +35,3 @@ export async function POST() {
     )
   }
 }
-

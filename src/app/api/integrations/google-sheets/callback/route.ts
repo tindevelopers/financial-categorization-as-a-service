@@ -22,7 +22,8 @@ export async function GET(request: Request) {
     const supabase = await createClient()
     
     // Verify state and get user
-    const { data: oauthState, error: stateError } = await supabase
+    // Note: Using type assertion because oauth_states table may not be in generated types yet
+    const { data: oauthState, error: stateError } = await (supabase as any)
       .from('oauth_states')
       .select('*')
       .eq('state', state)
@@ -85,7 +86,8 @@ export async function GET(request: Request) {
     }
 
     // Store tokens in database
-    const { error: upsertError } = await supabase
+    // Note: Using type assertion because user_integrations table may not be in generated types yet
+    const { error: upsertError } = await (supabase as any)
       .from('user_integrations')
       .upsert({
         user_id: userId,
@@ -108,7 +110,7 @@ export async function GET(request: Request) {
     }
 
     // Clean up OAuth state
-    await supabase
+    await (supabase as any)
       .from('oauth_states')
       .delete()
       .eq('state', state)
@@ -119,4 +121,3 @@ export async function GET(request: Request) {
     return NextResponse.redirect(`${baseUrl}/dashboard/settings?error=callback_failed`)
   }
 }
-

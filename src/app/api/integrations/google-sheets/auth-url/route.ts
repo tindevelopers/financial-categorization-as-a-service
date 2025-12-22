@@ -30,7 +30,8 @@ export async function GET() {
     })).toString('base64')
 
     // Store state in database for verification
-    await supabase
+    // Note: Using type assertion because oauth_states table may not be in generated types yet
+    await (supabase as any)
       .from('oauth_states')
       .upsert({
         user_id: user.id,
@@ -65,4 +66,3 @@ export async function GET() {
     )
   }
 }
-
