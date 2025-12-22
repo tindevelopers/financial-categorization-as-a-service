@@ -97,54 +97,11 @@ export default function TransactionReview({ jobId }: TransactionReviewProps) {
   const handleExportToGoogleSheets = async () => {
     setExporting(true);
     try {
-      // #region agent log
-      fetch("http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          sessionId: "debug-session",
-          runId: "run1",
-          hypothesisId: "H1",
-          location: "src/components/consumer/TransactionReview.tsx:handleExportToGoogleSheets:before",
-          message: "Export request start",
-          data: { jobId },
-          timestamp: Date.now(),
-        }),
-      }).catch(() => {});
-      // #endregion
-
       const response = await fetch(`/api/categorization/jobs/${jobId}/export/google-sheets`, {
         method: "POST",
       });
 
       const contentType = response.headers.get("content-type") || "unknown";
-      let responsePreview = "";
-      try {
-        responsePreview = (await response.clone().text()).slice(0, 120);
-      } catch {
-        responsePreview = "unreadable";
-      }
-
-      // #region agent log
-      fetch("http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          sessionId: "debug-session",
-          runId: "run1",
-          hypothesisId: "H1",
-          location: "src/components/consumer/TransactionReview.tsx:handleExportToGoogleSheets:afterResponse",
-          message: "Export response received",
-          data: {
-            status: response.status,
-            ok: response.ok,
-            contentType,
-            preview: responsePreview,
-          },
-          timestamp: Date.now(),
-        }),
-      }).catch(() => {});
-      // #endregion
 
       // Check if response is CSV (fallback when Google Sheets API not configured)
       if (contentType.includes("text/csv") || contentType.includes("application/csv")) {
@@ -183,21 +140,6 @@ export default function TransactionReview({ jobId }: TransactionReviewProps) {
         alert("Google Sheets export requires additional configuration. Please contact support.");
       }
     } catch (err: any) {
-      // #region agent log
-      fetch("http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          sessionId: "debug-session",
-          runId: "run1",
-          hypothesisId: "H2",
-          location: "src/components/consumer/TransactionReview.tsx:handleExportToGoogleSheets:catch",
-          message: "Export failed on client",
-          data: { error: err?.message ?? "unknown" },
-          timestamp: Date.now(),
-        }),
-      }).catch(() => {});
-      // #endregion
       setError(err.message);
       alert(`Export error: ${err.message}`);
     } finally {

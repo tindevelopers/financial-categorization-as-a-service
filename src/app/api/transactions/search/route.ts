@@ -21,18 +21,34 @@ export async function GET(request: Request) {
     const minAmount = searchParams.get('min_amount')
     const maxAmount = searchParams.get('max_amount')
     const confirmed = searchParams.get('confirmed')
-    const jobId = searchParams.get('job_id')
+    const jobIdParam = searchParams.get('job_id')
     
     // Pagination
     const page = parseInt(searchParams.get('page') || '1')
     const limit = parseInt(searchParams.get('limit') || '50')
     const offset = (page - 1) * limit
 
-    // Build query
+    // Get user's job IDs first (categorized_transactions links via job_id, not user_id)
+    const { data: userJobs } = await supabase
+      .from('categorization_jobs')
+      .select('id')
+      .eq('user_id', user.id)
+    
+    const userJobIds = (userJobs || []).map((j: { id: string }) => j.id)
+    
+    if (userJobIds.length === 0) {
+      return NextResponse.json({
+        transactions: [],
+        pagination: { page, limit, total: 0, totalPages: 0 },
+        filters: { categories: [] },
+      })
+    }
+
+    // Build query - filter by job_id instead of user_id
     let query = supabase
       .from('categorized_transactions')
       .select('*', { count: 'exact' })
-      .eq('user_id', user.id)
+      .in('job_id', jobIdParam ? [jobIdParam] : userJobIds)
 
     // Apply filters
     if (searchQuery) {
@@ -64,11 +80,7 @@ export async function GET(request: Request) {
     }
     
     if (confirmed !== null) {
-      query = query.eq('confirmed', confirmed === 'true')
-    }
-    
-    if (jobId) {
-      query = query.eq('job_id', jobId)
+      query = query.eq('user_confirmed', confirmed === 'true')
     }
 
     // Apply pagination and sorting
@@ -80,11 +92,11 @@ export async function GET(request: Request) {
 
     if (error) throw error
 
-    // Get unique categories for filter options
+    // Get unique categories for filter options (use job_id filter)
     const { data: categories } = await supabase
       .from('categorized_transactions')
       .select('category')
-      .eq('user_id', user.id)
+      .in('job_id', userJobIds)
       .not('category', 'is', null)
       .limit(1000)
 

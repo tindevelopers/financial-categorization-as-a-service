@@ -2,16 +2,9 @@ import { createClient } from '@/core/database/server'
 import { NextResponse } from 'next/server'
 
 export async function GET(request: Request) {
-  // #region agent log
-  fetch('http://127.0.0.1:7243/ingest/0c1b14f8-8590-4e1a-a5b8-7e9645e1d13e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'analytics/summary/route.ts:GET',message:'Analytics summary endpoint called',data:{},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'B'})}).catch(()=>{});
-  // #endregion
   try {
     const supabase = await createClient()
     const { data: { user }, error: authError } = await supabase.auth.getUser()
-
-    // #region agent log
-    fetch('http://127.0.0.1:7243/ingest/0c1b14f8-8590-4e1a-a5b8-7e9645e1d13e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'analytics/summary/route.ts:auth',message:'Auth check result',data:{hasUser:!!user,authError:authError?.message||null},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'B'})}).catch(()=>{});
-    // #endregion
 
     if (authError || !user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -31,10 +24,6 @@ export async function GET(request: Request) {
     if (endDate) jobsQuery = jobsQuery.lte('created_at', endDate)
 
     const { data: jobs, count: totalJobs, error: jobsError } = await jobsQuery
-
-    // #region agent log
-    fetch('http://127.0.0.1:7243/ingest/0c1b14f8-8590-4e1a-a5b8-7e9645e1d13e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'analytics/summary/route.ts:jobs',message:'Jobs query result',data:{totalJobs,jobsError:jobsError?.message||null,jobsCount:jobs?.length||0},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'D'})}).catch(()=>{});
-    // #endregion
 
     if (jobsError) throw jobsError
 
@@ -60,10 +49,6 @@ export async function GET(request: Request) {
       totalTransactions = result.count || 0
       transError = result.error
     }
-
-    // #region agent log
-    fetch('http://127.0.0.1:7243/ingest/0c1b14f8-8590-4e1a-a5b8-7e9645e1d13e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'analytics/summary/route.ts:transactions',message:'Transactions query result',data:{totalTransactions,transError:transError?.message||null,transCount:transactions?.length||0,userJobIds:userJobIds.length},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'D'})}).catch(()=>{});
-    // #endregion
 
     if (transError) throw transError
 
@@ -106,9 +91,6 @@ export async function GET(request: Request) {
       })),
     })
   } catch (error) {
-    // #region agent log
-    fetch('http://127.0.0.1:7243/ingest/0c1b14f8-8590-4e1a-a5b8-7e9645e1d13e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'analytics/summary/route.ts:error',message:'Analytics summary error',data:{error:String(error)},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'B'})}).catch(()=>{});
-    // #endregion
     console.error('Error fetching analytics summary:', error)
     return NextResponse.json(
       { error: 'Failed to fetch analytics summary' },
@@ -116,4 +98,3 @@ export async function GET(request: Request) {
     )
   }
 }
-

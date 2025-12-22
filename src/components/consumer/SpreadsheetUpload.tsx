@@ -12,7 +12,14 @@ interface UploadState {
   jobId: string | null;
 }
 
-export default function SpreadsheetUpload() {
+interface SpreadsheetUploadProps {
+  /**
+   * Base path for redirect after upload. Defaults to '/dashboard/review'
+   */
+  reviewBasePath?: string;
+}
+
+export default function SpreadsheetUpload({ reviewBasePath = '/dashboard/review' }: SpreadsheetUploadProps) {
   const [uploadState, setUploadState] = useState<UploadState>({
     file: null,
     uploading: false,
@@ -122,7 +129,7 @@ export default function SpreadsheetUpload() {
       // Redirect to review page after successful upload
       if (data.jobId) {
         setTimeout(() => {
-          window.location.href = `/review/${data.jobId}`;
+          window.location.href = `${reviewBasePath}/${data.jobId}`;
         }, 1500);
       }
     } catch (error: any) {

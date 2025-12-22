@@ -4,7 +4,6 @@ import { z } from "zod";
 import type { AICategorizationService, Transaction, CategoryResult } from "./AICategorizationService";
 
 // Define the schema using Zod
-// #region agent log
 const categorizationSchema = z.object({
   categorizations: z.array(z.object({
     category: z.string().describe("The primary category for this transaction"),
@@ -13,7 +12,6 @@ const categorizationSchema = z.object({
     reasoning: z.string().nullable().optional().describe("Brief explanation of why this category was chosen"),
   })),
 });
-// #endregion
 
 export class VercelAICategorizationService implements AICategorizationService {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -32,9 +30,6 @@ export class VercelAICategorizationService implements AICategorizationService {
   }
 
   async categorizeBatch(transactions: Transaction[]): Promise<CategoryResult[]> {
-    // #region agent log
-    fetch('http://127.0.0.1:7243/ingest/0c1b14f8-8590-4e1a-a5b8-7e9645e1d13e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'VercelAICategorizationService.ts:categorizeBatch',message:'Starting AI categorization',data:{transactionCount:transactions.length},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'A'})}).catch(()=>{});
-    // #endregion
     try {
       const prompt = this.buildPrompt(transactions);
 
@@ -45,10 +40,6 @@ export class VercelAICategorizationService implements AICategorizationService {
         temperature: 0.3,
       });
 
-      // #region agent log
-      fetch('http://127.0.0.1:7243/ingest/0c1b14f8-8590-4e1a-a5b8-7e9645e1d13e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'VercelAICategorizationService.ts:categorizeBatch:success',message:'AI categorization succeeded',data:{resultCount:object?.categorizations?.length||0},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'A'})}).catch(()=>{});
-      // #endregion
-
       const categorizations = object.categorizations || [];
 
       return categorizations.map((cat) => ({
@@ -58,9 +49,6 @@ export class VercelAICategorizationService implements AICategorizationService {
         reasoning: cat.reasoning || undefined,
       }));
     } catch (error: unknown) {
-      // #region agent log
-      fetch('http://127.0.0.1:7243/ingest/0c1b14f8-8590-4e1a-a5b8-7e9645e1d13e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'VercelAICategorizationService.ts:categorizeBatch:error',message:'AI categorization failed',data:{error:String(error)},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'A'})}).catch(()=>{});
-      // #endregion
       console.error("Vercel AI categorization error:", error);
       // Re-throw to let caller handle
       throw error;

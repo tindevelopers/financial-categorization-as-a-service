@@ -23,7 +23,7 @@ export default function UploadPage() {
 
   return (
     <div className="container mx-auto px-4 py-12">
-      <SpreadsheetUpload />
+      <SpreadsheetUpload reviewBasePath="/review" />
     </div>
   );
 }
