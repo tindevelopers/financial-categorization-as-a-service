@@ -104,7 +104,8 @@ export class TransactionMergeService {
     }
 
     // Add fingerprints
-    const transactionsWithFingerprints = generateFingerprints(transactions);
+    const fingerprintMap = generateFingerprints(transactions);
+    const transactionsWithFingerprints = Array.from(fingerprintMap.values());
 
     // Insert all transactions
     const insertResult = await this.insertTransactions(
