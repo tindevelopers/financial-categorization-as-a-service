@@ -49,7 +49,7 @@ export class TransactionMergeService {
     this.supabase = supabase;
     this.userId = userId;
     this.tenantId = tenantId;
-    this.duplicateDetector = new SpreadsheetDuplicateDetector(supabase, userId);
+    this.duplicateDetector = new SpreadsheetDuplicateDetector(supabase);
   }
 
   /**
