@@ -133,7 +133,7 @@ export class TransactionMergeService {
     options: MergeOptions
   ): Promise<MergeResult> {
     // If no new transactions, nothing to do
-    if (similarity.newCount === 0) {
+    if (similarity.totalNewTransactions === 0) {
       return {
         mode: 'merge',
         inserted: 0,
