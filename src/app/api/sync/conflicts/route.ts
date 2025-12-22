@@ -144,8 +144,7 @@ export async function POST(request: NextRequest) {
         sync_version: ((conflictData.db_value as Record<string, unknown>)?.sync_version as number || 1) + 1,
       };
       
-      await supabase
-        .from('categorized_transactions')
+      await (supabase.from('categorized_transactions') as any)
         .update(updateData)
         .eq('id', conflictData.transaction_id);
     }
