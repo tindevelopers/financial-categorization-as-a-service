@@ -13,7 +13,6 @@ import { SpreadsheetDuplicateDetector } from './SpreadsheetDuplicateDetector';
 import { generateFingerprints, generateTransactionFingerprint } from './fingerprint';
 import type { 
   Transaction, 
-  TransactionWithFingerprint,
   MergeResult,
   SourceType,
   SimilarityResult
