@@ -12,7 +12,14 @@ interface UploadState {
   jobId: string | null;
 }
 
-export default function SpreadsheetUpload() {
+interface SpreadsheetUploadProps {
+  /**
+   * Base path for redirect after upload. Defaults to '/dashboard/review'
+   */
+  reviewBasePath?: string;
+}
+
+export default function SpreadsheetUpload({ reviewBasePath = '/dashboard/review' }: SpreadsheetUploadProps) {
   const [uploadState, setUploadState] = useState<UploadState>({
     file: null,
     uploading: false,
@@ -66,18 +73,52 @@ export default function SpreadsheetUpload() {
       const formData = new FormData();
       formData.append('file', file);
 
-      const response = await fetch('/api/categorization/upload', {
-        method: 'POST',
-        body: formData,
+      // Create XMLHttpRequest for progress tracking
+      const xhr = new XMLHttpRequest();
+
+      // Track upload progress
+      xhr.upload.addEventListener('progress', (e) => {
+        if (e.lengthComputable) {
+          const percentComplete = Math.round((e.loaded / e.total) * 90); // Reserve 10% for processing
+          setUploadState(prev => ({ ...prev, progress: percentComplete }));
+        }
       });
 
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || error.message || 'Upload failed');
-      }
+      // Handle completion
+      const uploadPromise = new Promise<any>((resolve, reject) => {
+        xhr.addEventListener('load', () => {
+          if (xhr.status >= 200 && xhr.status < 300) {
+            try {
+              const data = JSON.parse(xhr.responseText);
+              resolve(data);
+            } catch (e) {
+              reject(new Error('Invalid response from server'));
+            }
+          } else {
+            try {
+              const error = JSON.parse(xhr.responseText);
+              reject(new Error(error.error || error.message || 'Upload failed'));
+            } catch (e) {
+              reject(new Error(`Upload failed with status ${xhr.status}`));
+            }
+          }
+        });
 
-      const data = await response.json();
+        xhr.addEventListener('error', () => {
+          reject(new Error('Network error during upload'));
+        });
+
+        xhr.addEventListener('abort', () => {
+          reject(new Error('Upload cancelled'));
+        });
+
+        xhr.open('POST', '/api/categorization/upload');
+        xhr.send(formData);
+      });
+
+      const data = await uploadPromise;
       
+      // Set to 100% when done
       setUploadState(prev => ({
         ...prev,
         uploading: false,
@@ -88,7 +129,7 @@ export default function SpreadsheetUpload() {
       // Redirect to review page after successful upload
       if (data.jobId) {
         setTimeout(() => {
-          window.location.href = `/review/${data.jobId}`;
+          window.location.href = `${reviewBasePath}/${data.jobId}`;
         }, 1500);
       }
     } catch (error: any) {
@@ -142,8 +183,17 @@ export default function SpreadsheetUpload() {
           {uploadState.uploading ? (
             <>
               <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mb-4"></div>
-              <p className="text-lg font-medium text-gray-900 dark:text-white">
-                Uploading... {uploadState.progress}%
+              <p className="text-lg font-medium text-gray-900 dark:text-white mb-2">
+                Uploading {uploadState.file?.name}...
+              </p>
+              <div className="w-64 bg-gray-200 dark:bg-gray-700 rounded-full h-3 mb-2">
+                <div 
+                  className="bg-blue-500 h-3 rounded-full transition-all duration-300"
+                  style={{ width: `${uploadState.progress}%` }}
+                ></div>
+              </div>
+              <p className="text-sm text-gray-600 dark:text-gray-400">
+                {uploadState.progress}% complete
               </p>
             </>
           ) : uploadState.file ? (

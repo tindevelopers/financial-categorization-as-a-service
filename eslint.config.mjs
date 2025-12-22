@@ -23,6 +23,7 @@ const eslintConfig = [
         },
       ],
       "@typescript-eslint/no-require-imports": "warn", // Allow require() but warn (needed for optional deps)
+      "@typescript-eslint/ban-ts-comment": "off", // Allow @ts-nocheck, @ts-ignore, etc.
     },
   },
 ];

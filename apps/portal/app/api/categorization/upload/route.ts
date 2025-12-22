@@ -127,6 +127,26 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Also create a record in financial_documents for long-term storage tracking
+    const { error: docError } = await supabase
+      .from("financial_documents")
+      .insert({
+        user_id: user.id,
+        tenant_id: userData?.tenant_id || null,
+        original_filename: file.name,
+        file_type: "bank_statement",
+        mime_type: file.type,
+        file_size_bytes: file.size,
+        storage_tier: "hot", // Start in hot storage (Supabase)
+        supabase_path: fileName,
+        ocr_status: "pending",
+      });
+
+    if (docError) {
+      console.error("Failed to create financial_documents record:", docError);
+      // Don't fail the upload, just log the error
+    }
+
     // Process the file immediately (for Phase 1, we do sync processing)
     // In Phase 2, we'll add async processing for large files
     // Note: We process in the background to avoid timeout

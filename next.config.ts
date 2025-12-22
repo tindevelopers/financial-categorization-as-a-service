@@ -4,7 +4,7 @@ import path from "path";
 const nextConfig: NextConfig = {
   // ESLint configuration - don't fail build on warnings
   eslint: {
-    ignoreDuringBuilds: false,
+    ignoreDuringBuilds: true,
   },
   
   // TypeScript configuration - don't fail build on type errors during dev

@@ -169,6 +169,35 @@ export async function middleware(request: NextRequest) {
     }
   }
 
+  // Company setup flow check (for new financial categorization features)
+  // TODO: Re-enable after regenerating Supabase types
+  /*
+  if (user && pathname.startsWith('/dashboard') && pathname !== '/dashboard/setup') {
+    // Check if user has completed company setup
+    const { data: companies } = await supabase
+      .from('company_profiles')
+      .select('id, setup_completed')
+      .eq('user_id', user.id)
+      .order('created_at', { ascending: false })
+      .limit(1);
+
+    // If no company or setup not completed, redirect to setup
+    if (!companies || companies.length === 0 || !companies[0].setup_completed) {
+      const setupUrl = new URL('/dashboard/setup', request.url);
+      return NextResponse.redirect(setupUrl);
+    }
+  }
+  */
+
+  // Redirect authenticated users from root to dashboard
+  // This applies to all cases - including Vercel preview URLs
+  if (user && pathname === '/') {
+    // Only redirect if NOT on admin subdomain (admin subdomain users go to /saas/dashboard)
+    if (subdomainInfo.subdomain !== 'admin') {
+      return NextResponse.redirect(new URL('/dashboard', request.url));
+    }
+  }
+
   return response;
 }
 

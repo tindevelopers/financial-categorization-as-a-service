@@ -1,0 +1,135 @@
+'use client'
+
+import { useState } from 'react'
+import { usePathname } from 'next/navigation'
+import {
+  SidebarLayout,
+  Sidebar,
+  SidebarHeader,
+  SidebarBody,
+  SidebarSection,
+  SidebarItem,
+  SidebarLabel,
+  Navbar,
+  NavbarSection,
+  NavbarSpacer,
+} from '@/components/catalyst'
+import { CompanySwitcher } from '@/components/navigation/CompanySwitcher'
+import { UserMenu } from '@/components/navigation/UserMenu'
+import {
+  HomeIcon,
+  BuildingOfficeIcon,
+  ArrowsRightLeftIcon,
+  FolderOpenIcon,
+  DocumentChartBarIcon,
+  ArrowUpTrayIcon,
+  ChatBubbleLeftRightIcon,
+  Cog6ToothIcon,
+} from '@heroicons/react/24/outline'
+
+export default function DashboardLayout({ children }: { children: React.ReactNode }) {
+  const pathname = usePathname()
+
+  return (
+    <SidebarLayout
+      navbar={
+        <Navbar>
+          <NavbarSection>
+            <CompanySwitcher />
+          </NavbarSection>
+          <NavbarSpacer />
+          <NavbarSection>
+            <UserMenu />
+          </NavbarSection>
+        </Navbar>
+      }
+      sidebar={
+        <Sidebar>
+          <SidebarHeader>
+            <div className="flex items-center gap-3 px-2">
+              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-600">
+                <span className="text-lg font-bold text-white">£</span>
+              </div>
+              <div>
+                <SidebarLabel className="font-semibold">FinCat</SidebarLabel>
+                <div className="text-xs text-zinc-500 dark:text-zinc-400">
+                  UK Tax Platform
+                </div>
+              </div>
+            </div>
+          </SidebarHeader>
+
+          <SidebarBody>
+            <SidebarSection>
+              <SidebarItem href="/dashboard" current={pathname === '/dashboard'}>
+                <HomeIcon />
+                <SidebarLabel>Dashboard</SidebarLabel>
+              </SidebarItem>
+
+              <SidebarItem
+                href="/dashboard/setup"
+                current={pathname === '/dashboard/setup'}
+              >
+                <BuildingOfficeIcon />
+                <SidebarLabel>Company Setup</SidebarLabel>
+              </SidebarItem>
+
+              <SidebarItem
+                href="/dashboard/reconciliation"
+                current={pathname.startsWith('/dashboard/reconciliation')}
+              >
+                <ArrowsRightLeftIcon />
+                <SidebarLabel>Reconciliation</SidebarLabel>
+              </SidebarItem>
+
+              <SidebarItem
+                href="/dashboard/uploads"
+                current={pathname.startsWith('/dashboard/uploads')}
+              >
+                <FolderOpenIcon />
+                <SidebarLabel>Uploads</SidebarLabel>
+              </SidebarItem>
+
+              <SidebarItem
+                href="/dashboard/reports"
+                current={pathname.startsWith('/dashboard/reports')}
+              >
+                <DocumentChartBarIcon />
+                <SidebarLabel>Reports</SidebarLabel>
+              </SidebarItem>
+
+              <SidebarItem
+                href="/dashboard/exports"
+                current={pathname.startsWith('/dashboard/exports')}
+              >
+                <ArrowUpTrayIcon />
+                <SidebarLabel>Exports</SidebarLabel>
+              </SidebarItem>
+            </SidebarSection>
+
+            <SidebarSection className="max-lg:hidden">
+              <SidebarItem
+                href="/dashboard/chat"
+                current={pathname === '/dashboard/chat'}
+              >
+                <ChatBubbleLeftRightIcon />
+                <SidebarLabel>AI Assistant</SidebarLabel>
+              </SidebarItem>
+
+              <SidebarItem
+                href="/dashboard/settings"
+                current={pathname.startsWith('/dashboard/settings')}
+              >
+                <Cog6ToothIcon />
+                <SidebarLabel>Settings</SidebarLabel>
+              </SidebarItem>
+            </SidebarSection>
+          </SidebarBody>
+        </Sidebar>
+      }
+    >
+      {children}
+    </SidebarLayout>
+  )
+}
+

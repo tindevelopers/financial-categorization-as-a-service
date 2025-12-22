@@ -602,6 +602,74 @@ export interface Database {
           updated_at?: string;
         };
       };
+      company_profiles: {
+        Row: {
+          id: string;
+          user_id: string;
+          tenant_id: string | null;
+          company_name: string;
+          company_type: "sole_trader" | "limited_company" | "partnership" | "individual";
+          company_number: string | null;
+          vat_registered: boolean;
+          vat_number: string | null;
+          vat_scheme: "standard" | "flat_rate" | "cash_accounting" | null;
+          flat_rate_percentage: number | null;
+          financial_year_end: string | null;
+          accounting_basis: "cash" | "accrual";
+          default_currency: string;
+          address: Record<string, any>;
+          contact_details: Record<string, any>;
+          bank_accounts: any[];
+          setup_completed: boolean;
+          setup_step: number;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          tenant_id?: string | null;
+          company_name: string;
+          company_type: "sole_trader" | "limited_company" | "partnership" | "individual";
+          company_number?: string | null;
+          vat_registered?: boolean;
+          vat_number?: string | null;
+          vat_scheme?: "standard" | "flat_rate" | "cash_accounting" | null;
+          flat_rate_percentage?: number | null;
+          financial_year_end?: string | null;
+          accounting_basis?: "cash" | "accrual";
+          default_currency?: string;
+          address?: Record<string, any>;
+          contact_details?: Record<string, any>;
+          bank_accounts?: any[];
+          setup_completed?: boolean;
+          setup_step?: number;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          user_id?: string;
+          tenant_id?: string | null;
+          company_name?: string;
+          company_type?: "sole_trader" | "limited_company" | "partnership" | "individual";
+          company_number?: string | null;
+          vat_registered?: boolean;
+          vat_number?: string | null;
+          vat_scheme?: "standard" | "flat_rate" | "cash_accounting" | null;
+          flat_rate_percentage?: number | null;
+          financial_year_end?: string | null;
+          accounting_basis?: "cash" | "accrual";
+          default_currency?: string;
+          address?: Record<string, any>;
+          contact_details?: Record<string, any>;
+          bank_accounts?: any[];
+          setup_completed?: boolean;
+          setup_step?: number;
+          created_at?: string;
+          updated_at?: string;
+        };
+      };
       categorization_jobs: {
         Row: {
           id: string;

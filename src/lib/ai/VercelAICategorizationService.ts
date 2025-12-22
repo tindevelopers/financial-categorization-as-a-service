@@ -7,9 +7,9 @@ import type { AICategorizationService, Transaction, CategoryResult } from "./AIC
 const categorizationSchema = z.object({
   categorizations: z.array(z.object({
     category: z.string().describe("The primary category for this transaction"),
-    subcategory: z.string().optional().describe("Optional subcategory"),
+    subcategory: z.string().nullable().optional().describe("Optional subcategory"),
     confidenceScore: z.number().min(0).max(1).describe("Confidence score from 0.0 to 1.0"),
-    reasoning: z.string().optional().describe("Brief explanation of why this category was chosen"),
+    reasoning: z.string().nullable().optional().describe("Brief explanation of why this category was chosen"),
   })),
 });
 
@@ -44,9 +44,9 @@ export class VercelAICategorizationService implements AICategorizationService {
 
       return categorizations.map((cat) => ({
         category: cat.category || "Uncategorized",
-        subcategory: cat.subcategory,
+        subcategory: cat.subcategory || undefined,
         confidenceScore: cat.confidenceScore || 0.5,
-        reasoning: cat.reasoning,
+        reasoning: cat.reasoning || undefined,
       }));
     } catch (error: unknown) {
       console.error("Vercel AI categorization error:", error);

@@ -123,7 +123,30 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Store document metadata for each invoice
+    // Store document metadata for each invoice in financial_documents table
+    const documentInserts = uploadedFiles.map((fileName, index) => ({
+      user_id: user.id,
+      tenant_id: userData?.tenant_id || null,
+      job_id: jobData.id,
+      original_filename: files[index].name,
+      file_type: "invoice",
+      mime_type: files[index].type,
+      file_size_bytes: files[index].size,
+      storage_tier: "hot",
+      supabase_path: fileName,
+      ocr_status: "pending",
+    }));
+
+    const { error: docError } = await supabase
+      .from("financial_documents")
+      .insert(documentInserts);
+
+    if (docError) {
+      console.error("Failed to create financial_documents records:", docError);
+      // Don't fail the upload, just log
+    }
+
+    // Store document metadata for each invoice in old documents table (legacy)
     for (let i = 0; i < files.length; i++) {
       await supabase.from("documents").insert({
         user_id: user.id,
