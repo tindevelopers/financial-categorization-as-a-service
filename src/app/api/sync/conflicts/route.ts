@@ -136,15 +136,17 @@ export async function POST(request: NextRequest) {
       // Update transaction with external value
       const externalValue = conflictData.external_value as Record<string, unknown>;
       
+      const updateData: any = {
+        category: externalValue.category,
+        subcategory: externalValue.subcategory,
+        user_notes: externalValue.user_notes,
+        last_modified_source: 'external',
+        sync_version: ((conflictData.db_value as Record<string, unknown>)?.sync_version as number || 1) + 1,
+      };
+      
       await supabase
         .from('categorized_transactions')
-        .update({
-          category: externalValue.category,
-          subcategory: externalValue.subcategory,
-          user_notes: externalValue.user_notes,
-          last_modified_source: 'external',
-          sync_version: ((conflictData.db_value as Record<string, unknown>)?.sync_version as number || 1) + 1,
-        })
+        .update(updateData)
         .eq('id', conflictData.transaction_id);
     }
     // If 'db' resolution, no changes needed to the transaction
