@@ -11,19 +11,10 @@ import { TaxSettingsForm } from '@/components/setup/TaxSettingsForm'
 import { BankAccountsForm } from '@/components/setup/BankAccountsForm'
 import { CompletionStep } from '@/components/setup/CompletionStep'
 
+// #region agent log
+// Hypothesis C: Setup page was disabled - now re-enabling actual wizard
+// #endregion
 export default function SetupWizardPage() {
-  // Temporary simple version to test build
-  return (
-    <div className="min-h-screen flex items-center justify-center">
-      <div className="text-center">
-        <h1 className="text-2xl font-bold">Setup Page</h1>
-        <p>Coming soon...</p>
-      </div>
-    </div>
-  )
-}
-
-function SetupWizardPageOld() {
   const router = useRouter()
   const [currentStep, setCurrentStep] = useState(1)
   const [formData, setFormData] = useState({
@@ -78,13 +69,27 @@ function SetupWizardPageOld() {
         throw new Error('Failed to create company')
       }
 
-      const data = await response.json()
-      
       // Redirect to dashboard
       router.push('/dashboard')
     } catch (error) {
       console.error('Setup error:', error)
       alert('Failed to complete setup. Please try again.')
+    }
+  }
+
+  // Validation helper
+  const isStepValid = (step: number) => {
+    switch (step) {
+      case 1:
+        return formData.companyName.trim().length > 0
+      case 2:
+        return true // Tax settings are all optional
+      case 3:
+        return true // Bank accounts are optional
+      case 4:
+        return true // Completion step
+      default:
+        return false
     }
   }
 
@@ -151,7 +156,7 @@ function SetupWizardPageOld() {
                 <Button 
                   color="blue" 
                   onClick={handleNext}
-                  disabled={!isStepValid(currentStep, formData)}
+                  disabled={!isStepValid(currentStep)}
                 >
                   Continue
                 </Button>
@@ -168,39 +173,4 @@ function SetupWizardPageOld() {
   )
 }
 
-// Validation helper
-function isStepValid(step: number, data: typeof formData) {
-  switch (step) {
-    case 1:
-      return data.companyName.trim().length > 0
-    case 2:
-      return true // Tax settings are all optional
-    case 3:
-      return true // Bank accounts are optional
-    case 4:
-      return true // Completion step
-    default:
-      return false
-  }
-}
-
-// TypeScript workaround for formData type
-type FormData = {
-  companyName: string
-  companyType: 'sole_trader' | 'limited_company' | 'partnership' | 'individual'
-  companyNumber: string
-  vatRegistered: boolean
-  vatNumber: string
-  vatScheme: 'standard' | 'flat_rate' | 'cash_accounting'
-  flatRatePercentage: string
-  financialYearEnd: string
-  accountingBasis: 'cash' | 'accrual'
-  bankAccounts: Array<{
-    name: string
-    sortCode: string
-    accountNumber: string
-    bank: string
-  }>
-}
-
-declare const formData: FormData
+// Removed old SetupWizardPageOld stub
