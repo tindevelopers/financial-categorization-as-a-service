@@ -10,7 +10,8 @@ import {
   CheckCircleIcon,
   XCircleIcon,
   ArrowPathIcon,
-  ExclamationTriangleIcon
+  ExclamationTriangleIcon,
+  Squares2X2Icon
 } from '@heroicons/react/24/outline'
 import Link from 'next/link'
 import { createClient } from '@/core/database/client'
@@ -42,6 +43,9 @@ export default function UploadsPage() {
   const [loading, setLoading] = useState(true)
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(null)
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [bulkDeleting, setBulkDeleting] = useState(false)
+  const [resettingStorage, setResettingStorage] = useState(false)
   const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null)
 
   const fetchUploads = async () => {
@@ -72,15 +76,23 @@ export default function UploadsPage() {
     fetchUploads()
 
     // Set up polling for jobs that are still processing
+    // Start polling immediately, will be adjusted based on active jobs
     pollingIntervalRef.current = setInterval(() => {
       fetchUploads()
     }, 3000) // Poll every 3 seconds
+
+    // Also fetch again after a short delay to catch newly uploaded files
+    // (in case of redirect from upload page)
+    const timeoutId = setTimeout(() => {
+      fetchUploads()
+    }, 1000)
 
     return () => {
       if (pollingIntervalRef.current) {
         clearInterval(pollingIntervalRef.current)
         pollingIntervalRef.current = null
       }
+      clearTimeout(timeoutId)
     }
   }, [])
 
@@ -101,6 +113,29 @@ export default function UploadsPage() {
       }, 3000)
     }
   }, [uploads])
+
+  // Check for new uploads when page becomes visible (e.g., after redirect from upload page)
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        // Refresh immediately when page becomes visible
+        fetchUploads()
+      }
+    }
+
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+    
+    // Also check on focus (when user switches back to tab)
+    const handleFocus = () => {
+      fetchUploads()
+    }
+    window.addEventListener('focus', handleFocus)
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+      window.removeEventListener('focus', handleFocus)
+    }
+  }, [])
 
   const getStatusDisplay = (upload: Upload) => {
     const status = upload.status
@@ -216,12 +251,107 @@ export default function UploadsPage() {
 
       // Remove from local state
       setUploads(uploads.filter(upload => upload.id !== jobId))
+      setSelectedIds(prev => {
+        const next = new Set(prev)
+        next.delete(jobId)
+        return next
+      })
     } catch (error: any) {
       console.error('Error deleting upload:', error)
       alert(`Failed to delete upload: ${error.message}`)
     } finally {
       setDeletingId(null)
       setShowDeleteConfirm(null)
+    }
+  }
+
+  const handleSelectAll = () => {
+    if (selectedIds.size === uploads.length) {
+      setSelectedIds(new Set())
+    } else {
+      setSelectedIds(new Set(uploads.map(u => u.id)))
+    }
+  }
+
+  const handleToggleSelect = (jobId: string) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev)
+      if (next.has(jobId)) {
+        next.delete(jobId)
+      } else {
+        next.add(jobId)
+      }
+      return next
+    })
+  }
+
+  const handleBulkDelete = async () => {
+    if (selectedIds.size === 0) {
+      alert('Please select at least one file to delete')
+      return
+    }
+
+    const count = selectedIds.size
+    if (!confirm(`Are you sure you want to delete ${count} file${count > 1 ? 's' : ''}? This will permanently delete the files, all transactions, and cannot be undone.`)) {
+      return
+    }
+
+    setBulkDeleting(true)
+    try {
+      const response = await fetch('/api/categorization/jobs/bulk-delete', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ jobIds: Array.from(selectedIds) }),
+      })
+
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.error || 'Failed to delete files')
+      }
+
+      // Refresh the uploads list
+      await fetchUploads()
+      setSelectedIds(new Set())
+    } catch (error: any) {
+      console.error('Error bulk deleting uploads:', error)
+      alert(`Failed to delete files: ${error.message}`)
+    } finally {
+      setBulkDeleting(false)
+    }
+  }
+
+  const handleResetStorage = async () => {
+    if (!confirm('Are you sure you want to reset the entire storage facility? This will permanently delete ALL uploaded files, transactions, and cannot be undone. This action is irreversible.')) {
+      return
+    }
+
+    if (!confirm('This is your final warning. Are you absolutely sure you want to delete ALL files?')) {
+      return
+    }
+
+    setResettingStorage(true)
+    try {
+      const response = await fetch('/api/categorization/jobs/reset-storage', {
+        method: 'POST',
+      })
+
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.error || 'Failed to reset storage')
+      }
+
+      const result = await response.json()
+      // Refresh the uploads list
+      await fetchUploads()
+      setSelectedIds(new Set())
+      alert(`Storage reset successfully. Deleted ${result.deletedCount || 0} file(s).`)
+    } catch (error: any) {
+      console.error('Error resetting storage:', error)
+      alert(`Failed to reset storage: ${error.message}`)
+    } finally {
+      setResettingStorage(false)
     }
   }
 
@@ -234,6 +364,44 @@ export default function UploadsPage() {
           <Text>Manage your uploaded files and transactions</Text>
         </div>
         <div className="flex gap-3">
+          {selectedIds.size > 0 && (
+            <Button 
+              color="red" 
+              className="gap-2"
+              onClick={handleBulkDelete}
+              disabled={bulkDeleting}
+            >
+              {bulkDeleting ? (
+                <>
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                  Deleting...
+                </>
+              ) : (
+                <>
+                  <TrashIcon className="h-5 w-5" />
+                  Delete Selected ({selectedIds.size})
+                </>
+              )}
+            </Button>
+          )}
+          <Button 
+            color="zinc" 
+            className="gap-2"
+            onClick={handleResetStorage}
+            disabled={resettingStorage || uploads.length === 0}
+          >
+            {resettingStorage ? (
+              <>
+                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-current"></div>
+                Resetting...
+              </>
+            ) : (
+              <>
+                <Squares2X2Icon className="h-5 w-5" />
+                Reset Storage
+              </>
+            )}
+          </Button>
           <Link href="/dashboard/uploads/receipts">
             <Button color="zinc" className="gap-2">
               <DocumentTextIcon className="h-5 w-5" />
@@ -271,6 +439,14 @@ export default function UploadsPage() {
             <table className="w-full">
               <thead className="bg-gray-50 dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700">
                 <tr>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider w-12">
+                    <input
+                      type="checkbox"
+                      checked={uploads.length > 0 && selectedIds.size === uploads.length}
+                      onChange={handleSelectAll}
+                      className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-700"
+                    />
+                  </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                     Filename
                   </th>
@@ -294,6 +470,14 @@ export default function UploadsPage() {
               <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
                 {uploads.map((upload) => (
                   <tr key={upload.id} className="hover:bg-gray-50 dark:hover:bg-gray-900/50">
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <input
+                        type="checkbox"
+                        checked={selectedIds.has(upload.id)}
+                        onChange={() => handleToggleSelect(upload.id)}
+                        className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-700"
+                      />
+                    </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="flex items-center gap-3">
                         <DocumentTextIcon className="h-5 w-5 text-gray-400" />

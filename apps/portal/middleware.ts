@@ -18,6 +18,10 @@ export async function middleware(request: NextRequest) {
 
   const { pathname } = request.nextUrl;
 
+  // API routes should handle their own authentication and return JSON responses
+  // Don't redirect API routes - let them handle auth themselves
+  const isApiRoute = pathname.startsWith('/api/');
+
   // Public pages that don't require authentication
   const publicPages = [
     '/signin',
@@ -86,8 +90,9 @@ export async function middleware(request: NextRequest) {
       data: { user },
     } = await supabase.auth.getUser();
 
-    // Redirect unauthenticated users to signin (except public pages)
-    if (!user && !isPublicPage && pathname !== '/') {
+    // Redirect unauthenticated users to signin (except public pages and API routes)
+    // API routes handle their own authentication and return JSON responses
+    if (!user && !isPublicPage && !isApiRoute && pathname !== '/') {
       const redirectUrl = new URL('/signin', request.url);
       redirectUrl.searchParams.set('redirect', pathname);
       return NextResponse.redirect(redirectUrl);
@@ -103,8 +108,8 @@ export async function middleware(request: NextRequest) {
       return NextResponse.redirect(new URL('/dashboard', request.url));
     }
 
-    // Check company setup status for dashboard pages
-    if (user && pathname.startsWith('/dashboard') && pathname !== '/dashboard/setup') {
+    // Check company setup status for dashboard pages (skip API routes)
+    if (user && !isApiRoute && pathname.startsWith('/dashboard') && pathname !== '/dashboard/setup') {
       // Check if user has completed company setup
       const { data: companies } = await supabase
         .from('company_profiles')

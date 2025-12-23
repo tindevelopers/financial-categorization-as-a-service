@@ -131,8 +131,9 @@ export default function SpreadsheetUpload() {
       // Show success message and redirect to uploads page to see status
       if (data.jobId) {
         // Redirect to uploads page where user can see the processing status
+        // Add a timestamp to force refresh
         setTimeout(() => {
-          window.location.href = `/dashboard/uploads`;
+          window.location.href = `/dashboard/uploads?refresh=${Date.now()}`;
         }, 1500);
       }
   } catch (error: any) {
