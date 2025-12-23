@@ -25,6 +25,7 @@ import {
   ArrowUpTrayIcon,
   ChatBubbleLeftRightIcon,
   Cog6ToothIcon,
+  DocumentCheckIcon,
 } from '@heroicons/react/24/outline'
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
@@ -88,6 +89,14 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               >
                 <FolderOpenIcon />
                 <SidebarLabel>Uploads</SidebarLabel>
+              </SidebarItem>
+
+              <SidebarItem
+                href="/dashboard/review"
+                current={pathname.startsWith('/dashboard/review')}
+              >
+                <DocumentCheckIcon />
+                <SidebarLabel>Review Jobs</SidebarLabel>
               </SidebarItem>
 
               <SidebarItem
