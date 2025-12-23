@@ -36,7 +36,6 @@ export async function GET(request: NextRequest) {
         id,
         job_type,
         status,
-        status_message,
         processing_mode,
         original_filename,
         file_url,
@@ -44,7 +43,6 @@ export async function GET(request: NextRequest) {
         total_items,
         processed_items,
         failed_items,
-        error_code,
         error_message,
         created_at,
         started_at,
@@ -109,9 +107,10 @@ export async function GET(request: NextRequest) {
     });
 
     // Get total count for pagination
+    // Use id column instead of * to avoid issues with missing updated_at column
     const { count, error: countError } = await supabase
       .from("categorization_jobs")
-      .select("*", { count: "exact", head: true })
+      .select("id", { count: "exact", head: true })
       .eq("user_id", user.id);
 
     return NextResponse.json({
