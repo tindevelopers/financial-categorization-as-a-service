@@ -133,6 +133,7 @@ export async function POST(request: NextRequest) {
       .insert({
         user_id: user.id,
         tenant_id: userData?.tenant_id || null,
+        job_id: jobData.id, // Link to categorization job for tracking
         original_filename: file.name,
         file_type: "bank_statement",
         mime_type: file.type,

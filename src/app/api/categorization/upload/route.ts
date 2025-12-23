@@ -111,6 +111,28 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Also create a record in financial_documents for long-term storage tracking
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { error: docError } = await (supabase as any)
+      .from("financial_documents")
+      .insert({
+        user_id: user.id,
+        tenant_id: userData?.tenant_id || null,
+        job_id: jobData.id, // Link to categorization job for tracking
+        original_filename: file.name,
+        file_type: "bank_statement",
+        mime_type: file.type,
+        file_size_bytes: file.size,
+        storage_tier: "hot", // Start in hot storage (Supabase)
+        supabase_path: fileName,
+        ocr_status: "pending",
+      });
+
+    if (docError) {
+      console.error("Failed to create financial_documents record:", docError);
+      // Don't fail the upload, just log the error
+    }
+
     // Process the file inline
     try {
       // Parse spreadsheet from buffer directly (no need to re-download)
