@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { Heading, Text, Button } from '@/components/catalyst'
-import { ArrowUpTrayIcon, DocumentTextIcon, ClockIcon } from '@heroicons/react/24/outline'
+import { ArrowUpTrayIcon, DocumentTextIcon, ClockIcon, TrashIcon } from '@heroicons/react/24/outline'
 import Link from 'next/link'
 import { createClient } from '@/core/database/client'
 
@@ -27,6 +27,8 @@ interface Upload {
 export default function UploadsPage() {
   const [uploads, setUploads] = useState<Upload[]>([])
   const [loading, setLoading] = useState(true)
+  const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(null)
 
   useEffect(() => {
     async function fetchUploads() {
@@ -101,6 +103,33 @@ export default function UploadsPage() {
       hour: '2-digit',
       minute: '2-digit',
     }).format(date)
+  }
+
+  const handleDelete = async (jobId: string) => {
+    if (!confirm('Are you sure you want to delete this upload? This will permanently delete the file, all transactions, and cannot be undone.')) {
+      return
+    }
+
+    setDeletingId(jobId)
+    try {
+      const response = await fetch(`/api/categorization/jobs/${jobId}`, {
+        method: 'DELETE',
+      })
+
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.error || 'Failed to delete upload')
+      }
+
+      // Remove from local state
+      setUploads(uploads.filter(upload => upload.id !== jobId))
+    } catch (error: any) {
+      console.error('Error deleting upload:', error)
+      alert(`Failed to delete upload: ${error.message}`)
+    } finally {
+      setDeletingId(null)
+      setShowDeleteConfirm(null)
+    }
   }
 
   return (
@@ -200,19 +229,39 @@ export default function UploadsPage() {
                       {formatDate(upload.created_at)}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-right text-sm">
-                      {upload.status === 'completed' && (
-                        <Link href={`/review/${upload.id}`}>
-                          <Button color="blue">
-                            View
-                          </Button>
-                        </Link>
-                      )}
-                      {upload.status === 'processing' && (
-                        <span className="inline-flex items-center gap-1 text-blue-600 dark:text-blue-400">
-                          <ClockIcon className="h-4 w-4" />
-                          Processing...
-                        </span>
-                      )}
+                      <div className="flex items-center justify-end gap-2">
+                        {upload.status === 'completed' && (
+                          <Link href={`/review/${upload.id}`}>
+                            <Button color="blue">
+                              View
+                            </Button>
+                          </Link>
+                        )}
+                        {upload.status === 'processing' && (
+                          <span className="inline-flex items-center gap-1 text-blue-600 dark:text-blue-400">
+                            <ClockIcon className="h-4 w-4" />
+                            Processing...
+                          </span>
+                        )}
+                        <Button
+                          color="red"
+                          onClick={() => handleDelete(upload.id)}
+                          disabled={deletingId === upload.id}
+                          className="gap-1"
+                        >
+                          {deletingId === upload.id ? (
+                            <>
+                              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                              Deleting...
+                            </>
+                          ) : (
+                            <>
+                              <TrashIcon className="h-4 w-4" />
+                              Delete
+                            </>
+                          )}
+                        </Button>
+                      </div>
                     </td>
                   </tr>
                 ))}

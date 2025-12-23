@@ -4,6 +4,7 @@ import { createAdminClient } from "@tinadmin/core/database/admin-client";
 import { writeFile } from "fs/promises";
 import { join } from "path";
 import { tmpdir } from "os";
+import { createHash } from "crypto";
 
 export async function OPTIONS() {
   return new NextResponse(null, {
@@ -70,8 +71,38 @@ export async function POST(request: NextRequest) {
   fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'upload/route.ts:64',message:'Upload request received',data:{fileName:file.name,fileSize:file.size,fileType:file.type,userId:user.id},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'C'})}).catch(()=>{});
   // #endregion
 
-    // Upload to Supabase Storage
+    // Convert file to buffer and calculate hash
     const fileBuffer = Buffer.from(await file.arrayBuffer());
+    const fileHash = createHash('sha256').update(fileBuffer).digest('hex');
+
+    // Check for force upload flag
+    const forceUpload = formData.get("force") === "true";
+
+    // Check for duplicate files (hash-based only) unless force upload is requested
+    if (!forceUpload) {
+      const { data: existingDoc } = await supabase
+        .from("financial_documents")
+        .select("id, job_id")
+        .eq("file_hash", fileHash)
+        .eq("user_id", user.id)
+        .maybeSingle();
+
+      if (existingDoc) {
+        // Duplicate detected - return 409 Conflict with existing job info
+        return NextResponse.json(
+          {
+            error: "Duplicate file detected",
+            isDuplicate: true,
+            existingJobId: existingDoc.job_id,
+            existingDocumentId: existingDoc.id,
+            message: "This exact file has already been uploaded. Please delete the existing upload first if you want to re-upload, or use force=true to upload anyway.",
+          },
+          { status: 409 }
+        );
+      }
+    }
+
+    // Upload to Supabase Storage
     const fileName = `${user.id}/${Date.now()}-${file.name}`;
     
     // #region agent log
@@ -123,6 +154,7 @@ export async function POST(request: NextRequest) {
           processing_mode: "sync",
           original_filename: file.name,
           file_url: urlData.publicUrl,
+          file_hash: fileHash, // Store hash for quick duplicate detection
         })
         .select()
         .single();
@@ -142,6 +174,7 @@ export async function POST(request: NextRequest) {
           processing_mode: "sync",
           original_filename: file.name,
           file_url: urlData.publicUrl,
+          file_hash: fileHash, // Store hash for quick duplicate detection
         })
         .select()
         .single();
@@ -181,6 +214,7 @@ export async function POST(request: NextRequest) {
         file_type: "bank_statement",
         mime_type: file.type,
         file_size_bytes: file.size,
+        file_hash: fileHash, // Store hash for duplicate detection
         storage_tier: "hot", // Start in hot storage (Supabase)
         supabase_path: fileName,
         ocr_status: "pending",
