@@ -291,7 +291,7 @@ export class TransactionMergeService {
   async previewMerge(
     transactions: Transaction[]
   ): Promise<SimilarityResult> {
-    return this.duplicateDetector.detectSimilarity(transactions);
+    return this.duplicateDetector.detectSimilarity(transactions, this.userId);
   }
 
   /**
