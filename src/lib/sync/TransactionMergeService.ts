@@ -304,8 +304,8 @@ export class TransactionMergeService {
   ): Promise<boolean> {
     const updateData: Record<string, unknown> = {};
     
-    if (updates.description !== undefined) {
-      updateData.original_description = updates.description;
+    if (updates.original_description !== undefined) {
+      updateData.original_description = updates.original_description;
     }
     if (updates.amount !== undefined) {
       updateData.amount = updates.amount;
