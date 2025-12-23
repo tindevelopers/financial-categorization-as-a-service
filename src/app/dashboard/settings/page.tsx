@@ -12,6 +12,11 @@ import {
   EyeIcon,
   EyeSlashIcon,
   InformationCircleIcon,
+  DocumentIcon,
+  UserPlusIcon,
+  TrashIcon,
+  ClipboardDocumentIcon,
+  EnvelopeIcon,
 } from '@heroicons/react/24/outline'
 
 type EntityType = 'individual' | 'company'
@@ -26,6 +31,36 @@ interface IntegrationStatus {
     connected: boolean
     baseId?: string
   }
+}
+
+interface Spreadsheet {
+  id: string
+  name: string
+  modifiedAt: string
+  url: string
+}
+
+interface SheetPreferences {
+  spreadsheet_id: string
+  spreadsheet_name: string
+  sheet_tab_name: string
+}
+
+interface TeamInvitation {
+  id: string
+  email: string
+  role: string
+  status: string
+  created_at: string
+  expires_at: string
+}
+
+interface TeamMember {
+  id: string
+  email: string
+  full_name: string
+  created_at: string
+  status: string
 }
 
 interface TenantSettings {
@@ -71,6 +106,21 @@ export default function SettingsPage() {
   const [airtableTableName, setAirtableTableName] = useState('Transactions')
   const [showAirtableKey, setShowAirtableKey] = useState(false)
 
+  // Sheet picker state
+  const [spreadsheets, setSpreadsheets] = useState<Spreadsheet[]>([])
+  const [sheetPreferences, setSheetPreferences] = useState<SheetPreferences | null>(null)
+  const [loadingSheets, setLoadingSheets] = useState(false)
+  const [showSheetPicker, setShowSheetPicker] = useState(false)
+  const [selectedSheet, setSelectedSheet] = useState<string>('')
+
+  // Team invitations state
+  const [teamInvitations, setTeamInvitations] = useState<TeamInvitation[]>([])
+  const [teamMembers, setTeamMembers] = useState<TeamMember[]>([])
+  const [inviteEmail, setInviteEmail] = useState('')
+  const [inviteRole, setInviteRole] = useState('collaborator')
+  const [inviting, setInviting] = useState(false)
+  const [copiedLink, setCopiedLink] = useState<string | null>(null)
+
   useEffect(() => {
     loadSettings()
   }, [])
@@ -113,10 +163,146 @@ export default function SettingsPage() {
         const airtableData = await airtableResponse.json()
         setIntegrations(prev => ({ ...prev, airtable: airtableData }))
       }
+
+      // Load sheet preferences
+      const prefsResponse = await fetch('/api/integrations/google-sheets/preferences')
+      if (prefsResponse.ok) {
+        const prefsData = await prefsResponse.json()
+        if (prefsData.preferences) {
+          setSheetPreferences(prefsData.preferences)
+          setSelectedSheet(prefsData.preferences.spreadsheet_id)
+        }
+      }
+
+      // Load team data (for companies)
+      const teamResponse = await fetch('/api/team/invitations')
+      if (teamResponse.ok) {
+        const teamData = await teamResponse.json()
+        setTeamInvitations(teamData.invitations || [])
+        setTeamMembers(teamData.teamMembers || [])
+      }
     } catch (error) {
       console.error('Failed to load settings:', error)
     } finally {
       setLoading(false)
+    }
+  }
+
+  const loadSpreadsheets = async () => {
+    if (!integrations.googleSheets.connected) return
+    
+    setLoadingSheets(true)
+    try {
+      const response = await fetch('/api/integrations/google-sheets/list-sheets')
+      if (response.ok) {
+        const data = await response.json()
+        setSpreadsheets(data.spreadsheets || [])
+        setShowSheetPicker(true)
+      } else {
+        const error = await response.json()
+        if (error.needsReconnect) {
+          alert('Your Google connection has expired. Please reconnect.')
+          setIntegrations(prev => ({ ...prev, googleSheets: { connected: false } }))
+        }
+      }
+    } catch (error) {
+      console.error('Failed to load spreadsheets:', error)
+    } finally {
+      setLoadingSheets(false)
+    }
+  }
+
+  const handleSelectSheet = async (spreadsheetId: string) => {
+    const sheet = spreadsheets.find(s => s.id === spreadsheetId)
+    if (!sheet) return
+
+    setSaving(true)
+    try {
+      const response = await fetch('/api/integrations/google-sheets/preferences', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          spreadsheet_id: spreadsheetId,
+          spreadsheet_name: sheet.name,
+          sheet_tab_name: 'Transactions',
+        }),
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        setSheetPreferences(data.preferences)
+        setSelectedSheet(spreadsheetId)
+        setShowSheetPicker(false)
+        alert('Sheet selection saved!')
+      } else {
+        const error = await response.json()
+        alert(error.error || 'Failed to save sheet selection')
+      }
+    } catch (error) {
+      console.error('Failed to save sheet:', error)
+      alert('Failed to save sheet selection')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleInviteTeamMember = async () => {
+    if (!inviteEmail.trim()) {
+      alert('Please enter an email address')
+      return
+    }
+
+    setInviting(true)
+    try {
+      const response = await fetch('/api/team/invitations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: inviteEmail.trim(),
+          role: inviteRole,
+        }),
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        setTeamInvitations(prev => [data.invitation, ...prev])
+        setInviteEmail('')
+        
+        // Copy invite link to clipboard
+        if (data.invitation.inviteLink) {
+          await navigator.clipboard.writeText(data.invitation.inviteLink)
+          setCopiedLink(data.invitation.id)
+          setTimeout(() => setCopiedLink(null), 3000)
+        }
+        
+        alert('Invitation sent! Link copied to clipboard.')
+      } else {
+        const error = await response.json()
+        alert(error.error || 'Failed to send invitation')
+      }
+    } catch (error) {
+      console.error('Failed to invite:', error)
+      alert('Failed to send invitation')
+    } finally {
+      setInviting(false)
+    }
+  }
+
+  const handleCancelInvitation = async (invitationId: string) => {
+    if (!confirm('Are you sure you want to cancel this invitation?')) return
+
+    try {
+      const response = await fetch(`/api/team/invitations?id=${invitationId}`, {
+        method: 'DELETE',
+      })
+
+      if (response.ok) {
+        setTeamInvitations(prev => prev.filter(i => i.id !== invitationId))
+      } else {
+        alert('Failed to cancel invitation')
+      }
+    } catch (error) {
+      console.error('Failed to cancel invitation:', error)
     }
   }
 
@@ -487,6 +673,115 @@ export default function SettingsPage() {
                 </div>
               )}
 
+              {/* Sheet Picker */}
+              {integrations.googleSheets.connected && (
+                <div className="border border-gray-200 dark:border-zinc-700 rounded-lg p-4 space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h4 className="font-medium text-gray-900 dark:text-white flex items-center gap-2">
+                        <DocumentIcon className="h-5 w-5" />
+                        Default Export Sheet
+                      </h4>
+                      <p className="text-sm text-gray-500 mt-1">
+                        Choose which spreadsheet to export your transactions to
+                      </p>
+                    </div>
+                  </div>
+
+                  {sheetPreferences ? (
+                    <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg p-3">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="font-medium text-green-900 dark:text-green-200">
+                            {sheetPreferences.spreadsheet_name}
+                          </p>
+                          <p className="text-sm text-green-700 dark:text-green-300">
+                            Tab: {sheetPreferences.sheet_tab_name}
+                          </p>
+                        </div>
+                        <Button
+                          color="white"
+                          onClick={loadSpreadsheets}
+                          disabled={loadingSheets}
+                        >
+                          {loadingSheets ? 'Loading...' : 'Change'}
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <Button
+                      color="blue"
+                      onClick={loadSpreadsheets}
+                      disabled={loadingSheets}
+                      className="w-full"
+                    >
+                      {loadingSheets ? 'Loading sheets...' : 'Choose a Spreadsheet'}
+                    </Button>
+                  )}
+
+                  {/* Sheet Picker Modal */}
+                  {showSheetPicker && (
+                    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+                      <div className="bg-white dark:bg-zinc-900 rounded-xl max-w-lg w-full mx-4 max-h-[80vh] overflow-hidden">
+                        <div className="px-6 py-4 border-b border-gray-200 dark:border-zinc-700">
+                          <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+                            Select a Spreadsheet
+                          </h3>
+                          <p className="text-sm text-gray-500">
+                            Choose where to export your transactions
+                          </p>
+                        </div>
+                        <div className="p-6 max-h-96 overflow-y-auto">
+                          {spreadsheets.length === 0 ? (
+                            <p className="text-center text-gray-500 py-8">
+                              No spreadsheets found. Create one in Google Sheets first.
+                            </p>
+                          ) : (
+                            <div className="space-y-2">
+                              {spreadsheets.map((sheet) => (
+                                <button
+                                  key={sheet.id}
+                                  onClick={() => handleSelectSheet(sheet.id)}
+                                  disabled={saving}
+                                  className={`w-full text-left p-3 rounded-lg border transition-colors ${
+                                    selectedSheet === sheet.id
+                                      ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
+                                      : 'border-gray-200 dark:border-zinc-700 hover:border-gray-300 dark:hover:border-zinc-600'
+                                  }`}
+                                >
+                                  <p className="font-medium text-gray-900 dark:text-white">
+                                    {sheet.name}
+                                  </p>
+                                  <p className="text-xs text-gray-500 mt-1">
+                                    Last modified: {new Date(sheet.modifiedAt).toLocaleDateString()}
+                                  </p>
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                        <div className="px-6 py-4 border-t border-gray-200 dark:border-zinc-700 flex justify-end gap-3">
+                          <Button
+                            color="white"
+                            onClick={() => setShowSheetPicker(false)}
+                          >
+                            Cancel
+                          </Button>
+                          <a
+                            href="https://sheets.google.com/create"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center justify-center px-4 py-2 text-sm font-medium text-blue-600 bg-blue-50 rounded-lg hover:bg-blue-100"
+                          >
+                            Create New Sheet
+                          </a>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
               {/* Info Box */}
               <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
                 <h4 className="font-medium text-blue-900 dark:text-blue-200 mb-2">
@@ -669,6 +964,157 @@ export default function SettingsPage() {
           )}
         </div>
       </div>
+
+      {/* Team Management Section (Company only) */}
+      {isCompany && (
+        <div className="bg-white dark:bg-zinc-900 rounded-lg border border-gray-200 dark:border-zinc-700 overflow-hidden">
+          <div className="px-6 py-4 border-b border-gray-200 dark:border-zinc-700">
+            <h2 className="text-lg font-semibold text-gray-900 dark:text-white flex items-center gap-2">
+              <UserPlusIcon className="h-5 w-5" />
+              Team Management
+            </h2>
+            <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
+              Invite team members to help with reconciliation
+            </p>
+          </div>
+          
+          <div className="p-6 space-y-6">
+            {/* Invite Form */}
+            <div className="border border-gray-200 dark:border-zinc-700 rounded-lg p-4 space-y-4">
+              <h3 className="font-medium text-gray-900 dark:text-white">
+                Invite a Team Member
+              </h3>
+              <div className="flex gap-3">
+                <div className="flex-1">
+                  <input
+                    type="email"
+                    value={inviteEmail}
+                    onChange={(e) => setInviteEmail(e.target.value)}
+                    placeholder="colleague@company.com"
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-zinc-600 rounded-lg bg-white dark:bg-zinc-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  />
+                </div>
+                <select
+                  value={inviteRole}
+                  onChange={(e) => setInviteRole(e.target.value)}
+                  className="px-3 py-2 border border-gray-300 dark:border-zinc-600 rounded-lg bg-white dark:bg-zinc-800 text-gray-900 dark:text-white"
+                >
+                  <option value="collaborator">Collaborator</option>
+                  <option value="viewer">Viewer</option>
+                  <option value="admin">Admin</option>
+                </select>
+                <Button
+                  color="blue"
+                  onClick={handleInviteTeamMember}
+                  disabled={inviting || !inviteEmail.trim()}
+                >
+                  {inviting ? 'Sending...' : 'Send Invite'}
+                </Button>
+              </div>
+              <p className="text-xs text-gray-500">
+                Collaborators can view and update reconciliation status. Admins can manage the team.
+              </p>
+            </div>
+
+            {/* Pending Invitations */}
+            {teamInvitations.length > 0 && (
+              <div>
+                <h3 className="font-medium text-gray-900 dark:text-white mb-3">
+                  Pending Invitations
+                </h3>
+                <div className="space-y-2">
+                  {teamInvitations.map((invitation) => (
+                    <div
+                      key={invitation.id}
+                      className="flex items-center justify-between p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg"
+                    >
+                      <div className="flex items-center gap-3">
+                        <EnvelopeIcon className="h-5 w-5 text-amber-600" />
+                        <div>
+                          <p className="font-medium text-gray-900 dark:text-white">
+                            {invitation.email}
+                          </p>
+                          <p className="text-xs text-gray-500">
+                            {invitation.role} • Expires {new Date(invitation.expires_at).toLocaleDateString()}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => {
+                            const baseUrl = process.env.NEXT_PUBLIC_APP_URL || window.location.origin
+                            navigator.clipboard.writeText(`${baseUrl}/join?token=${invitation.id}`)
+                            setCopiedLink(invitation.id)
+                            setTimeout(() => setCopiedLink(null), 3000)
+                          }}
+                          className="p-2 text-gray-500 hover:text-gray-700"
+                          title="Copy invite link"
+                        >
+                          {copiedLink === invitation.id ? (
+                            <CheckCircleIcon className="h-5 w-5 text-green-500" />
+                          ) : (
+                            <ClipboardDocumentIcon className="h-5 w-5" />
+                          )}
+                        </button>
+                        <button
+                          onClick={() => handleCancelInvitation(invitation.id)}
+                          className="p-2 text-red-500 hover:text-red-700"
+                          title="Cancel invitation"
+                        >
+                          <TrashIcon className="h-5 w-5" />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Current Team Members */}
+            {teamMembers.length > 0 && (
+              <div>
+                <h3 className="font-medium text-gray-900 dark:text-white mb-3">
+                  Team Members
+                </h3>
+                <div className="space-y-2">
+                  {teamMembers.map((member) => (
+                    <div
+                      key={member.id}
+                      className="flex items-center justify-between p-3 bg-gray-50 dark:bg-zinc-800 rounded-lg"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 bg-blue-100 dark:bg-blue-900 rounded-full flex items-center justify-center">
+                          <span className="text-blue-600 dark:text-blue-300 font-medium">
+                            {member.full_name?.charAt(0) || member.email.charAt(0).toUpperCase()}
+                          </span>
+                        </div>
+                        <div>
+                          <p className="font-medium text-gray-900 dark:text-white">
+                            {member.full_name || member.email}
+                          </p>
+                          <p className="text-xs text-gray-500">{member.email}</p>
+                        </div>
+                      </div>
+                      <Badge color={member.status === 'active' ? 'green' : 'yellow'}>
+                        {member.status}
+                      </Badge>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {teamInvitations.length === 0 && teamMembers.length === 0 && (
+              <div className="text-center py-8">
+                <UserPlusIcon className="h-12 w-12 text-gray-300 dark:text-gray-600 mx-auto mb-3" />
+                <p className="text-gray-500">
+                  No team members yet. Invite colleagues to collaborate on reconciliation.
+                </p>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* More Settings Section */}
       <div className="bg-white dark:bg-zinc-900 rounded-lg border border-gray-200 dark:border-zinc-700 overflow-hidden">

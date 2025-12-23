@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/core/database/server';
 import { google } from 'googleapis';
 import { TransactionMergeService } from '@/lib/sync/TransactionMergeService';
+import type { Transaction } from '@/lib/sync/types';
 
 /**
  * Pull transactions from Google Sheets and merge into database
@@ -59,33 +60,32 @@ export async function POST(request: NextRequest) {
     }
 
     // Parse rows (assuming first row is header)
-    const header = rows[0];
-    const transactions = rows.slice(1).map(row => ({
+    const _header = rows[0];
+    const transactions: Transaction[] = rows.slice(1).map(row => ({
       original_description: row[0] || '',
       amount: parseFloat(row[1] || '0'),
       date: row[2] || new Date().toISOString(),
       category: row[3] || null,
       subcategory: row[4] || null,
-      merchant: row[5] || null,
-      notes: row[6] || null,
-      source_type: 'google_sheets',
+      source_type: 'google_sheets' as const,
       source_identifier: spreadsheetId,
     }));
 
     // Use TransactionMergeService to merge without duplicates
     const mergeService = new TransactionMergeService(supabase, user.id);
     
-    const result = await mergeService.mergeTransactions(transactions, {
-      sourceName: 'Google Sheets',
+    const result = await mergeService.processUploadWithMerge(transactions, {
+      sourceType: 'google_sheets',
       sourceIdentifier: spreadsheetId,
-      jobName: jobName || `Sheets Import ${new Date().toLocaleDateString()}`,
+      originalFilename: jobName || `Sheets Import ${new Date().toLocaleDateString()}`,
+      createJob: true,
     });
 
     return NextResponse.json({
       success: true,
-      imported: result.imported,
-      duplicates: result.duplicates,
-      errors: result.errors,
+      imported: result.inserted,
+      duplicates: result.skipped,
+      errors: 0,
       jobId: result.jobId,
     });
 

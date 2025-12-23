@@ -64,7 +64,7 @@ export class GoogleDriveConnector implements CloudStorageProvider {
 
     return {
       accessToken: tokens.access_token,
-      refreshToken: tokens.refresh_token,
+      refreshToken: tokens.refresh_token ?? undefined,
       expiresAt,
     };
   }
@@ -124,7 +124,7 @@ export class GoogleDriveConnector implements CloudStorageProvider {
       mimeType: file.mimeType!,
       size: parseInt(file.size || '0'),
       modifiedAt: new Date(file.modifiedTime!),
-      hash: file.md5Checksum,
+      hash: file.md5Checksum ?? undefined,
     }));
   }
 

@@ -113,7 +113,7 @@ export class CloudStorageManager {
     const accessTokenEncrypted = this.encryptToken(accessToken);
     const refreshTokenEncrypted = refreshToken ? this.encryptToken(refreshToken) : null;
 
-    const { data, error } = await supabase
+    const { data, error } = await (supabase as any)
       .from('cloud_storage_integrations')
       .insert({
         user_id: userId,
@@ -143,7 +143,7 @@ export class CloudStorageManager {
   async getIntegration(integrationId: string): Promise<any> {
     const supabase = await createClient();
 
-    const { data, error } = await supabase
+    const { data, error } = await (supabase as any)
       .from('cloud_storage_integrations')
       .select('*')
       .eq('id', integrationId)
@@ -184,7 +184,7 @@ export class CloudStorageManager {
     }
 
     // Create sync log
-    const { data: syncLog, error: logError } = await supabase
+    const { data: syncLog, error: logError } = await (supabase as any)
       .from('cloud_storage_sync_logs')
       .insert({
         integration_id: integrationId,
@@ -201,7 +201,7 @@ export class CloudStorageManager {
 
     try {
       // Update integration status
-      await supabase
+      await (supabase as any)
         .from('cloud_storage_integrations')
         .update({
           last_sync_status: 'in_progress',
@@ -221,7 +221,7 @@ export class CloudStorageManager {
       for (const file of files) {
         try {
           // Check if file already synced
-          const { data: existingFile } = await supabase
+          const { data: existingFile } = await (supabase as any)
             .from('cloud_storage_files')
             .select('id, provider_hash')
             .eq('integration_id', integrationId)
@@ -248,7 +248,7 @@ export class CloudStorageManager {
           // Track in cloud_storage_files
           if (existingFile) {
             // Update existing
-            await supabase
+            await (supabase as any)
               .from('cloud_storage_files')
               .update({
                 financial_document_id: documentId,
@@ -260,7 +260,7 @@ export class CloudStorageManager {
               .eq('id', existingFile.id);
           } else {
             // Create new
-            await supabase
+            await (supabase as any)
               .from('cloud_storage_files')
               .insert({
                 integration_id: integrationId,
@@ -285,7 +285,7 @@ export class CloudStorageManager {
       }
 
       // Update sync log
-      await supabase
+      await (supabase as any)
         .from('cloud_storage_sync_logs')
         .update({
           status: 'completed',
@@ -298,7 +298,7 @@ export class CloudStorageManager {
         .eq('id', syncLog.id);
 
       // Update integration
-      await supabase
+      await (supabase as any)
         .from('cloud_storage_integrations')
         .update({
           last_sync_status: 'success',
@@ -318,7 +318,7 @@ export class CloudStorageManager {
       console.error('Sync error:', error);
 
       // Update sync log
-      await supabase
+      await (supabase as any)
         .from('cloud_storage_sync_logs')
         .update({
           status: 'failed',
@@ -327,7 +327,7 @@ export class CloudStorageManager {
         .eq('id', syncLog.id);
 
       // Update integration
-      await supabase
+      await (supabase as any)
         .from('cloud_storage_integrations')
         .update({
           last_sync_status: 'failed',
@@ -366,7 +366,7 @@ export class CloudStorageManager {
     }
 
     // Create financial_documents record
-    const { data: document, error: docError } = await supabase
+    const { data: document, error: docError } = await (supabase as any)
       .from('financial_documents')
       .insert({
         user_id: userId,

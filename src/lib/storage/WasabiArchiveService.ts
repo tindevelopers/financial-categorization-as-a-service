@@ -41,7 +41,7 @@ export class WasabiArchiveService {
       const supabase = await createClient();
 
       // Get document details
-      const { data: document, error: docError } = await supabase
+      const { data: document, error: docError } = await (supabase as any)
         .from('financial_documents')
         .select('*')
         .eq('id', documentId)
@@ -88,7 +88,7 @@ export class WasabiArchiveService {
       );
 
       // Update database
-      const { error: updateError } = await supabase
+      const { error: updateError } = await (supabase as any)
         .from('financial_documents')
         .update({
           storage_tier: 'wasabi_archive',
@@ -102,7 +102,7 @@ export class WasabiArchiveService {
       }
 
       // Log lifecycle event
-      await supabase
+      await (supabase as any)
         .from('storage_lifecycle_logs')
         .insert({
           document_id: documentId,
@@ -134,7 +134,7 @@ export class WasabiArchiveService {
       const supabase = await createClient();
 
       // Get document details
-      const { data: document, error: docError } = await supabase
+      const { data: document, error: docError } = await (supabase as any)
         .from('financial_documents')
         .select('*')
         .eq('id', documentId)
@@ -150,7 +150,7 @@ export class WasabiArchiveService {
       }
 
       // Update status to restoring
-      await supabase
+      await (supabase as any)
         .from('financial_documents')
         .update({
           storage_tier: 'restoring',
@@ -190,7 +190,7 @@ export class WasabiArchiveService {
       }
 
       // Update database
-      const { error: updateError } = await supabase
+      const { error: updateError } = await (supabase as any)
         .from('financial_documents')
         .update({
           storage_tier: 'hot',
@@ -203,7 +203,7 @@ export class WasabiArchiveService {
       }
 
       // Log lifecycle event
-      await supabase
+      await (supabase as any)
         .from('storage_lifecycle_logs')
         .insert({
           document_id: documentId,
@@ -221,7 +221,7 @@ export class WasabiArchiveService {
       
       // Reset status on error
       const supabase = await createClient();
-      await supabase
+      await (supabase as any)
         .from('financial_documents')
         .update({
           storage_tier: 'wasabi_archive',
@@ -242,7 +242,7 @@ export class WasabiArchiveService {
     const ninetyDaysAgo = new Date();
     ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
 
-    let query = supabase
+    let query = (supabase as any)
       .from('financial_documents')
       .select('id, user_id, original_filename, file_size, created_at')
       .eq('storage_tier', 'hot')
@@ -293,27 +293,27 @@ export class WasabiArchiveService {
     const supabase = await createClient();
 
     // Get total archived documents
-    const { count: totalArchived } = await supabase
+    const { count: totalArchived } = await (supabase as any)
       .from('financial_documents')
       .select('*', { count: 'exact', head: true })
       .eq('user_id', userId)
       .eq('storage_tier', 'wasabi_archive');
 
     // Get total bytes archived
-    const { data: documents } = await supabase
+    const { data: documents } = await (supabase as any)
       .from('financial_documents')
       .select('file_size')
       .eq('user_id', userId)
       .eq('storage_tier', 'wasabi_archive');
 
-    const totalBytes = (documents || []).reduce((sum, doc) => sum + (doc.file_size || 0), 0);
+    const totalBytes = (documents || []).reduce((sum: number, doc: any) => sum + (doc.file_size || 0), 0);
     const estimatedMonthlyCost = this.calculateArchiveCost(totalBytes);
 
     // Get recent archives (last 30 days)
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
-    const { count: recentArchives } = await supabase
+    const { count: recentArchives } = await (supabase as any)
       .from('storage_lifecycle_logs')
       .select('*', { count: 'exact', head: true })
       .eq('action', 'archive_to_wasabi')
@@ -335,7 +335,7 @@ export class WasabiArchiveService {
       const supabase = await createClient();
 
       // Get document details
-      const { data: document, error: docError } = await supabase
+      const { data: document, error: docError } = await (supabase as any)
         .from('financial_documents')
         .select('wasabi_archive_path, file_size')
         .eq('id', documentId)
@@ -354,7 +354,7 @@ export class WasabiArchiveService {
       );
 
       // Log lifecycle event
-      await supabase
+      await (supabase as any)
         .from('storage_lifecycle_logs')
         .insert({
           document_id: documentId,

@@ -40,7 +40,7 @@ export class EmailForwardingService {
     const supabase = await createClient();
 
     // Check if user already has an active address
-    const { data: existing } = await supabase
+    const { data: existing } = await (supabase as any)
       .from('email_forwarding_addresses')
       .select('email_address')
       .eq('user_id', userId)
@@ -56,7 +56,7 @@ export class EmailForwardingService {
     const emailAddress = `receipts-${uniqueId}@${this.emailDomain}`;
 
     // Create in database
-    const { data, error } = await supabase
+    const { data, error } = await (supabase as any)
       .from('email_forwarding_addresses')
       .insert({
         user_id: userId,
@@ -158,7 +158,7 @@ export class EmailForwardingService {
   async getUserIdFromForwardingAddress(emailAddress: string): Promise<string | null> {
     const supabase = await createClient();
 
-    const { data, error } = await supabase
+    const { data, error } = await (supabase as any)
       .from('email_forwarding_addresses')
       .select('user_id, is_active')
       .eq('email_address', emailAddress.toLowerCase())
@@ -182,7 +182,7 @@ export class EmailForwardingService {
   ): Promise<string> {
     const supabase = await createClient();
 
-    const { data, error } = await supabase
+    const { data, error } = await (supabase as any)
       .from('email_receipts')
       .insert({
         user_id: userId,
@@ -233,7 +233,7 @@ export class EmailForwardingService {
       updateData.processing_error = error;
     }
 
-    const { error: updateError } = await supabase
+    const { error: updateError } = await (supabase as any)
       .from('email_receipts')
       .update(updateData)
       .eq('id', receiptId);
@@ -249,14 +249,14 @@ export class EmailForwardingService {
   async updateForwardingAddressStats(forwardingAddressId: string): Promise<void> {
     const supabase = await createClient();
 
-    const { data: address } = await supabase
+    const { data: address } = await (supabase as any)
       .from('email_forwarding_addresses')
       .select('emails_received')
       .eq('id', forwardingAddressId)
       .single();
 
     if (address) {
-      await supabase
+      await (supabase as any)
         .from('email_forwarding_addresses')
         .update({
           emails_received: (address.emails_received || 0) + 1,
@@ -348,7 +348,7 @@ export class EmailForwardingService {
     const sinceDate = new Date();
     sinceDate.setDate(sinceDate.getDate() - days);
 
-    const { data: receipts } = await supabase
+    const { data: receipts } = await (supabase as any)
       .from('email_receipts')
       .select('processing_status, documents_created')
       .eq('user_id', userId)
@@ -356,14 +356,14 @@ export class EmailForwardingService {
 
     const stats = {
       total: receipts?.length || 0,
-      completed: receipts?.filter(r => r.processing_status === 'completed').length || 0,
-      failed: receipts?.filter(r => r.processing_status === 'failed').length || 0,
-      pending: receipts?.filter(r => r.processing_status === 'pending' || r.processing_status === 'processing').length || 0,
+      completed: receipts?.filter((r: any) => r.processing_status === 'completed').length || 0,
+      failed: receipts?.filter((r: any) => r.processing_status === 'failed').length || 0,
+      pending: receipts?.filter((r: any) => r.processing_status === 'pending' || r.processing_status === 'processing').length || 0,
       documentsCreated: 0,
     };
 
     // Count total documents created
-    receipts?.forEach(r => {
+    receipts?.forEach((r: any) => {
       if (r.documents_created) {
         stats.documentsCreated += r.documents_created.length;
       }

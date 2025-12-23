@@ -9,9 +9,22 @@ import { processDocument } from '@/lib/ocr/document-ai';
 
 export const maxDuration = 300; // 5 minutes for OCR processing
 
+// Type for financial_documents query result
+interface FinancialDocument {
+  id: string;
+  ocr_status: string;
+  supabase_path?: string;
+  storage_path?: string;
+  storage_bucket?: string;
+  mime_type: string;
+  [key: string]: any;
+}
+
 export async function POST(request: NextRequest) {
   try {
     const supabase = await createClient();
+    // Cast to any to bypass type checking for tables not in generated types
+    const db = supabase as any;
     
     const body = await request.json();
     const { documentId } = body;
@@ -24,11 +37,11 @@ export async function POST(request: NextRequest) {
     }
 
     // Get document
-    const { data: document, error: docError } = await supabase
+    const { data: document, error: docError } = await db
       .from('financial_documents')
       .select('*')
       .eq('id', documentId)
-      .single();
+      .single() as { data: FinancialDocument | null; error: any };
 
     if (docError || !document) {
       return NextResponse.json(
@@ -46,7 +59,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Update status to processing
-    await supabase
+    await db
       .from('financial_documents')
       .update({ ocr_status: 'processing' })
       .eq('id', documentId);
@@ -55,6 +68,10 @@ export async function POST(request: NextRequest) {
       // Download file from storage
       const storagePath = document.supabase_path || document.storage_path;
       const storageBucket = document.storage_bucket || 'documents';
+
+      if (!storagePath) {
+        throw new Error('Document has no storage path');
+      }
 
       const { data: fileData, error: downloadError } = await supabase.storage
         .from(storageBucket)
@@ -69,21 +86,22 @@ export async function POST(request: NextRequest) {
       const buffer = Buffer.from(arrayBuffer);
 
       // Process with OCR
-      const ocrResult = await processDocument(buffer, document.mime_type);
+      const documentType = document.file_type || 'invoice';
+      const ocrResult = await processDocument(buffer, document.mime_type, documentType);
 
-      if (!ocrResult.success || !ocrResult.data) {
+      if (!ocrResult.success || !ocrResult.extractedData) {
         throw new Error(ocrResult.error || 'OCR processing failed');
       }
 
       // Extract tax breakdown
-      const extractedData = ocrResult.data;
+      const extractedData = ocrResult.extractedData;
 
       // Build update object
-      const updateData: any = {
+      const updateData: Record<string, any> = {
         ocr_status: 'completed',
         ocr_processed_at: new Date().toISOString(),
         ocr_confidence: ocrResult.confidence || 0,
-        extracted_text: extractedData.extractedText || '',
+        extracted_text: ocrResult.text || '',
       };
 
       // Add extracted fields if available
@@ -99,16 +117,12 @@ export async function POST(request: NextRequest) {
         updateData.total_amount = extractedData.totalAmount;
       }
 
-      if (extractedData.subtotalAmount !== undefined) {
-        updateData.subtotal_amount = extractedData.subtotalAmount;
+      if (extractedData.subtotal !== undefined) {
+        updateData.subtotal_amount = extractedData.subtotal;
       }
 
       if (extractedData.taxAmount !== undefined) {
         updateData.tax_amount = extractedData.taxAmount;
-      }
-
-      if (extractedData.taxRate !== undefined) {
-        updateData.tax_rate = extractedData.taxRate;
       }
 
       if (extractedData.lineItems && extractedData.lineItems.length > 0) {
@@ -129,7 +143,7 @@ export async function POST(request: NextRequest) {
       }
 
       // Update document with extracted data
-      const { error: updateError } = await supabase
+      const { error: updateError } = await db
         .from('financial_documents')
         .update(updateData)
         .eq('id', documentId);
@@ -154,9 +168,8 @@ export async function POST(request: NextRequest) {
           vendor: extractedData.vendorName,
           date: extractedData.documentDate,
           total: extractedData.totalAmount,
-          subtotal: extractedData.subtotalAmount,
+          subtotal: extractedData.subtotal,
           tax: extractedData.taxAmount,
-          taxRate: extractedData.taxRate,
           lineItems: extractedData.lineItems?.length || 0,
         },
       });
@@ -165,7 +178,7 @@ export async function POST(request: NextRequest) {
       console.error('OCR processing error:', error);
 
       // Update status to failed
-      await supabase
+      await db
         .from('financial_documents')
         .update({
           ocr_status: 'failed',

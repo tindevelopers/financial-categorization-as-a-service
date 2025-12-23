@@ -17,6 +17,15 @@ import { getWasabiService } from '@/lib/storage/WasabiArchiveService';
 
 export const maxDuration = 300; // 5 minutes
 
+// Type for document query result (financial_documents table not in generated types yet)
+interface FinancialDocument {
+  id: string;
+  user_id: string;
+  original_filename: string;
+  file_size_bytes: number | null;
+  created_at: string;
+}
+
 export async function GET(request: NextRequest) {
   try {
     // Verify cron secret to prevent unauthorized access
@@ -31,18 +40,20 @@ export async function GET(request: NextRequest) {
     }
 
     const supabase = await createClient();
+    // Cast to any to bypass type checking for tables not in generated types
+    const db = supabase as any;
     const wasabiService = getWasabiService();
 
     // Get documents eligible for archival (hot storage, older than 90 days)
     const ninetyDaysAgo = new Date();
     ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
 
-    const { data: documents, error: docError } = await supabase
+    const { data: documents, error: docError } = await db
       .from('financial_documents')
-      .select('id, user_id, original_filename, file_size, created_at')
+      .select('id, user_id, original_filename, file_size_bytes, created_at')
       .eq('storage_tier', 'hot')
       .lt('created_at', ninetyDaysAgo.toISOString())
-      .limit(100); // Process 100 documents per run
+      .limit(100) as { data: FinancialDocument[] | null; error: any }; // Process 100 documents per run
 
     if (docError) {
       throw new Error(`Failed to fetch documents: ${docError.message}`);
@@ -103,4 +114,3 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   return GET(request);
 }
-

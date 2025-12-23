@@ -4,6 +4,8 @@ import { createClient } from '@/core/database/server';
 export async function GET(request: NextRequest) {
   try {
     const supabase = await createClient();
+    // Cast to any for tables not in generated types
+    const db = supabase as any;
     
     // Get current user
     const { data: { user }, error: userError } = await supabase.auth.getUser();
@@ -23,11 +25,10 @@ export async function GET(request: NextRequest) {
 
     // Get source filter if provided
     const sourceType = searchParams.get('sourceType'); // 'upload', 'google_sheets', 'manual', 'api'
-    const excludeSyncing = searchParams.get('excludeSyncing') === 'true';
 
     // Get unreconciled transactions with potential matches
     // Now includes source tracking fields for sync-aware reconciliation
-    let txQuery = supabase
+    let txQuery = db
       .from('categorized_transactions')
       .select(`
         *,
@@ -58,7 +59,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Get unreconciled documents
-    const { data: documents, error: docError } = await supabase
+    const { data: documents, error: docError } = await db
       .from('financial_documents')
       .select(`
         id, original_filename, vendor_name, document_date, 
@@ -145,7 +146,7 @@ export async function GET(request: NextRequest) {
     });
 
     // Check for active syncs that might affect reconciliation
-    const { data: activeSyncs } = await supabase
+    const { data: activeSyncs } = await db
       .from('sync_metadata')
       .select('id, source_name, sync_status')
       .eq('user_id', user.id)
@@ -156,20 +157,20 @@ export async function GET(request: NextRequest) {
     // Get summary stats
     const jobIds = (transactions || []).map((t: any) => t.job_id);
     
-    const { count: totalUnreconciled } = await supabase
+    const { count: totalUnreconciled } = await db
       .from('categorized_transactions')
       .select('*', { count: 'exact', head: true })
       .eq('reconciliation_status', 'unreconciled')
-      .in('job_id', jobIds);
+      .in('job_id', jobIds.length > 0 ? jobIds : ['']);
 
-    const { count: totalMatched } = await supabase
+    const { count: totalMatched } = await db
       .from('categorized_transactions')
       .select('*', { count: 'exact', head: true })
       .eq('reconciliation_status', 'matched')
-      .in('job_id', jobIds);
+      .in('job_id', jobIds.length > 0 ? jobIds : ['']);
 
     // Get sync conflict count for warning
-    const { count: pendingConflicts } = await supabase
+    const { count: pendingConflicts } = await db
       .from('sync_conflicts')
       .select('*', { count: 'exact', head: true })
       .eq('user_id', user.id)
@@ -180,7 +181,7 @@ export async function GET(request: NextRequest) {
       summary: {
         total_unreconciled: totalUnreconciled || 0,
         total_matched: totalMatched || 0,
-        total_documents: documents.length,
+        total_documents: (documents || []).length,
       },
       sync_status: {
         has_sync_in_progress: hasSyncInProgress,
@@ -201,4 +202,3 @@ export async function GET(request: NextRequest) {
     );
   }
 }
-

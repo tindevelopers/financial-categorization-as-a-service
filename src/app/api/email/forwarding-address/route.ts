@@ -10,9 +10,27 @@ import { nanoid } from 'nanoid';
  * DELETE: Deactivate forwarding email address
  */
 
+// Types for tables not in generated types
+interface EmailForwardingAddress {
+  id: string;
+  user_id: string;
+  email_address: string;
+  is_active: boolean;
+  created_at: string;
+  [key: string]: any;
+}
+
+interface EmailReceipt {
+  processing_status: string;
+  received_at: string;
+  [key: string]: any;
+}
+
 export async function GET(request: NextRequest) {
   try {
     const supabase = await createClient();
+    // Cast to any for tables not in generated types
+    const db = supabase as any;
     
     // Get current user
     const { data: { user }, error: userError } = await supabase.auth.getUser();
@@ -25,11 +43,11 @@ export async function GET(request: NextRequest) {
     }
 
     // Get user's forwarding addresses
-    const { data: addresses, error: addressError } = await supabase
+    const { data: addresses, error: addressError } = await db
       .from('email_forwarding_addresses')
       .select('*')
       .eq('user_id', user.id)
-      .order('created_at', { ascending: false });
+      .order('created_at', { ascending: false }) as { data: EmailForwardingAddress[] | null; error: any };
 
     if (addressError) {
       console.error('Error fetching forwarding addresses:', addressError);
@@ -43,18 +61,18 @@ export async function GET(request: NextRequest) {
     const activeAddress = addresses?.find(addr => addr.is_active);
 
     // Get email statistics
-    const { data: stats, error: statsError } = await supabase
+    const { data: stats, error: statsError } = await db
       .from('email_receipts')
       .select('processing_status, received_at')
       .eq('user_id', user.id)
       .order('received_at', { ascending: false })
-      .limit(100);
+      .limit(100) as { data: EmailReceipt[] | null; error: any };
 
     const emailStats = {
       total: stats?.length || 0,
-      completed: stats?.filter(s => s.processing_status === 'completed').length || 0,
-      failed: stats?.filter(s => s.processing_status === 'failed').length || 0,
-      pending: stats?.filter(s => s.processing_status === 'pending' || s.processing_status === 'processing').length || 0,
+      completed: stats?.filter((s: EmailReceipt) => s.processing_status === 'completed').length || 0,
+      failed: stats?.filter((s: EmailReceipt) => s.processing_status === 'failed').length || 0,
+      pending: stats?.filter((s: EmailReceipt) => s.processing_status === 'pending' || s.processing_status === 'processing').length || 0,
     };
 
     return NextResponse.json({
@@ -75,6 +93,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const supabase = await createClient();
+    const db = supabase as any;
     
     // Get current user
     const { data: { user }, error: userError } = await supabase.auth.getUser();
@@ -87,11 +106,11 @@ export async function POST(request: NextRequest) {
     }
 
     // Check if user already has an active forwarding address
-    const { data: existingAddresses } = await supabase
+    const { data: existingAddresses } = await db
       .from('email_forwarding_addresses')
       .select('id, email_address, is_active')
       .eq('user_id', user.id)
-      .eq('is_active', true);
+      .eq('is_active', true) as { data: EmailForwardingAddress[] | null };
 
     if (existingAddresses && existingAddresses.length > 0) {
       return NextResponse.json({
@@ -107,7 +126,7 @@ export async function POST(request: NextRequest) {
     const emailAddress = `receipts-${uniqueId}@${emailDomain}`;
 
     // Create new forwarding address
-    const { data: newAddress, error: createError } = await supabase
+    const { data: newAddress, error: createError } = await db
       .from('email_forwarding_addresses')
       .insert({
         user_id: user.id,
@@ -115,7 +134,7 @@ export async function POST(request: NextRequest) {
         is_active: true,
       })
       .select()
-      .single();
+      .single() as { data: EmailForwardingAddress | null; error: any };
 
     if (createError || !newAddress) {
       console.error('Error creating forwarding address:', createError);
@@ -143,6 +162,7 @@ export async function POST(request: NextRequest) {
 export async function PATCH(request: NextRequest) {
   try {
     const supabase = await createClient();
+    const db = supabase as any;
     
     // Get current user
     const { data: { user }, error: userError } = await supabase.auth.getUser();
@@ -165,7 +185,7 @@ export async function PATCH(request: NextRequest) {
     }
 
     // Verify user owns the address
-    const { data: address, error: lookupError } = await supabase
+    const { data: address, error: lookupError } = await db
       .from('email_forwarding_addresses')
       .select('id')
       .eq('id', address_id)
@@ -180,7 +200,7 @@ export async function PATCH(request: NextRequest) {
     }
 
     // Update address
-    const { data: updatedAddress, error: updateError } = await supabase
+    const { data: updatedAddress, error: updateError } = await db
       .from('email_forwarding_addresses')
       .update({ is_active })
       .eq('id', address_id)
@@ -213,6 +233,7 @@ export async function PATCH(request: NextRequest) {
 export async function DELETE(request: NextRequest) {
   try {
     const supabase = await createClient();
+    const db = supabase as any;
     
     // Get current user
     const { data: { user }, error: userError } = await supabase.auth.getUser();
@@ -235,7 +256,7 @@ export async function DELETE(request: NextRequest) {
     }
 
     // Verify user owns the address
-    const { data: address, error: lookupError } = await supabase
+    const { data: address, error: lookupError } = await db
       .from('email_forwarding_addresses')
       .select('id')
       .eq('id', address_id)
@@ -250,7 +271,7 @@ export async function DELETE(request: NextRequest) {
     }
 
     // Deactivate address (don't delete to preserve history)
-    const { error: updateError } = await supabase
+    const { error: updateError } = await db
       .from('email_forwarding_addresses')
       .update({ is_active: false })
       .eq('id', address_id);
@@ -276,4 +297,3 @@ export async function DELETE(request: NextRequest) {
     );
   }
 }
-

@@ -4,6 +4,8 @@ import { createClient } from '@/core/database/server';
 export async function POST(request: NextRequest) {
   try {
     const supabase = await createClient();
+    // Cast to any for tables not in generated types
+    const db = supabase as any;
     
     // Get current user
     const { data: { user }, error: userError } = await supabase.auth.getUser();
@@ -26,7 +28,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Verify user owns both the transaction and document
-    const { data: transaction, error: txError } = await supabase
+    const { data: transaction, error: txError } = await db
       .from('categorized_transactions')
       .select(`
         *,
@@ -42,7 +44,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { data: document, error: docError } = await supabase
+    const { data: document, error: docError } = await db
       .from('financial_documents')
       .select('*')
       .eq('id', document_id)
@@ -58,7 +60,7 @@ export async function POST(request: NextRequest) {
 
     // Save tax breakdown if provided
     if (breakdown) {
-      const { error: breakdownError } = await supabase
+      const { error: breakdownError } = await db
         .from('financial_documents')
         .update({
           subtotal_amount: breakdown.subtotal,
@@ -111,6 +113,8 @@ export async function POST(request: NextRequest) {
 export async function DELETE(request: NextRequest) {
   try {
     const supabase = await createClient();
+    // Cast to any for tables not in generated types
+    const db = supabase as any;
     
     // Get current user
     const { data: { user }, error: userError } = await supabase.auth.getUser();
@@ -133,7 +137,7 @@ export async function DELETE(request: NextRequest) {
     }
 
     // Verify user owns the transaction
-    const { data: transaction, error: txError } = await supabase
+    const { data: transaction, error: txError } = await db
       .from('categorized_transactions')
       .select(`
         *,
@@ -177,4 +181,3 @@ export async function DELETE(request: NextRequest) {
     );
   }
 }
-

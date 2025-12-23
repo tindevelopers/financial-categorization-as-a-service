@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/core/database/server';
 import Airtable from 'airtable';
+import type { Transaction } from '@/lib/sync/types';
 
 /**
  * Sync transactions with Airtable base
@@ -117,34 +118,32 @@ export async function POST(request: NextRequest) {
       // Pull transactions from Airtable
       const records = await base(tableName).select().all();
 
-      const transactions = records.map(record => ({
+      const transactions: Transaction[] = records.map(record => ({
         original_description: record.get('Description') as string || '',
         amount: parseFloat(record.get('Gross Amount') as string || '0'),
         date: record.get('Date') as string || new Date().toISOString(),
         category: record.get('Category') as string || null,
         subcategory: record.get('Subcategory') as string || null,
-        merchant: record.get('Vendor') as string || null,
-        notes: record.get('Notes') as string || null,
-        source_type: 'airtable',
+        source_type: 'airtable' as const,
         source_identifier: baseId,
-        airtable_record_id: record.id,
       }));
 
       // Use TransactionMergeService to merge
       const { TransactionMergeService } = await import('@/lib/sync/TransactionMergeService');
       const mergeService = new TransactionMergeService(supabase, user.id);
       
-      const result = await mergeService.mergeTransactions(transactions, {
-        sourceName: 'Airtable',
+      const result = await mergeService.processUploadWithMerge(transactions, {
+        sourceType: 'airtable',
         sourceIdentifier: baseId,
-        jobName: `Airtable Import ${new Date().toLocaleDateString()}`,
+        originalFilename: `Airtable Import ${new Date().toLocaleDateString()}`,
+        createJob: true,
       });
 
       return NextResponse.json({
         success: true,
-        imported: result.imported,
-        duplicates: result.duplicates,
-        errors: result.errors,
+        imported: result.inserted,
+        duplicates: result.skipped,
+        errors: 0,
         direction: 'pull',
         jobId: result.jobId,
       });

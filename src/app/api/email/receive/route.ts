@@ -24,9 +24,20 @@ interface ParsedEmail {
   attachments: EmailAttachment[];
 }
 
+// Types for tables not in generated types
+interface ForwardingAddress {
+  id: string;
+  user_id: string;
+  is_active: boolean;
+  emails_received?: number;
+  [key: string]: any;
+}
+
 export async function POST(request: NextRequest) {
   try {
     const supabase = await createClient();
+    // Cast to any for tables not in generated types
+    const db = supabase as any;
     
     // Verify webhook signature (implementation depends on email service)
     const signature = request.headers.get('x-webhook-signature');
@@ -69,14 +80,12 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const emailIdentifier = emailMatch[1];
-
     // Look up user by forwarding address
-    const { data: forwardingAddress, error: lookupError } = await supabase
+    const { data: forwardingAddress, error: lookupError } = await db
       .from('email_forwarding_addresses')
-      .select('id, user_id, is_active')
+      .select('id, user_id, is_active, emails_received')
       .eq('email_address', toEmail)
-      .single();
+      .single() as { data: ForwardingAddress | null; error: any };
 
     if (lookupError || !forwardingAddress || !forwardingAddress.is_active) {
       console.error('Forwarding address not found or inactive:', toEmail);
@@ -89,7 +98,7 @@ export async function POST(request: NextRequest) {
     const userId = forwardingAddress.user_id;
 
     // Create email receipt record
-    const { data: emailReceipt, error: receiptError } = await supabase
+    const { data: emailReceipt, error: receiptError } = await db
       .from('email_receipts')
       .insert({
         user_id: userId,
@@ -107,7 +116,7 @@ export async function POST(request: NextRequest) {
         },
       })
       .select('id')
-      .single();
+      .single() as { data: { id: string } | null; error: any };
 
     if (receiptError || !emailReceipt) {
       console.error('Error creating email receipt:', receiptError);
@@ -118,10 +127,10 @@ export async function POST(request: NextRequest) {
     }
 
     // Update forwarding address stats
-    await supabase
+    await db
       .from('email_forwarding_addresses')
       .update({
-        emails_received: (forwardingAddress as any).emails_received + 1,
+        emails_received: (forwardingAddress.emails_received || 0) + 1,
         last_email_at: new Date().toISOString(),
       })
       .eq('id', forwardingAddress.id);
@@ -160,7 +169,7 @@ export async function POST(request: NextRequest) {
         }
 
         // Create financial_documents record
-        const { data: document, error: docError } = await supabase
+        const { data: document, error: docError } = await db
           .from('financial_documents')
           .insert({
             user_id: userId,
@@ -176,7 +185,7 @@ export async function POST(request: NextRequest) {
             reconciliation_status: 'unreconciled',
           })
           .select('id')
-          .single();
+          .single() as { data: { id: string } | null; error: any };
 
         if (docError || !document) {
           console.error('Document creation error:', docError);
@@ -200,7 +209,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Update email receipt with results
-    await supabase
+    await db
       .from('email_receipts')
       .update({
         processing_status: errors.length > 0 && documentsCreated.length === 0 ? 'failed' : 'completed',
@@ -314,4 +323,3 @@ function getFileExtension(filename: string): string {
   const parts = filename.split('.');
   return parts.length > 1 ? parts[parts.length - 1] : 'pdf';
 }
-
