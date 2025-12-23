@@ -59,6 +59,13 @@ CREATE INDEX IF NOT EXISTS idx_company_profiles_setup_completed ON company_profi
 
 ALTER TABLE company_profiles ENABLE ROW LEVEL SECURITY;
 
+-- Drop existing policies if they exist (for idempotency)
+DROP POLICY IF EXISTS "Users can view their own company profiles" ON company_profiles;
+DROP POLICY IF EXISTS "Users can create their own company profiles" ON company_profiles;
+DROP POLICY IF EXISTS "Users can update their own company profiles" ON company_profiles;
+DROP POLICY IF EXISTS "Users can delete their own company profiles" ON company_profiles;
+DROP TRIGGER IF EXISTS company_profiles_updated_at ON company_profiles;
+
 -- Users can view their own company profiles
 CREATE POLICY "Users can view their own company profiles"
   ON company_profiles FOR SELECT

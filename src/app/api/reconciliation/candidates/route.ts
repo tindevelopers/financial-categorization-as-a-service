@@ -59,11 +59,18 @@ export async function GET(request: NextRequest) {
 
     // Get unreconciled documents
     const { data: documents, error: docError } = await supabase
-      .from('documents')
-      .select('*')
+      .from('financial_documents')
+      .select(`
+        id, original_filename, vendor_name, document_date, 
+        total_amount, subtotal_amount, tax_amount, fee_amount, net_amount, 
+        tax_rate, line_items, payment_method, po_number,
+        reconciliation_status, matched_transaction_id, 
+        storage_path, mime_type, file_size, ocr_status, extracted_text
+      `)
       .eq('user_id', user.id)
       .eq('reconciliation_status', 'unreconciled')
-      .order('invoice_date', { ascending: false });
+      .is('matched_transaction_id', null)
+      .order('document_date', { ascending: false });
 
     if (docError) {
       console.error('Error fetching documents:', docError);
@@ -78,9 +85,9 @@ export async function GET(request: NextRequest) {
       const potentialMatches = (documents || [])
         .filter((doc: any) => {
           const amountDiff = Math.abs((tx.amount || 0) - (doc.total_amount || 0));
-          const dateDiff = doc.invoice_date 
+          const dateDiff = doc.document_date 
             ? Math.abs(
-                (new Date(tx.date).getTime() - new Date(doc.invoice_date).getTime()) / 
+                (new Date(tx.date).getTime() - new Date(doc.document_date).getTime()) / 
                 (1000 * 60 * 60 * 24)
               )
             : 999;
@@ -90,9 +97,9 @@ export async function GET(request: NextRequest) {
         })
         .map((doc: any) => {
           const amountDiff = Math.abs((tx.amount || 0) - (doc.total_amount || 0));
-          const dateDiff = doc.invoice_date
+          const dateDiff = doc.document_date
             ? Math.abs(
-                (new Date(tx.date).getTime() - new Date(doc.invoice_date).getTime()) / 
+                (new Date(tx.date).getTime() - new Date(doc.document_date).getTime()) / 
                 (1000 * 60 * 60 * 24)
               )
             : 999;
@@ -107,6 +114,7 @@ export async function GET(request: NextRequest) {
           
           return {
             ...doc,
+            invoice_date: doc.document_date,  // Alias for backward compatibility
             match_confidence: matchConfidence,
             amount_difference: amountDiff,
             days_difference: dateDiff,

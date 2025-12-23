@@ -8,8 +8,12 @@ import {
   XCircleIcon,
   DocumentTextIcon,
   BanknotesIcon,
-  SparklesIcon
+  SparklesIcon,
+  EnvelopeIcon
 } from '@heroicons/react/24/outline'
+import { ReceiptUploadModal } from '@/components/reconciliation/ReceiptUploadModal'
+import { MatchBreakdownModal } from '@/components/reconciliation/MatchBreakdownModal'
+import { EmailForwardingInfo } from '@/components/reconciliation/EmailForwardingInfo'
 
 type Transaction = {
   id: string
@@ -50,6 +54,13 @@ export default function ReconciliationPage() {
   const [autoMatching, setAutoMatching] = useState(false)
   const [selectedTransaction, setSelectedTransaction] = useState<string | null>(null)
   const [matchingTransaction, setMatchingTransaction] = useState<string | null>(null)
+  const [showUploadModal, setShowUploadModal] = useState(false)
+  const [showEmailInfo, setShowEmailInfo] = useState(false)
+  const [breakdownModal, setBreakdownModal] = useState<{
+    show: boolean
+    transaction: Transaction | null
+    document: Document | null
+  }>({ show: false, transaction: null, document: null })
 
   useEffect(() => {
     loadReconciliationData()
@@ -94,14 +105,40 @@ export default function ReconciliationPage() {
   }
 
   const handleMatch = async (transactionId: string, documentId: string) => {
+    // Find transaction and document
+    const transaction = transactions.find(t => t.id === transactionId)
+    if (!transaction) return
+
+    const document = transaction.potential_matches?.find(d => d.id === documentId)
+    if (!document) return
+
+    // Open breakdown modal
+    setBreakdownModal({
+      show: true,
+      transaction,
+      document,
+    })
+  }
+
+  const handleConfirmBreakdown = async (breakdown: any) => {
+    if (!breakdownModal.transaction || !breakdownModal.document) return
+
     try {
-      setMatchingTransaction(transactionId)
+      setMatchingTransaction(breakdownModal.transaction.id)
       const response = await fetch('/api/reconciliation/match', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          transaction_id: transactionId,
-          document_id: documentId,
+          transaction_id: breakdownModal.transaction.id,
+          document_id: breakdownModal.document.id,
+          breakdown: {
+            subtotal: breakdown.subtotal,
+            tax: breakdown.tax,
+            fees: breakdown.fees,
+            net: breakdown.net,
+            taxRate: breakdown.taxRate,
+            lineItems: breakdown.lineItems,
+          },
         }),
       })
       
@@ -110,6 +147,7 @@ export default function ReconciliationPage() {
       // Reload data
       await loadReconciliationData()
       setSelectedTransaction(null)
+      setBreakdownModal({ show: false, transaction: null, document: null })
     } catch (error) {
       console.error('Match error:', error)
       alert('Failed to match transaction')
@@ -164,6 +202,13 @@ export default function ReconciliationPage() {
     })
   }
 
+  const handleUploadComplete = async (documentIds: string[]) => {
+    console.log(`Uploaded ${documentIds.length} documents`)
+    setShowUploadModal(false)
+    // Reload reconciliation data to include new documents
+    await loadReconciliationData()
+  }
+
   if (loading) {
     return (
       <div className="space-y-8">
@@ -186,14 +231,24 @@ export default function ReconciliationPage() {
           <Heading>Reconciliation</Heading>
           <Text>Match bank transactions with receipts and invoices</Text>
         </div>
-        <Button
-          color="blue"
-          onClick={handleAutoMatch}
-          disabled={autoMatching || summary.total_unreconciled === 0}
-        >
-          <SparklesIcon className="h-5 w-5 mr-2" />
-          {autoMatching ? 'Auto-Matching...' : 'Auto-Match'}
-        </Button>
+        <div className="flex gap-2">
+          <Button
+            color="blue"
+            onClick={handleAutoMatch}
+            disabled={autoMatching || summary.total_unreconciled === 0}
+          >
+            <SparklesIcon className="h-5 w-5 mr-2" />
+            {autoMatching ? 'Auto-Matching...' : 'Auto-Match'}
+          </Button>
+          <Button outline onClick={() => setShowUploadModal(true)}>
+            <DocumentTextIcon className="h-5 w-5 mr-2" />
+            Upload Receipts
+          </Button>
+          <Button outline onClick={() => setShowEmailInfo(true)}>
+            <EnvelopeIcon className="h-5 w-5 mr-2" />
+            Email Address
+          </Button>
+        </div>
       </div>
 
       {/* Summary Cards */}
@@ -356,6 +411,26 @@ export default function ReconciliationPage() {
           </div>
         </div>
       )}
+
+      {/* Modals */}
+      <ReceiptUploadModal
+        isOpen={showUploadModal}
+        onClose={() => setShowUploadModal(false)}
+        onUploadComplete={handleUploadComplete}
+      />
+
+      <EmailForwardingInfo
+        isOpen={showEmailInfo}
+        onClose={() => setShowEmailInfo(false)}
+      />
+
+      <MatchBreakdownModal
+        isOpen={breakdownModal.show}
+        transaction={breakdownModal.transaction}
+        document={breakdownModal.document}
+        onConfirm={handleConfirmBreakdown}
+        onCancel={() => setBreakdownModal({ show: false, transaction: null, document: null })}
+      />
     </div>
   )
 }

@@ -16,7 +16,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { transaction_id, document_id } = body;
+    const { transaction_id, document_id, breakdown } = body;
 
     if (!transaction_id || !document_id) {
       return NextResponse.json(
@@ -43,7 +43,7 @@ export async function POST(request: NextRequest) {
     }
 
     const { data: document, error: docError } = await supabase
-      .from('documents')
+      .from('financial_documents')
       .select('*')
       .eq('id', document_id)
       .eq('user_id', user.id)
@@ -54,6 +54,26 @@ export async function POST(request: NextRequest) {
         { error: 'Document not found or unauthorized' },
         { status: 404 }
       );
+    }
+
+    // Save tax breakdown if provided
+    if (breakdown) {
+      const { error: breakdownError } = await supabase
+        .from('financial_documents')
+        .update({
+          subtotal_amount: breakdown.subtotal,
+          tax_amount: breakdown.tax,
+          fee_amount: breakdown.fees,
+          net_amount: breakdown.net,
+          tax_rate: breakdown.taxRate,
+          line_items: breakdown.lineItems || [],
+        })
+        .eq('id', document_id);
+
+      if (breakdownError) {
+        console.error('Error saving breakdown:', breakdownError);
+        // Continue with matching even if breakdown save fails
+      }
     }
 
     // Use the database function to match
@@ -76,6 +96,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       success: true,
       message: 'Transaction matched with document successfully',
+      breakdown_saved: !!breakdown,
     });
   } catch (error) {
     console.error('Match error:', error);

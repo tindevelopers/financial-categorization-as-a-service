@@ -53,6 +53,14 @@ CREATE INDEX IF NOT EXISTS idx_tenant_integration_settings_provider
 
 ALTER TABLE tenant_integration_settings ENABLE ROW LEVEL SECURITY;
 
+-- Drop existing policies if they exist (for idempotency)
+DROP POLICY IF EXISTS "Users can view own tenant integration settings" ON tenant_integration_settings;
+DROP POLICY IF EXISTS "Users can insert own tenant integration settings" ON tenant_integration_settings;
+DROP POLICY IF EXISTS "Users can update own tenant integration settings" ON tenant_integration_settings;
+DROP POLICY IF EXISTS "Users can delete own tenant integration settings" ON tenant_integration_settings;
+DROP POLICY IF EXISTS "Platform admins can manage all integration settings" ON tenant_integration_settings;
+DROP TRIGGER IF EXISTS update_tenant_integration_settings_updated_at ON tenant_integration_settings;
+
 -- Users can only view their own tenant's integration settings
 CREATE POLICY "Users can view own tenant integration settings" 
   ON tenant_integration_settings

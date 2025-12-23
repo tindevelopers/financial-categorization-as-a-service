@@ -174,6 +174,15 @@ export async function POST(request: NextRequest): Promise<NextResponse<UploadRes
       );
     }
 
+    // Trigger OCR processing asynchronously
+    if (process.env.NEXT_PUBLIC_APP_URL) {
+      fetch(`${process.env.NEXT_PUBLIC_APP_URL}/api/documents/process-ocr`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ documentId: document.id }),
+      }).catch(err => console.error('OCR trigger error:', err));
+    }
+
     return NextResponse.json({
       success: true,
       documentId: document.id,

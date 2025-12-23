@@ -204,6 +204,17 @@ ALTER TABLE sync_metadata ENABLE ROW LEVEL SECURITY;
 ALTER TABLE sync_conflicts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE sync_history ENABLE ROW LEVEL SECURITY;
 
+-- Drop existing policies if they exist (for idempotency)
+DROP POLICY IF EXISTS "Users can view own sync metadata" ON sync_metadata;
+DROP POLICY IF EXISTS "Users can create own sync metadata" ON sync_metadata;
+DROP POLICY IF EXISTS "Users can update own sync metadata" ON sync_metadata;
+DROP POLICY IF EXISTS "Users can delete own sync metadata" ON sync_metadata;
+DROP POLICY IF EXISTS "Users can view own sync conflicts" ON sync_conflicts;
+DROP POLICY IF EXISTS "Users can update own sync conflicts" ON sync_conflicts;
+DROP POLICY IF EXISTS "Users can view own sync history" ON sync_history;
+DROP POLICY IF EXISTS "Users can create own sync history" ON sync_history;
+DROP TRIGGER IF EXISTS update_sync_metadata_updated_at ON sync_metadata;
+
 -- Sync Metadata Policies
 CREATE POLICY "Users can view own sync metadata"
   ON sync_metadata FOR SELECT
