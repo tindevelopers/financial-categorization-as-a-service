@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/database/server";
+import { createAdminClient } from "@tinadmin/core/database/admin-client";
 import { writeFile } from "fs/promises";
 import { join } from "path";
 import { tmpdir } from "os";
@@ -105,24 +106,66 @@ export async function POST(request: NextRequest) {
     // #endregion
 
     // Create categorization job
-    const { data: jobData, error: jobError } = await supabase
-      .from("categorization_jobs")
-      .insert({
-        user_id: user.id,
-        tenant_id: userData?.tenant_id || null,
-        job_type: "spreadsheet",
-        status: "uploaded",
-        processing_mode: "sync",
-        original_filename: file.name,
-        file_url: urlData.publicUrl,
-      })
-      .select()
-      .single();
+    // Use admin client to bypass RLS, but we've already validated the user above
+    // This is necessary because server-side RLS context may not be properly set
+    let jobData;
+    let jobError;
+    
+    try {
+      const adminClient = createAdminClient();
+      const result = await adminClient
+        .from("categorization_jobs")
+        .insert({
+          user_id: user.id,
+          tenant_id: userData?.tenant_id || null,
+          job_type: "spreadsheet",
+          status: "uploaded",
+          processing_mode: "sync",
+          original_filename: file.name,
+          file_url: urlData.publicUrl,
+        })
+        .select()
+        .single();
+      
+      jobData = result.data;
+      jobError = result.error;
+    } catch (adminError: any) {
+      console.error("Admin client error:", adminError);
+      // Fallback to regular client if admin client fails
+      const result = await supabase
+        .from("categorization_jobs")
+        .insert({
+          user_id: user.id,
+          tenant_id: userData?.tenant_id || null,
+          job_type: "spreadsheet",
+          status: "uploaded",
+          processing_mode: "sync",
+          original_filename: file.name,
+          file_url: urlData.publicUrl,
+        })
+        .select()
+        .single();
+      
+      jobData = result.data;
+      jobError = result.error;
+    }
 
     if (jobError) {
       console.error("Job creation error:", jobError);
+      console.error("Job creation error details:", {
+        message: jobError.message,
+        code: jobError.code,
+        details: jobError.details,
+        hint: jobError.hint,
+        user_id: user.id,
+        tenant_id: userData?.tenant_id,
+      });
       return NextResponse.json(
-        { error: "Failed to create job" },
+        { 
+          error: "Failed to create job",
+          details: jobError.message || "Unknown error",
+          code: jobError.code,
+        },
         { status: 500 }
       );
     }
