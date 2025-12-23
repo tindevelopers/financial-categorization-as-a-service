@@ -1,8 +1,17 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Heading, Text, Button } from '@/components/catalyst'
-import { ArrowUpTrayIcon, DocumentTextIcon, ClockIcon, TrashIcon } from '@heroicons/react/24/outline'
+import { 
+  ArrowUpTrayIcon, 
+  DocumentTextIcon, 
+  ClockIcon, 
+  TrashIcon,
+  CheckCircleIcon,
+  XCircleIcon,
+  ArrowPathIcon,
+  ExclamationTriangleIcon
+} from '@heroicons/react/24/outline'
 import Link from 'next/link'
 import { createClient } from '@/core/database/client'
 
@@ -17,10 +26,14 @@ interface Upload {
   id: string
   original_filename: string
   status: string
+  status_message?: string
   created_at: string
   job_type: string
   total_items?: number
   processed_items?: number
+  failed_items?: number
+  error_code?: string
+  error_message?: string
   storage_info?: StorageInfo
 }
 
@@ -29,47 +42,127 @@ export default function UploadsPage() {
   const [loading, setLoading] = useState(true)
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(null)
+  const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null)
+
+  const fetchUploads = async () => {
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'uploads/page.tsx:23',message:'fetchUploads started',data:{hasSupabaseUrl:!!process.env.NEXT_PUBLIC_SUPABASE_URL,hasSupabaseKey:!!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'A'})}).catch(()=>{});
+    // #endregion
+    try {
+      // Use the new API endpoint that includes storage info
+      const response = await fetch('/api/categorization/jobs?limit=20')
+      
+      if (!response.ok) {
+        throw new Error('Failed to fetch uploads')
+      }
+
+      const result = await response.json()
+      setUploads(result.jobs || [])
+    } catch (error: any) {
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'uploads/page.tsx:50',message:'fetchUploads exception',data:{errorMessage:error?.message || 'unknown',errorType:error?.constructor?.name || 'unknown'},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'C'})}).catch(()=>{});
+      // #endregion
+      console.error('Error fetching uploads:', error)
+    } finally {
+      setLoading(false)
+    }
+  }
 
   useEffect(() => {
-    async function fetchUploads() {
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'uploads/page.tsx:23',message:'fetchUploads started',data:{hasSupabaseUrl:!!process.env.NEXT_PUBLIC_SUPABASE_URL,hasSupabaseKey:!!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'A'})}).catch(()=>{});
-      // #endregion
-      try {
-        // Use the new API endpoint that includes storage info
-        const response = await fetch('/api/categorization/jobs?limit=20')
-        
-        if (!response.ok) {
-          throw new Error('Failed to fetch uploads')
-        }
+    fetchUploads()
 
-        const result = await response.json()
-        setUploads(result.jobs || [])
-      } catch (error: any) {
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'uploads/page.tsx:50',message:'fetchUploads exception',data:{errorMessage:error?.message || 'unknown',errorType:error?.constructor?.name || 'unknown'},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'C'})}).catch(()=>{});
-        // #endregion
-        console.error('Error fetching uploads:', error)
-      } finally {
-        setLoading(false)
+    // Set up polling for jobs that are still processing
+    pollingIntervalRef.current = setInterval(() => {
+      fetchUploads()
+    }, 3000) // Poll every 3 seconds
+
+    return () => {
+      if (pollingIntervalRef.current) {
+        clearInterval(pollingIntervalRef.current)
+        pollingIntervalRef.current = null
       }
     }
-
-    fetchUploads()
   }, [])
 
-  const getStatusColor = (status: string) => {
+  // Update polling based on current uploads state
+  useEffect(() => {
+    const hasActiveJobs = uploads.some(u => 
+      ['received', 'queued', 'processing'].includes(u.status)
+    )
+
+    if (!hasActiveJobs && pollingIntervalRef.current) {
+      // Stop polling when no active jobs
+      clearInterval(pollingIntervalRef.current)
+      pollingIntervalRef.current = null
+    } else if (hasActiveJobs && !pollingIntervalRef.current) {
+      // Resume polling if there are active jobs
+      pollingIntervalRef.current = setInterval(() => {
+        fetchUploads()
+      }, 3000)
+    }
+  }, [uploads])
+
+  const getStatusDisplay = (upload: Upload) => {
+    const status = upload.status
+    const statusMessage = upload.status_message || status
+    
     switch (status) {
-      case 'completed':
-        return 'text-green-600 dark:text-green-400'
+      case 'received':
+        return {
+          color: 'text-green-600 dark:text-green-400',
+          icon: CheckCircleIcon,
+          label: 'File Received',
+          message: statusMessage,
+        }
+      case 'queued':
+        return {
+          color: 'text-yellow-600 dark:text-yellow-400',
+          icon: ClockIcon,
+          label: 'Waiting to Process',
+          message: statusMessage,
+        }
       case 'processing':
-        return 'text-blue-600 dark:text-blue-400'
+        return {
+          color: 'text-blue-600 dark:text-blue-400',
+          icon: ArrowPathIcon,
+          label: 'Processing',
+          message: statusMessage,
+          spinning: true,
+        }
+      case 'reviewing':
+        return {
+          color: 'text-purple-600 dark:text-purple-400',
+          icon: CheckCircleIcon,
+          label: 'Ready for Review',
+          message: statusMessage,
+        }
+      case 'completed':
+        return {
+          color: 'text-green-600 dark:text-green-400',
+          icon: CheckCircleIcon,
+          label: 'Completed',
+          message: statusMessage,
+        }
       case 'failed':
-        return 'text-red-600 dark:text-red-400'
+        return {
+          color: 'text-red-600 dark:text-red-400',
+          icon: XCircleIcon,
+          label: 'Failed',
+          message: statusMessage,
+        }
       default:
-    return 'text-gray-600 dark:text-gray-400'
+        return {
+          color: 'text-gray-600 dark:text-gray-400',
+          icon: DocumentTextIcon,
+          label: status.charAt(0).toUpperCase() + status.slice(1),
+          message: statusMessage,
+        }
+    }
   }
-}
+
+  const getStatusColor = (status: string) => {
+    return getStatusDisplay({ status } as Upload).color
+  }
 
   const getStorageTierBadge = (tier?: 'hot' | 'archive' | 'restoring') => {
     if (!tier) return null
@@ -215,9 +308,61 @@ export default function UploadsPage() {
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <span className={`text-sm font-medium capitalize ${getStatusColor(upload.status)}`}>
-                        {upload.status}
-                      </span>
+                      <div className="flex items-center gap-2">
+                        {(() => {
+                          const statusDisplay = getStatusDisplay(upload)
+                          const Icon = statusDisplay.icon
+                          return (
+                            <>
+                              <Icon 
+                                className={`h-5 w-5 ${statusDisplay.color} ${statusDisplay.spinning ? 'animate-spin' : ''}`} 
+                              />
+                              <div className="flex flex-col">
+                                <span className={`text-sm font-medium ${statusDisplay.color}`}>
+                                  {statusDisplay.label}
+                                </span>
+                                {statusDisplay.message && statusDisplay.message !== statusDisplay.label && (
+                                  <span className="text-xs text-gray-500 dark:text-gray-400">
+                                    {statusDisplay.message}
+                                  </span>
+                                )}
+                                {upload.status === 'processing' && upload.total_items && upload.processed_items !== undefined && (
+                                  <div className="mt-1">
+                                    <div className="w-32 bg-gray-200 dark:bg-gray-700 rounded-full h-1.5">
+                                      <div
+                                        className="bg-blue-500 h-1.5 rounded-full transition-all duration-300"
+                                        style={{ 
+                                          width: `${Math.min((upload.processed_items / upload.total_items) * 100, 100)}%` 
+                                        }}
+                                      />
+                                    </div>
+                                    <span className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                                      {upload.processed_items} / {upload.total_items}
+                                    </span>
+                                  </div>
+                                )}
+                                {upload.status === 'failed' && upload.error_code && (
+                                  <details className="mt-1">
+                                    <summary className="text-xs text-red-600 dark:text-red-400 cursor-pointer hover:underline">
+                                      Error details
+                                    </summary>
+                                    <div className="mt-1 p-2 bg-red-50 dark:bg-red-900/20 rounded text-xs">
+                                      <div className="font-mono text-red-700 dark:text-red-300">
+                                        Code: {upload.error_code}
+                                      </div>
+                                      {upload.error_message && (
+                                        <div className="text-red-600 dark:text-red-400 mt-1">
+                                          {upload.error_message}
+                                        </div>
+                                      )}
+                                    </div>
+                                  </details>
+                                )}
+                              </div>
+                            </>
+                          )
+                        })()}
+                      </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       {getStorageTierBadge(upload.storage_info?.tier)}
@@ -237,10 +382,10 @@ export default function UploadsPage() {
                             </Button>
                           </Link>
                         )}
-                        {upload.status === 'processing' && (
+                        {['received', 'queued', 'processing'].includes(upload.status) && (
                           <span className="inline-flex items-center gap-1 text-blue-600 dark:text-blue-400">
                             <ClockIcon className="h-4 w-4" />
-                            Processing...
+                            {upload.status === 'processing' ? 'Processing...' : 'Waiting...'}
                           </span>
                         )}
                         <Button

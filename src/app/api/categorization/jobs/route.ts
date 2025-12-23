@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@/lib/database/server";
+import { createClient } from "@/core/database/server";
 
 /**
  * GET /api/categorization/jobs
@@ -30,13 +30,13 @@ export async function GET(request: NextRequest) {
     const offset = parseInt(searchParams.get("offset") || "0");
 
     // Build query
-    let query = supabase
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let query = (supabase as any)
       .from("categorization_jobs")
       .select(`
         id,
         job_type,
         status,
-        status_message,
         processing_mode,
         original_filename,
         file_url,
@@ -44,11 +44,11 @@ export async function GET(request: NextRequest) {
         total_items,
         processed_items,
         failed_items,
-        error_code,
-        error_message,
         created_at,
         started_at,
-        completed_at
+        completed_at,
+        updated_at,
+        error_message
       `)
       .eq("user_id", user.id)
       .order("created_at", { ascending: false });
@@ -74,49 +74,27 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Get financial documents for these jobs to include storage info
-    const jobIds = jobs?.map(j => j.id) || [];
-    const { data: documents } = await supabase
-      .from("financial_documents")
-      .select("job_id, storage_tier, archived_at, file_size_bytes")
-      .in("job_id", jobIds);
-
-    // Create a map of job_id -> document info
-    const docMap = new Map();
-    documents?.forEach(doc => {
-      if (!docMap.has(doc.job_id)) {
-        docMap.set(doc.job_id, []);
-      }
-      docMap.get(doc.job_id).push(doc);
-    });
-
-    // Enhance jobs with storage info
-    const enhancedJobs = jobs?.map(job => {
-      const jobDocs = docMap.get(job.id) || [];
-      const storageTiers = jobDocs.map(d => d.storage_tier);
-      const totalSize = jobDocs.reduce((sum, d) => sum + (d.file_size_bytes || 0), 0);
-      
-      return {
-        ...job,
-        storage_info: {
-          tier: storageTiers.includes("archive") ? "archive" : 
-                storageTiers.includes("restoring") ? "restoring" : "hot",
-          total_size_bytes: totalSize,
-          document_count: jobDocs.length,
-          archived_at: jobDocs.find(d => d.archived_at)?.archived_at || null,
-        }
-      };
-    });
+    // Transform jobs to match the expected format
+    const transformedJobs = (jobs || []).map((job: any) => ({
+      id: job.id,
+      file_name: job.original_filename || "Untitled",
+      status: job.status,
+      total_items: job.total_items || 0,
+      processed_items: job.processed_items || 0,
+      created_at: job.created_at,
+      updated_at: job.updated_at || job.completed_at || job.created_at,
+    }));
 
     // Get total count for pagination
-    const { count, error: countError } = await supabase
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { count, error: countError } = await (supabase as any)
       .from("categorization_jobs")
       .select("*", { count: "exact", head: true })
       .eq("user_id", user.id);
 
     return NextResponse.json({
       success: true,
-      jobs: enhancedJobs || [],
+      jobs: transformedJobs,
       pagination: {
         total: count || 0,
         limit,

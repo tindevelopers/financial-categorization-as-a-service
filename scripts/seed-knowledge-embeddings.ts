@@ -17,8 +17,16 @@ async function main() {
   console.log('🚀 Starting knowledge base embedding generation...\n');
 
   // Create Supabase client
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  let supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  let supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+  // Remove quotes if present
+  if (supabaseUrl) {
+    supabaseUrl = supabaseUrl.replace(/^["']|["']$/g, '');
+  }
+  if (supabaseServiceKey) {
+    supabaseServiceKey = supabaseServiceKey.replace(/^["']|["']$/g, '');
+  }
 
   if (!supabaseUrl || !supabaseServiceKey) {
     console.error('❌ Missing NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY');
@@ -27,6 +35,8 @@ async function main() {
   }
 
   const supabase = createClient(supabaseUrl, supabaseServiceKey);
+  
+  console.log('🔗 Connecting to database...\n');
 
   // Check for VERCEL_OIDC_TOKEN (required for Vercel AI Gateway)
   if (!process.env.VERCEL_OIDC_TOKEN) {
@@ -37,13 +47,48 @@ async function main() {
   try {
     // 1. Fetch all active knowledge base entries
     console.log('📚 Fetching knowledge base entries...');
-    const { data: knowledgeItems, error: fetchError } = await supabase
-      .from('knowledge_base')
-      .select('id, title, content, category, tags')
-      .eq('is_active', true);
+    let knowledgeItems;
+    
+    // Try REST API directly first to bypass schema cache
+    try {
+      const restUrl = `${supabaseUrl}/rest/v1/knowledge_base?is_active=eq.true&select=id,title,content,category,tags`;
+      const response = await fetch(restUrl, {
+        headers: {
+          'apikey': supabaseServiceKey,
+          'Authorization': `Bearer ${supabaseServiceKey}`,
+          'Content-Type': 'application/json',
+          'Prefer': 'return=representation',
+        },
+      });
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.log(`   REST API returned ${response.status}: ${errorText.substring(0, 200)}`);
+        throw new Error(`REST API error: ${response.status}`);
+      }
+      
+      knowledgeItems = await response.json();
+      console.log(`   ✅ Fetched ${knowledgeItems.length} entries via REST API\n`);
+    } catch (restError) {
+      // Fallback to Supabase client
+      console.log(`   REST API failed (${restError instanceof Error ? restError.message : 'unknown'}), trying Supabase client...`);
+      const { data, error: fetchError } = await supabase
+        .from('knowledge_base')
+        .select('id, title, content, category, tags')
+        .eq('is_active', true);
 
-    if (fetchError) {
-      throw new Error(`Failed to fetch knowledge base: ${fetchError.message}`);
+      if (fetchError) {
+        if (fetchError.message.includes('schema cache') || fetchError.message.includes('not found')) {
+          console.error('❌ Schema cache issue detected.');
+          console.log('   The table exists but Supabase client cache needs refresh.');
+          console.log('   Solution: Wait 2-5 minutes after migration, then retry.');
+          console.log('   Or the migration may not have been applied. Check with:');
+          console.log('   supabase migration list --linked');
+          throw new Error(`Schema cache error: ${fetchError.message}`);
+        }
+        throw new Error(`Failed to fetch knowledge base: ${fetchError.message}`);
+      }
+      knowledgeItems = data;
     }
 
     if (!knowledgeItems || knowledgeItems.length === 0) {

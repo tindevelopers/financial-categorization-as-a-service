@@ -120,9 +120,15 @@ export async function GET() {
     authUrl.searchParams.set('prompt', 'consent')
     authUrl.searchParams.set('state', state)
 
+    // Log redirect URI for debugging (don't log full URL with state for security)
+    console.log('[Google Sheets OAuth] Redirect URI:', credentials.redirectUri)
+    console.log('[Google Sheets OAuth] Client ID:', credentials.clientId?.substring(0, 20) + '...')
+    console.log('[Google Sheets OAuth] Credential Source:', credentials.source)
+
     return NextResponse.json({ 
       authUrl: authUrl.toString(),
       credentialSource: credentials.source,
+      redirectUri: credentials.redirectUri, // Include in response for debugging
     })
   } catch (error) {
     console.error('Error generating auth URL:', error)

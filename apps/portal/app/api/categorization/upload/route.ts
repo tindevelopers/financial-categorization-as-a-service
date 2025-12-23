@@ -5,6 +5,7 @@ import { writeFile } from "fs/promises";
 import { join } from "path";
 import { tmpdir } from "os";
 import { createHash } from "crypto";
+import { createJobErrorResponse, mapErrorToCode, getJobError } from "@/lib/errors/job-errors";
 
 export async function OPTIONS() {
   return new NextResponse(null, {
@@ -24,8 +25,13 @@ export async function POST(request: NextRequest) {
     const { data: { user }, error: authError } = await supabase.auth.getUser();
 
     if (authError || !user) {
+      const errorResponse = createJobErrorResponse("AUTHENTICATION_ERROR");
       return NextResponse.json(
-        { error: "Unauthorized" },
+        { 
+          error: errorResponse.error_message,
+          error_code: errorResponse.error_code,
+          status_message: errorResponse.status_message,
+        },
         { status: 401 }
       );
     }
@@ -41,8 +47,13 @@ export async function POST(request: NextRequest) {
     const file = formData.get("file") as File;
 
     if (!file) {
+      const errorResponse = createJobErrorResponse("INVALID_FILE_TYPE", "No file provided");
       return NextResponse.json(
-        { error: "No file provided" },
+        { 
+          error: errorResponse.error_message,
+          error_code: errorResponse.error_code,
+          status_message: errorResponse.status_message,
+        },
         { status: 400 }
       );
     }
@@ -52,8 +63,13 @@ export async function POST(request: NextRequest) {
     const fileExtension = file.name.substring(file.name.lastIndexOf(".")).toLowerCase();
     
     if (!validExtensions.includes(fileExtension)) {
+      const errorResponse = createJobErrorResponse("INVALID_FILE_TYPE");
       return NextResponse.json(
-        { error: "Invalid file type. Please upload .xlsx, .xls, or .csv" },
+        { 
+          error: errorResponse.error_message,
+          error_code: errorResponse.error_code,
+          status_message: errorResponse.status_message,
+        },
         { status: 400 }
       );
     }
@@ -61,8 +77,13 @@ export async function POST(request: NextRequest) {
     // Validate file size (max 10MB)
     const maxSize = 10 * 1024 * 1024; // 10MB
     if (file.size > maxSize) {
+      const errorResponse = createJobErrorResponse("FILE_TOO_LARGE");
       return NextResponse.json(
-        { error: "File size exceeds 10MB limit" },
+        { 
+          error: errorResponse.error_message,
+          error_code: errorResponse.error_code,
+          status_message: errorResponse.status_message,
+        },
         { status: 400 }
       );
     }
@@ -89,13 +110,15 @@ export async function POST(request: NextRequest) {
 
       if (existingDoc) {
         // Duplicate detected - return 409 Conflict with existing job info
+        const errorResponse = createJobErrorResponse("DUPLICATE_FILE");
         return NextResponse.json(
           {
-            error: "Duplicate file detected",
+            error: errorResponse.error_message,
+            error_code: errorResponse.error_code,
+            status_message: errorResponse.status_message,
             isDuplicate: true,
             existingJobId: existingDoc.job_id,
             existingDocumentId: existingDoc.id,
-            message: "This exact file has already been uploaded. Please delete the existing upload first if you want to re-upload, or use force=true to upload anyway.",
           },
           { status: 409 }
         );
@@ -121,9 +144,15 @@ export async function POST(request: NextRequest) {
       fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'upload/route.ts:79',message:'Storage upload error',data:{error:uploadError.message,fileName},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'B'})}).catch(()=>{});
       // #endregion
       console.error("Storage upload error:", uploadError);
+      const errorCode = mapErrorToCode(uploadError);
+      const errorResponse = createJobErrorResponse(errorCode, uploadError.message);
       return NextResponse.json(
-        { error: "Failed to upload file" },
-        { status: 500 }
+        { 
+          error: errorResponse.error_message,
+          error_code: errorResponse.error_code,
+          status_message: errorResponse.status_message,
+        },
+        { status: getJobError(errorCode).statusCode }
       );
     }
 
@@ -150,7 +179,8 @@ export async function POST(request: NextRequest) {
           user_id: user.id,
           tenant_id: userData?.tenant_id || null,
           job_type: "spreadsheet",
-          status: "queued", // Queue for async processing
+          status: "received", // File received, will be queued for processing
+          status_message: "File uploaded successfully",
           processing_mode: "async", // Always async processing
           original_filename: file.name,
           file_url: urlData.publicUrl,
@@ -170,7 +200,8 @@ export async function POST(request: NextRequest) {
           user_id: user.id,
           tenant_id: userData?.tenant_id || null,
           job_type: "spreadsheet",
-          status: "queued", // Queue for async processing
+          status: "received", // File received, will be queued for processing
+          status_message: "File uploaded successfully",
           processing_mode: "async", // Always async processing
           original_filename: file.name,
           file_url: urlData.publicUrl,
@@ -193,13 +224,15 @@ export async function POST(request: NextRequest) {
         user_id: user.id,
         tenant_id: userData?.tenant_id,
       });
+      const errorCode = mapErrorToCode(jobError);
+      const errorResponse = createJobErrorResponse(errorCode, jobError.message);
       return NextResponse.json(
         { 
-          error: "Failed to create job",
-          details: jobError.message || "Unknown error",
-          code: jobError.code,
+          error: errorResponse.error_message,
+          error_code: errorResponse.error_code,
+          status_message: errorResponse.status_message,
         },
-        { status: 500 }
+        { status: getJobError(errorCode).statusCode }
       );
     }
 
@@ -227,6 +260,27 @@ export async function POST(request: NextRequest) {
 
     // Queue for async processing using Vercel Background Functions
     try {
+      // Update status to queued before triggering background processing
+      try {
+        const adminClient = createAdminClient();
+        await adminClient
+          .from("categorization_jobs")
+          .update({ 
+            status: "queued",
+            status_message: "Waiting to start processing...",
+          })
+          .eq("id", jobData.id);
+      } catch (updateError) {
+        // Fallback to regular client
+        await supabase
+          .from("categorization_jobs")
+          .update({ 
+            status: "queued",
+            status_message: "Waiting to start processing...",
+          })
+          .eq("id", jobData.id);
+      }
+
       // Trigger background processing (don't wait for completion)
       fetch(`${request.nextUrl.origin}/api/background/process-spreadsheet`, {
         method: "POST",
@@ -247,13 +301,21 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       success: true,
       jobId: jobData.id,
+      status: "received",
+      status_message: "File uploaded successfully",
       message: "File uploaded successfully",
     });
   } catch (error: any) {
     console.error("Upload error:", error);
+    const errorCode = mapErrorToCode(error);
+    const errorResponse = createJobErrorResponse(errorCode, error.message);
     return NextResponse.json(
-      { error: error.message || "Internal server error" },
-      { status: 500 }
+      { 
+        error: errorResponse.error_message,
+        error_code: errorResponse.error_code,
+        status_message: errorResponse.status_message,
+      },
+      { status: getJobError(errorCode).statusCode }
     );
   }
 }

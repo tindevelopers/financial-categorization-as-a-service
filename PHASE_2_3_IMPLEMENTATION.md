@@ -122,10 +122,14 @@ DROPBOX_APP_KEY=your_dropbox_app_key
 DROPBOX_APP_SECRET=your_dropbox_app_secret
 DROPBOX_REDIRECT_URI=http://localhost:3002/api/storage/dropbox/callback
 
-# Google Drive OAuth
+# Google OAuth (for Google Sheets and Google Drive)
 GOOGLE_CLIENT_ID=your_google_client_id
 GOOGLE_CLIENT_SECRET=your_google_client_secret
-GOOGLE_REDIRECT_URI=http://localhost:3002/api/storage/drive/callback
+# For Google Sheets integration:
+GOOGLE_REDIRECT_URI=http://localhost:3000/api/integrations/google-sheets/callback
+# For Google Drive integration (if using separate redirect):
+# GOOGLE_REDIRECT_URI=http://localhost:3002/api/storage/drive/callback
+# Note: If using both integrations, add both redirect URIs to your Google OAuth app
 
 # Google Document AI
 GOOGLE_CLOUD_PROJECT_ID=your_project_id
@@ -157,11 +161,15 @@ supabase db reset
 3. Set redirect URI: `http://localhost:3002/api/storage/dropbox/callback`
 4. Copy App Key and App Secret
 
-**Google Drive:**
+**Google OAuth (for Google Sheets and Google Drive):**
 1. Go to https://console.cloud.google.com/apis/credentials
 2. Create OAuth 2.0 credentials
-3. Set authorized redirect URI: `http://localhost:3002/api/storage/drive/callback`
-4. Enable Google Drive API
+3. Add authorized redirect URIs:
+   - For Google Sheets: `http://localhost:3000/api/integrations/google-sheets/callback`
+   - For Google Drive: `http://localhost:3002/api/storage/drive/callback`
+4. Enable required APIs:
+   - Google Sheets API
+   - Google Drive API
 
 **Google Document AI:**
 1. Go to https://console.cloud.google.com/ai/document-ai

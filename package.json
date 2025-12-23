@@ -67,7 +67,8 @@
     "supabase:status": "supabase status",
     "supabase:reset": "supabase db reset",
     "docker:ps": "docker ps | grep supabase",
-    "docker:logs": "supabase logs"
+    "docker:logs": "supabase logs",
+    "test:api": "node scripts/test-categorization-api.js"
   },
   "dependencies": {
     "@ai-sdk/gateway": "^2.0.22",

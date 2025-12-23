@@ -58,6 +58,7 @@ export async function middleware(request: NextRequest) {
   );
 
   // Refresh session if expired - this is critical for Server Components
+  // getUser() automatically refreshes the session if needed when using @supabase/ssr
   const {
     data: { user },
     error: authError,
@@ -66,6 +67,10 @@ export async function middleware(request: NextRequest) {
   // Log auth status for debugging
   if (authError) {
     console.log("[middleware] Auth error:", authError.message);
+  } else if (!user) {
+    console.log("[middleware] No user found in session");
+  } else {
+    console.log("[middleware] User authenticated:", user.id);
   }
 
   // Try subdomain routing first

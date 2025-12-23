@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/core/database/server";
+import { createAdminClient } from "@/core/database/admin-client";
 import * as XLSX from "xlsx";
 import { 
   createDuplicateDetector,
@@ -259,6 +260,7 @@ export async function POST(request: NextRequest) {
       );
 
       // Insert categorized transactions with source tracking
+      // Use admin client to bypass RLS since we've already validated the user
       const transactionsToInsert = categorizedTransactions.map(tx => ({
         job_id: jobData.id,
         original_description: tx.description,
@@ -273,8 +275,11 @@ export async function POST(request: NextRequest) {
         sync_version: 1,
       }));
 
+      // Use admin client for insert to bypass RLS policies
+      // We've already validated the user and created the job, so this is safe
+      const adminClient = createAdminClient();
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const { error: insertError } = await (supabase as any)
+      const { error: insertError } = await (adminClient as any)
         .from("categorized_transactions")
         .insert(transactionsToInsert);
 

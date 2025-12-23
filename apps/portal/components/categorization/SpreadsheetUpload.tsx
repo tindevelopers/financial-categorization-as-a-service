@@ -128,21 +128,34 @@ export default function SpreadsheetUpload() {
         jobId: data.jobId,
       }));
 
-      // Wait a moment for processing to start, then redirect
-      // In Phase 2, we'll add proper polling/status checking
-      setTimeout(() => {
-        if (data.jobId) {
-          window.location.href = `/review/${data.jobId}`;
-        }
-      }, 1000);
+      // Show success message and redirect to uploads page to see status
+      if (data.jobId) {
+        // Redirect to uploads page where user can see the processing status
+        setTimeout(() => {
+          window.location.href = `/dashboard/uploads`;
+        }, 1500);
+      }
   } catch (error: any) {
     // #region agent log
     fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'SpreadsheetUpload.tsx:96',message:'handleUpload error',data:{errorMessage:error?.message || 'unknown',durationMs:Date.now()-startTime},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'C'})}).catch(()=>{});
     // #endregion
+      // Try to extract error message from response
+      let errorMessage = error.message || 'An error occurred during upload';
+      try {
+        const errorData = JSON.parse(error.message);
+        if (errorData.status_message) {
+          errorMessage = errorData.status_message;
+        } else if (errorData.error) {
+          errorMessage = errorData.error;
+        }
+      } catch {
+        // Use the error message as-is
+      }
+      
       setUploadState(prev => ({
         ...prev,
         uploading: false,
-        error: error.message || 'An error occurred during upload',
+        error: errorMessage,
       }));
     }
   };

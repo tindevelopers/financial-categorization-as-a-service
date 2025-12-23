@@ -3,6 +3,72 @@ import { createClient } from "@/lib/database/server";
 import { createAdminClient } from "@tinadmin/core/database/admin-client";
 
 /**
+ * GET /api/categorization/jobs/[jobId]
+ * Get job details including status, error codes, and progress
+ */
+export async function GET(
+  request: NextRequest,
+  { params }: { params: { jobId: string } }
+) {
+  try {
+    const supabase = await createClient();
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+
+    if (authError || !user) {
+      return NextResponse.json(
+        { error: "Unauthorized" },
+        { status: 401 }
+      );
+    }
+
+    const { jobId } = params;
+
+    // Get job details
+    const { data: job, error: jobError } = await supabase
+      .from("categorization_jobs")
+      .select(`
+        id,
+        job_type,
+        status,
+        status_message,
+        processing_mode,
+        original_filename,
+        file_url,
+        cloud_storage_provider,
+        total_items,
+        processed_items,
+        failed_items,
+        error_code,
+        error_message,
+        created_at,
+        started_at,
+        completed_at
+      `)
+      .eq("id", jobId)
+      .eq("user_id", user.id)
+      .single();
+
+    if (jobError || !job) {
+      return NextResponse.json(
+        { error: "Job not found" },
+        { status: 404 }
+      );
+    }
+
+    return NextResponse.json({
+      success: true,
+      job,
+    });
+  } catch (error: any) {
+    console.error("Get job error:", error);
+    return NextResponse.json(
+      { error: error.message || "Internal server error" },
+      { status: 500 }
+    );
+  }
+}
+
+/**
  * DELETE /api/categorization/jobs/[jobId]
  * Delete a categorization job and all associated data
  */

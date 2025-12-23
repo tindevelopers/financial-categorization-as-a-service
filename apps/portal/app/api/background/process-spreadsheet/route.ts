@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/database/server";
 import { createAdminClient } from "@tinadmin/core/database/admin-client";
 import { processSpreadsheetFile } from "@/lib/categorization/process-spreadsheet";
+import { createJobErrorResponse, mapErrorToCode } from "@/lib/errors/job-errors";
 
 /**
  * POST /api/background/process-spreadsheet
@@ -79,6 +80,7 @@ async function processSpreadsheet(jobId: string, userId: string, supabase: any) 
       .from("categorization_jobs")
       .update({ 
         status: "processing",
+        status_message: "Processing spreadsheet...",
         started_at: new Date().toISOString(),
       })
       .eq("id", jobId);
@@ -91,11 +93,14 @@ async function processSpreadsheet(jobId: string, userId: string, supabase: any) 
       .single();
 
     if (jobError || !job) {
+      const errorResponse = createJobErrorResponse("UNKNOWN_ERROR", "Job not found");
       await adminClient
         .from("categorization_jobs")
         .update({ 
           status: "failed",
-          error_message: "Job not found",
+          error_code: errorResponse.error_code,
+          error_message: errorResponse.error_message,
+          status_message: errorResponse.status_message,
         })
         .eq("id", jobId);
       return;
@@ -110,11 +115,15 @@ async function processSpreadsheet(jobId: string, userId: string, supabase: any) 
       .download(filePath);
 
     if (downloadError || !fileData) {
+      const errorCode = mapErrorToCode(downloadError || new Error("Failed to download file"));
+      const errorResponse = createJobErrorResponse(errorCode, downloadError?.message || "Failed to download file");
       await adminClient
         .from("categorization_jobs")
         .update({ 
           status: "failed",
-          error_message: "Failed to download file",
+          error_code: errorResponse.error_code,
+          error_message: errorResponse.error_message,
+          status_message: errorResponse.status_message,
         })
         .eq("id", jobId);
       return;
@@ -125,11 +134,15 @@ async function processSpreadsheet(jobId: string, userId: string, supabase: any) 
     const result = await processSpreadsheetFile(arrayBuffer, jobId, userId, supabase);
 
     if (!result.success) {
+      const errorCode = mapErrorToCode(new Error(result.error || "Processing failed"));
+      const errorResponse = createJobErrorResponse(errorCode, result.error || "Processing failed");
       await adminClient
         .from("categorization_jobs")
         .update({ 
           status: "failed",
-          error_message: result.error || "Processing failed",
+          error_code: errorResponse.error_code,
+          error_message: errorResponse.error_message,
+          status_message: errorResponse.status_message,
         })
         .eq("id", jobId);
       return;
@@ -140,6 +153,7 @@ async function processSpreadsheet(jobId: string, userId: string, supabase: any) 
       .from("categorization_jobs")
       .update({ 
         status: "reviewing",
+        status_message: "Processing complete. Ready for review.",
         processed_items: result.transactionCount || 0,
         completed_at: new Date().toISOString(),
       })
@@ -156,11 +170,16 @@ async function processSpreadsheet(jobId: string, userId: string, supabase: any) 
         adminClient = supabase;
       }
       
+      const errorCode = mapErrorToCode(error);
+      const errorResponse = createJobErrorResponse(errorCode, error.message || "Internal processing error");
+      
       await adminClient
         .from("categorization_jobs")
         .update({ 
           status: "failed",
-          error_message: error.message || "Internal processing error",
+          error_code: errorResponse.error_code,
+          error_message: errorResponse.error_message,
+          status_message: errorResponse.status_message,
         })
         .eq("id", jobId);
     } catch (updateError) {
