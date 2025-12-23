@@ -151,7 +151,7 @@ export class TransactionMergeService {
     // If high similarity and existing job, could add to that job
     // For now, we always create a new job for clarity
     if (!jobId && options.createJob !== false) {
-      jobId = await this.createJob(options);
+      jobId = (await this.createJob(options)) ?? undefined;
     }
 
     if (!jobId) {
