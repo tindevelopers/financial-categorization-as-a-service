@@ -2,6 +2,21 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/database/server";
 
 /**
+ * OPTIONS /api/categorization/jobs
+ * Handle CORS preflight requests
+ */
+export async function OPTIONS() {
+  return new NextResponse(null, {
+    status: 200,
+    headers: {
+      "Access-Control-Allow-Origin": "*",
+      "Access-Control-Allow-Methods": "GET, OPTIONS",
+      "Access-Control-Allow-Headers": "Content-Type, Authorization",
+    },
+  });
+}
+
+/**
  * GET /api/categorization/jobs
  * List all categorization jobs for the current user with optional filters
  * Query params:
@@ -12,22 +27,35 @@ import { createClient } from "@/lib/database/server";
  */
 export async function GET(request: NextRequest) {
   // #region agent log
-  fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'api/categorization/jobs/route.ts:13',message:'GET /api/categorization/jobs entry',data:{url:request.url,searchParams:Object.fromEntries(request.nextUrl.searchParams)},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'A'})}).catch(()=>{});
+  fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'api/categorization/jobs/route.ts:13',message:'GET /api/categorization/jobs entry',data:{url:request.url,searchParams:Object.fromEntries(request.nextUrl.searchParams),method:request.method,headers:Object.fromEntries(request.headers.entries())},timestamp:Date.now(),sessionId:'debug-session',runId:'debug-run-1',hypothesisId:'H2'})}).catch(()=>{});
   // #endregion
   try {
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'api/categorization/jobs/route.ts:18',message:'Creating Supabase client',data:{},timestamp:Date.now(),sessionId:'debug-session',runId:'debug-run-1',hypothesisId:'H3'})}).catch(()=>{});
+    // #endregion
     const supabase = await createClient();
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'api/categorization/jobs/route.ts:21',message:'Supabase client created - calling getUser',data:{},timestamp:Date.now(),sessionId:'debug-session',runId:'debug-run-1',hypothesisId:'H3'})}).catch(()=>{});
+    // #endregion
     const { data: { user }, error: authError } = await supabase.auth.getUser();
     // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'api/categorization/jobs/route.ts:16',message:'Auth check result',data:{hasUser:!!user,userId:user?.id,hasAuthError:!!authError,authErrorCode:authError?.message},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'A'})}).catch(()=>{});
+    fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'api/categorization/jobs/route.ts:24',message:'Auth check result',data:{hasUser:!!user,userId:user?.id || null,hasAuthError:!!authError,authErrorCode:authError?.code || null,authErrorMessage:authError?.message || null},timestamp:Date.now(),sessionId:'debug-session',runId:'debug-run-1',hypothesisId:'H3'})}).catch(()=>{});
     // #endregion
 
     if (authError || !user) {
       // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'api/categorization/jobs/route.ts:19',message:'Auth failed returning 401',data:{authError:authError?.message,hasUser:!!user},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'A'})}).catch(()=>{});
+      fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'api/categorization/jobs/route.ts:28',message:'Auth failed returning 401',data:{authError:authError?.message || null,hasUser:!!user,userId:user?.id || null},timestamp:Date.now(),sessionId:'debug-session',runId:'debug-run-1',hypothesisId:'H3'})}).catch(()=>{});
       // #endregion
       return NextResponse.json(
         { error: "Unauthorized" },
-        { status: 401 }
+        { 
+          status: 401,
+          headers: {
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Methods": "GET, OPTIONS",
+            "Access-Control-Allow-Headers": "Content-Type, Authorization",
+          },
+        }
       );
     }
 
@@ -77,17 +105,24 @@ export async function GET(request: NextRequest) {
 
     const { data: jobs, error: jobsError } = await query;
     // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'api/categorization/jobs/route.ts:65',message:'Query result',data:{hasJobs:!!jobs,jobsCount:jobs?.length,hasError:!!jobsError,errorCode:jobsError?.code,errorMessage:jobsError?.message,errorDetails:jobsError?.details,errorHint:jobsError?.hint},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'B'})}).catch(()=>{});
+    fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'api/categorization/jobs/route.ts:78',message:'Query result',data:{hasJobs:!!jobs,jobsCount:jobs?.length || 0,hasError:!!jobsError,errorCode:jobsError?.code || null,errorMessage:jobsError?.message || null,errorDetails:jobsError?.details || null,errorHint:jobsError?.hint || null},timestamp:Date.now(),sessionId:'debug-session',runId:'debug-run-1',hypothesisId:'H4'})}).catch(()=>{});
     // #endregion
 
     if (jobsError) {
       console.error("Error fetching jobs:", jobsError);
       // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'api/categorization/jobs/route.ts:67',message:'Query error returning 500',data:{errorCode:jobsError.code,errorMessage:jobsError.message,errorDetails:jobsError.details,errorHint:jobsError.hint},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'B'})}).catch(()=>{});
+      fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'api/categorization/jobs/route.ts:83',message:'Query error returning 500',data:{errorCode:jobsError.code,errorMessage:jobsError.message,errorDetails:jobsError.details,errorHint:jobsError.hint},timestamp:Date.now(),sessionId:'debug-session',runId:'debug-run-1',hypothesisId:'H4'})}).catch(()=>{});
       // #endregion
       return NextResponse.json(
-        { error: "Failed to fetch jobs" },
-        { status: 500 }
+        { error: "Failed to fetch jobs", details: jobsError.message },
+        { 
+          status: 500,
+          headers: {
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Methods": "GET, OPTIONS",
+            "Access-Control-Allow-Headers": "Content-Type, Authorization",
+          },
+        }
       );
     }
 
@@ -152,17 +187,31 @@ export async function GET(request: NextRequest) {
       }
     };
     // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'api/categorization/jobs/route.ts:125',message:'Returning success response',data:{jobsCount:response.jobs.length,totalCount:response.pagination.total},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'D'})}).catch(()=>{});
+    fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'api/categorization/jobs/route.ts:155',message:'Returning success response',data:{jobsCount:response.jobs.length,totalCount:response.pagination.total,hasJobs:response.jobs.length > 0},timestamp:Date.now(),sessionId:'debug-session',runId:'debug-run-1',hypothesisId:'H2'})}).catch(()=>{});
     // #endregion
-    return NextResponse.json(response);
+    return NextResponse.json(response, {
+      status: 200,
+      headers: {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "GET, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type, Authorization",
+      },
+    });
   } catch (error: any) {
     console.error("Error in jobs endpoint:", error);
     // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'api/categorization/jobs/route.ts:127',message:'Exception caught',data:{errorMessage:error?.message,errorType:error?.constructor?.name,errorStack:error?.stack?.substring(0,200)},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'E'})}).catch(()=>{});
+    fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'api/categorization/jobs/route.ts:159',message:'Exception caught',data:{errorMessage:error?.message || 'unknown',errorType:error?.constructor?.name || 'unknown',errorStack:error?.stack?.substring(0,300) || 'no stack'},timestamp:Date.now(),sessionId:'debug-session',runId:'debug-run-1',hypothesisId:'H1'})}).catch(()=>{});
     // #endregion
     return NextResponse.json(
       { error: error.message || "Internal server error" },
-      { status: 500 }
+      { 
+        status: 500,
+        headers: {
+          "Access-Control-Allow-Origin": "*",
+          "Access-Control-Allow-Methods": "GET, OPTIONS",
+          "Access-Control-Allow-Headers": "Content-Type, Authorization",
+        },
+      }
     );
   }
 }

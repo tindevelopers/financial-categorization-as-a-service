@@ -24,21 +24,66 @@ export default function ReviewJobsPage() {
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'dashboard/review/page.tsx:26',message:'useEffect triggered - loadJobs called',data:{windowLocation:typeof window !== 'undefined' ? window.location.href : 'SSR'},timestamp:Date.now(),sessionId:'debug-session',runId:'debug-run-1',hypothesisId:'H1'})}).catch(()=>{});
+    // #endregion
     loadJobs()
   }, [])
 
   const loadJobs = async () => {
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'dashboard/review/page.tsx:30',message:'loadJobs function entry',data:{apiUrl:'/api/categorization/jobs',windowLocation:typeof window !== 'undefined' ? window.location.href : 'SSR'},timestamp:Date.now(),sessionId:'debug-session',runId:'debug-run-1',hypothesisId:'H1'})}).catch(()=>{});
+    // #endregion
     try {
-      const response = await fetch("/api/categorization/jobs")
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'dashboard/review/page.tsx:33',message:'Before fetch call',data:{apiUrl:'/api/categorization/jobs'},timestamp:Date.now(),sessionId:'debug-session',runId:'debug-run-1',hypothesisId:'H1'})}).catch(()=>{});
+      // #endregion
+      const apiUrl = "/api/categorization/jobs"
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'dashboard/review/page.tsx:33',message:'Fetching API',data:{apiUrl,windowLocation:typeof window !== 'undefined' ? window.location.origin : 'SSR'},timestamp:Date.now(),sessionId:'debug-session',runId:'debug-run-1',hypothesisId:'H1'})}).catch(()=>{});
+      // #endregion
+      const response = await fetch(apiUrl, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include', // Include cookies for authentication
+      })
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'dashboard/review/page.tsx:42',message:'Fetch response received',data:{status:response.status,statusText:response.statusText,ok:response.ok,contentType:response.headers.get('content-type'),url:response.url,responseUrl:response.url},timestamp:Date.now(),sessionId:'debug-session',runId:'debug-run-1',hypothesisId:'H2'})}).catch(()=>{});
+      // #endregion
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ error: "Failed to load jobs" }))
-        throw new Error(errorData.error || "Failed to load jobs")
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'dashboard/review/page.tsx:46',message:'Response not OK - parsing error',data:{status:response.status,statusText:response.statusText,url:response.url},timestamp:Date.now(),sessionId:'debug-session',runId:'debug-run-1',hypothesisId:'H5'})}).catch(()=>{});
+        // #endregion
+        let errorData
+        try {
+          errorData = await response.json()
+        } catch (e) {
+          errorData = { error: `HTTP ${response.status}: ${response.statusText}` }
+        }
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'dashboard/review/page.tsx:54',message:'Error data parsed',data:{errorData,status:response.status},timestamp:Date.now(),sessionId:'debug-session',runId:'debug-run-1',hypothesisId:'H5'})}).catch(()=>{});
+        // #endregion
+        throw new Error(errorData.error || errorData.details || `Failed to load jobs (${response.status})`)
       }
       const data = await response.json()
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'dashboard/review/page.tsx:47',message:'Response data parsed successfully',data:{hasSuccess:data.success,hasJobs:!!data.jobs,jobsCount:data.jobs?.length || 0,hasPagination:!!data.pagination},timestamp:Date.now(),sessionId:'debug-session',runId:'debug-run-1',hypothesisId:'H2'})}).catch(()=>{});
+      // #endregion
       setJobs(data.jobs || [])
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'dashboard/review/page.tsx:50',message:'Jobs state updated',data:{jobsCount:data.jobs?.length || 0},timestamp:Date.now(),sessionId:'debug-session',runId:'debug-run-1',hypothesisId:'H2'})}).catch(()=>{});
+      // #endregion
     } catch (err: any) {
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'dashboard/review/page.tsx:53',message:'loadJobs exception caught',data:{errorMessage:err?.message || 'unknown',errorType:err?.constructor?.name || 'unknown',errorStack:err?.stack?.substring(0,300) || 'no stack'},timestamp:Date.now(),sessionId:'debug-session',runId:'debug-run-1',hypothesisId:'H1'})}).catch(()=>{});
+      // #endregion
       setError(err.message)
     } finally {
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'dashboard/review/page.tsx:57',message:'loadJobs finally - setting loading to false',data:{},timestamp:Date.now(),sessionId:'debug-session',runId:'debug-run-1',hypothesisId:'H1'})}).catch(()=>{});
+      // #endregion
       setLoading(false)
     }
   }
