@@ -196,21 +196,35 @@ END;
 $$;
 
 -- ============================================
--- 9. Trigger for updated_at
+-- 9. Ensure update_updated_at_column function exists
 -- ============================================
 
+CREATE OR REPLACE FUNCTION update_updated_at_column()
+RETURNS TRIGGER AS $$
+BEGIN
+  NEW.updated_at = NOW();
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+-- ============================================
+-- 10. Trigger for updated_at
+-- ============================================
+
+DROP TRIGGER IF EXISTS update_chat_sessions_updated_at ON chat_sessions;
 CREATE TRIGGER update_chat_sessions_updated_at
   BEFORE UPDATE ON chat_sessions
   FOR EACH ROW
   EXECUTE FUNCTION update_updated_at_column();
 
+DROP TRIGGER IF EXISTS update_knowledge_base_updated_at ON knowledge_base;
 CREATE TRIGGER update_knowledge_base_updated_at
   BEFORE UPDATE ON knowledge_base
   FOR EACH ROW
   EXECUTE FUNCTION update_updated_at_column();
 
 -- ============================================
--- 10. Seed Initial Knowledge Base
+-- 11. Seed Initial Knowledge Base
 -- ============================================
 
 INSERT INTO knowledge_base (category, title, content, tags) VALUES
