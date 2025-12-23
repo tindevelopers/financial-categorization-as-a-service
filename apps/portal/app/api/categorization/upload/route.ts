@@ -150,8 +150,8 @@ export async function POST(request: NextRequest) {
           user_id: user.id,
           tenant_id: userData?.tenant_id || null,
           job_type: "spreadsheet",
-          status: "uploaded",
-          processing_mode: "sync",
+          status: "queued", // Queue for async processing
+          processing_mode: "async", // Always async processing
           original_filename: file.name,
           file_url: urlData.publicUrl,
           file_hash: fileHash, // Store hash for quick duplicate detection
@@ -170,8 +170,8 @@ export async function POST(request: NextRequest) {
           user_id: user.id,
           tenant_id: userData?.tenant_id || null,
           job_type: "spreadsheet",
-          status: "uploaded",
-          processing_mode: "sync",
+          status: "queued", // Queue for async processing
+          processing_mode: "async", // Always async processing
           original_filename: file.name,
           file_url: urlData.publicUrl,
           file_hash: fileHash, // Store hash for quick duplicate detection
@@ -225,13 +225,10 @@ export async function POST(request: NextRequest) {
       // Don't fail the upload, just log the error
     }
 
-    // Process the file immediately (for Phase 1, we do sync processing)
-    // In Phase 2, we'll add async processing for large files
-    // Note: We process in the background to avoid timeout
-    // The frontend will poll for status or we can use webhooks later
+    // Queue for async processing using Vercel Background Functions
     try {
-      // Trigger processing asynchronously (don't wait for completion)
-      fetch(`${request.nextUrl.origin}/api/categorization/process`, {
+      // Trigger background processing (don't wait for completion)
+      fetch(`${request.nextUrl.origin}/api/background/process-spreadsheet`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -239,12 +236,12 @@ export async function POST(request: NextRequest) {
         },
         body: JSON.stringify({ jobId: jobData.id }),
       }).catch(err => {
-        console.error("Failed to trigger processing:", err);
-        // Don't fail the upload
+        console.error("Failed to queue background processing:", err);
+        // Don't fail the upload - cron job will pick it up if needed
       });
     } catch (processError) {
-      console.error("Failed to trigger processing:", processError);
-      // Don't fail the upload
+      console.error("Failed to queue background processing:", processError);
+      // Don't fail the upload - cron job will pick it up if needed
     }
 
     return NextResponse.json({

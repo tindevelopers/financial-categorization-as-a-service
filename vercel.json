@@ -4,5 +4,11 @@
   "installCommand": "pnpm install",
   "framework": "nextjs",
   "regions": ["iad1"],
-  "ignoreCommand": "git diff --quiet HEAD^ HEAD ."
+  "ignoreCommand": "git diff --quiet HEAD^ HEAD .",
+  "crons": [
+    {
+      "path": "/api/cron/process-queued-jobs",
+      "schedule": "*/5 * * * *"
+    }
+  ]
 }
