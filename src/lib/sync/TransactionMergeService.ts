@@ -198,7 +198,7 @@ export class TransactionMergeService {
 
     const transactionsToInsert = transactions.map(tx => ({
       job_id: jobId,
-      original_description: tx.description,
+      original_description: tx.original_description,
       amount: tx.amount,
       date: this.formatDate(tx.date),
       category: tx.category || null,
