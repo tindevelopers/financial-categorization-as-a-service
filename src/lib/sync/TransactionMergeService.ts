@@ -188,7 +188,7 @@ export class TransactionMergeService {
    * Insert transactions into the database
    */
   private async insertTransactions(
-    transactions: TransactionWithFingerprint[],
+    transactions: Transaction[],
     jobId: string,
     options: MergeOptions
   ): Promise<{ inserted: number; errors: number }> {
