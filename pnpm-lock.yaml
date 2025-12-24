@@ -72,8 +72,8 @@ importers:
         specifier: ^0.12.2
         version: 0.12.2
       apexcharts:
-        specifier: ^4.3.0
-        version: 4.7.0
+        specifier: ^5.3.6
+        version: 5.3.6
       autoprefixer:
         specifier: ^10.4.20
         version: 10.4.23(postcss@8.5.6)
@@ -103,7 +103,7 @@ importers:
         version: 19.2.3
       react-apexcharts:
         specifier: ^1.7.0
-        version: 1.9.0(apexcharts@4.7.0)(react@19.2.3)
+        version: 1.9.0(apexcharts@5.3.6)(react@19.2.3)
       react-dnd:
         specifier: ^16.0.1
         version: 16.0.1(@types/node@20.19.27)(@types/react@19.2.7)(react@19.2.3)
@@ -235,8 +235,8 @@ importers:
         specifier: workspace:*
         version: link:../../packages/@tinadmin/ui-admin
       apexcharts:
-        specifier: ^4.3.0
-        version: 4.7.0
+        specifier: ^5.3.6
+        version: 5.3.6
       autoprefixer:
         specifier: ^10.4.20
         version: 10.4.23(postcss@8.5.6)
@@ -257,7 +257,7 @@ importers:
         version: 19.2.3
       react-apexcharts:
         specifier: ^1.7.0
-        version: 1.9.0(apexcharts@4.7.0)(react@19.2.3)
+        version: 1.9.0(apexcharts@5.3.6)(react@19.2.3)
       react-dnd:
         specifier: ^16.0.1
         version: 16.0.1(@types/node@20.19.27)(@types/react@19.2.7)(react@19.2.3)
@@ -2746,8 +2746,8 @@ packages:
     resolution: {integrity: sha512-4Dj6M28JB+oAH8kFkTLUo+a2jwOFkuqb3yucU0CANcRRUbxS0cP0nZYCGjcc3BNXwRIsUVmDGgzawme7zvJHvg==}
     engines: {node: '>=12'}
 
-  apexcharts@4.7.0:
-    resolution: {integrity: sha512-iZSrrBGvVlL+nt2B1NpqfDuBZ9jX61X9I2+XV0hlYXHtTwhwLTHDKGXjNXAgFBDLuvSYCB/rq2nPWVPRv2DrGA==}
+  apexcharts@5.3.6:
+    resolution: {integrity: sha512-sVEPw+J0Gp0IHQabKu8cfdsxlfME0e36Wid7RIaPclGM2OUt+O7O4+6mfAmTUYhy5bDk8cNHzEhPfVtLCIXEJA==}
 
   archiver-utils@2.1.0:
     resolution: {integrity: sha512-bEL/yUb/fNNiNTuUz979Z0Yg5L+LzLxGJz8x79lYmR54fmTIb6ob/hNQgkQnIUDWIFjZVQwl9Xs356I6BAMHfw==}
@@ -7688,7 +7688,7 @@ snapshots:
 
   ansi-styles@6.2.3: {}
 
-  apexcharts@4.7.0:
+  apexcharts@5.3.6:
     dependencies:
       '@svgdotjs/svg.draggable.js': 3.0.6(@svgdotjs/svg.js@3.2.5)
       '@svgdotjs/svg.filter.js': 3.0.9
@@ -9439,9 +9439,9 @@ snapshots:
 
   queue-microtask@1.2.3: {}
 
-  react-apexcharts@1.9.0(apexcharts@4.7.0)(react@19.2.3):
+  react-apexcharts@1.9.0(apexcharts@5.3.6)(react@19.2.3):
     dependencies:
-      apexcharts: 4.7.0
+      apexcharts: 5.3.6
       prop-types: 15.8.1
       react: 19.2.3
 
