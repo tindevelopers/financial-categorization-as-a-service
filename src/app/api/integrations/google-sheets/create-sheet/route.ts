@@ -183,6 +183,12 @@ export async function POST(request: NextRequest) {
 
     const spreadsheetId = spreadsheet.data.spreadsheetId
     const spreadsheetUrl = spreadsheet.data.spreadsheetUrl
+    
+    // Get the actual sheet ID from the created spreadsheet
+    const transactionsSheet = spreadsheet.data.sheets?.[0]
+    const actualSheetId = transactionsSheet?.properties?.sheetId ?? 0
+    
+    console.log('[create-sheet] Created spreadsheet:', spreadsheetId, 'Sheet ID:', actualSheetId)
 
     // Add headers to the first row
     await sheets.spreadsheets.values.update({
@@ -213,7 +219,7 @@ export async function POST(request: NextRequest) {
           {
             repeatCell: {
               range: {
-                sheetId: 0,
+                sheetId: actualSheetId,
                 startRowIndex: 0,
                 endRowIndex: 1,
               },
@@ -232,7 +238,7 @@ export async function POST(request: NextRequest) {
           {
             autoResizeDimensions: {
               dimensions: {
-                sheetId: 0,
+                sheetId: actualSheetId,
                 dimension: 'COLUMNS',
                 startIndex: 0,
                 endIndex: 10,
