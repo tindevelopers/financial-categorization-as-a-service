@@ -29,7 +29,7 @@ async function getGoogleCredentials(
       .eq('id', userId)
       .single()
 
-    const tenantId = userData?.tenant_id
+    const tenantId = (userData as { tenant_id: string | null } | null)?.tenant_id
 
     if (tenantId) {
       const { data: tenantSettings } = await (supabase as any)
@@ -267,7 +267,7 @@ export async function POST(request: NextRequest) {
             .eq('id', user.id)
             .single()
           
-          const tenantId = userData?.tenant_id
+          const tenantId = (userData as { tenant_id: string | null } | null)?.tenant_id
           
           if (tenantId) {
             // Get default sharing permission from tenant settings
