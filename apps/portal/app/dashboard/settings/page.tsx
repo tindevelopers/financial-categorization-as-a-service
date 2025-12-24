@@ -320,6 +320,18 @@ export default function SettingsPage() {
       const response = await fetch('/api/integrations/google-sheets/auth-url')
       if (response.ok) {
         const data = await response.json()
+        // #region agent log - Debug output to browser console
+        console.log('[DEBUG] Google Sheets Auth Response:', {
+          redirectUri: data.redirectUri,
+          credentialSource: data.credentialSource,
+          authUrlLength: data.authUrl?.length,
+          windowOrigin: window.location.origin,
+          _debug: data._debug,
+        });
+        // Show debug info in alert for easy visibility
+        console.log('[DEBUG] REDIRECT URI BEING USED:', data.redirectUri);
+        console.log('[DEBUG] Make sure this URI is in Google Cloud Console OAuth settings!');
+        // #endregion
         window.location.href = data.authUrl
       } else {
         const error = await response.json()

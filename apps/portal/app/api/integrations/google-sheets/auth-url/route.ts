@@ -36,6 +36,16 @@ async function getGoogleCredentials(supabase: any, userId: string): Promise<{
       .eq('use_custom_credentials', true)
       .single()
 
+    // #region agent log - Debug tenant settings
+    console.log('[DEBUG] Tenant settings lookup:', JSON.stringify({
+      tenantId,
+      hasSettings: !!tenantSettings,
+      useCustomCredentials: tenantSettings?.use_custom_credentials,
+      customRedirectUri: tenantSettings?.custom_redirect_uri || '(not set)',
+      hasCustomClientId: !!tenantSettings?.custom_client_id,
+    }));
+    // #endregion
+
     if (tenantSettings?.custom_client_id) {
       let decryptedSecret = null
       
@@ -90,6 +100,16 @@ async function getGoogleCredentials(supabase: any, userId: string): Promise<{
 
 export async function GET() {
   try {
+    // #region agent log - Debug environment variables for Vercel
+    const debugEnvInfo = {
+      NEXT_PUBLIC_APP_URL: process.env.NEXT_PUBLIC_APP_URL || '(not set)',
+      VERCEL_URL: process.env.VERCEL_URL || '(not set)',
+      GOOGLE_REDIRECT_URI: process.env.GOOGLE_REDIRECT_URI || '(not set)',
+      GOOGLE_CLIENT_ID_PREFIX: process.env.GOOGLE_CLIENT_ID?.substring(0, 25) || '(not set)',
+      NODE_ENV: process.env.NODE_ENV,
+    };
+    console.log('[DEBUG] Auth URL endpoint - Environment:', JSON.stringify(debugEnvInfo));
+    // #endregion
     const supabase = await createClient()
     const { data: { user }, error: authError } = await supabase.auth.getUser()
 
@@ -149,10 +169,29 @@ export async function GET() {
     console.log('[Google Sheets OAuth] Client ID:', credentials.clientId?.substring(0, 20) + '...')
     console.log('[Google Sheets OAuth] Credential Source:', credentials.source)
 
+    // #region agent log - Debug final credentials
+    const debugCredentialsInfo = {
+      redirectUri: credentials.redirectUri,
+      clientIdPrefix: credentials.clientId?.substring(0, 25),
+      source: credentials.source,
+    };
+    console.log('[DEBUG] Final credentials:', JSON.stringify(debugCredentialsInfo));
+    // #endregion
+
     return NextResponse.json({ 
       authUrl: authUrl.toString(),
       credentialSource: credentials.source,
       redirectUri: credentials.redirectUri, // Include in response for debugging
+      // #region agent log - Include debug info in response for remote debugging
+      _debug: {
+        envInfo: {
+          NEXT_PUBLIC_APP_URL: process.env.NEXT_PUBLIC_APP_URL || '(not set)',
+          VERCEL_URL: process.env.VERCEL_URL || '(not set)',
+          GOOGLE_REDIRECT_URI_ENV: process.env.GOOGLE_REDIRECT_URI || '(not set)',
+        },
+        credentials: debugCredentialsInfo,
+      },
+      // #endregion
     })
   } catch (error) {
     console.error('Error generating auth URL:', error)
