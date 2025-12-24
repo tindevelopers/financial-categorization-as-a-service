@@ -320,17 +320,26 @@ export default function SettingsPage() {
       const response = await fetch('/api/integrations/google-sheets/auth-url')
       if (response.ok) {
         const data = await response.json()
-        // #region agent log - Debug output to browser console
-        console.log('[DEBUG] Google Sheets Auth Response:', {
-          redirectUri: data.redirectUri,
-          credentialSource: data.credentialSource,
-          authUrlLength: data.authUrl?.length,
-          windowOrigin: window.location.origin,
-          _debug: data._debug,
-        });
-        // Show debug info in alert for easy visibility
-        console.log('[DEBUG] REDIRECT URI BEING USED:', data.redirectUri);
-        console.log('[DEBUG] Make sure this URI is in Google Cloud Console OAuth settings!');
+        // #region agent log - Debug output with alert to pause before redirect
+        const debugInfo = `DEBUG INFO - COPY THIS:
+        
+Redirect URI being used:
+${data.redirectUri}
+
+Credential Source: ${data.credentialSource}
+
+Environment:
+- NEXT_PUBLIC_APP_URL: ${data._debug?.envInfo?.NEXT_PUBLIC_APP_URL || '(not in response)'}
+- VERCEL_URL: ${data._debug?.envInfo?.VERCEL_URL || '(not in response)'}
+- GOOGLE_REDIRECT_URI_ENV: ${data._debug?.envInfo?.GOOGLE_REDIRECT_URI_ENV || '(not in response)'}
+
+Window Origin: ${window.location.origin}
+
+⚠️ Make sure the Redirect URI above is added to Google Cloud Console OAuth settings!
+
+Click OK to continue to Google OAuth.`;
+        alert(debugInfo);
+        console.log('[DEBUG] Google Sheets Auth Response:', data);
         // #endregion
         window.location.href = data.authUrl
       } else {
