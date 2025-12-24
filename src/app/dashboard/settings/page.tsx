@@ -129,6 +129,14 @@ export default function SettingsPage() {
   const [inviting, setInviting] = useState(false)
   const [copiedLink, setCopiedLink] = useState<string | null>(null)
 
+  // Debug modal state
+  const [debugModal, setDebugModal] = useState<{
+    show: boolean
+    title: string
+    content: string
+    onContinue?: () => void
+  }>({ show: false, title: '', content: '' })
+
   useEffect(() => {
     loadSettings()
   }, [])
@@ -320,45 +328,35 @@ export default function SettingsPage() {
       const response = await fetch('/api/integrations/google-sheets/auth-url')
       if (response.ok) {
         const data = await response.json()
-        // #region agent log - Debug output with alert to pause before redirect
-        const debugInfo = `DEBUG INFO - COPY THIS:
-        
-Redirect URI being used:
-${data.redirectUri}
-
-Credential Source: ${data.credentialSource}
-
-Environment:
-- NEXT_PUBLIC_APP_URL: ${data._debug?.envInfo?.NEXT_PUBLIC_APP_URL || '(not in response)'}
-- VERCEL_URL: ${data._debug?.envInfo?.VERCEL_URL || '(not in response)'}
-- GOOGLE_REDIRECT_URI_ENV: ${data._debug?.envInfo?.GOOGLE_REDIRECT_URI_ENV || '(not in response)'}
-
-Window Origin: ${window.location.origin}
-
-⚠️ Make sure the Redirect URI above is added to Google Cloud Console OAuth settings!
-
-Click OK to continue to Google OAuth.`;
-        alert(debugInfo);
         console.log('[DEBUG] Google Sheets Auth Response:', data);
-        // #endregion
+        // Redirect directly to Google OAuth
         window.location.href = data.authUrl
       } else {
         const error = await response.json()
-        // #region agent log - Show detailed error for debugging
+        console.error('[DEBUG] Auth URL API error:', response.status, error);
+        // Show copyable error modal
         const errorDetails = `API Error (${response.status}):
 ${JSON.stringify(error, null, 2)}
 
 This could mean:
-- Not authenticated (401)
+- Not authenticated (401) - Try logging out and back in
 - Google credentials not configured (503)
-- Server error (500)`;
-        alert(errorDetails);
-        console.error('[DEBUG] Auth URL API error:', response.status, error);
-        // #endregion
+- Server error (500)
+
+Window Origin: ${window.location.origin}`;
+        setDebugModal({
+          show: true,
+          title: `OAuth Error (${response.status})`,
+          content: errorDetails,
+        });
       }
     } catch (error) {
       console.error('Failed to connect Google Sheets:', error)
-      alert('Failed to connect Google Sheets. Network error: ' + (error as Error).message)
+      setDebugModal({
+        show: true,
+        title: 'Network Error',
+        content: `Failed to connect Google Sheets.\n\nError: ${(error as Error).message}`,
+      });
     } finally {
       setConnecting(false)
     }
@@ -1298,6 +1296,54 @@ This could mean:
           </p>
         </div>
       </div>
+
+      {/* Debug Modal - Copyable error/info display */}
+      {debugModal.show && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white dark:bg-zinc-900 rounded-xl max-w-2xl w-full mx-4 max-h-[80vh] overflow-hidden shadow-xl">
+            <div className="px-6 py-4 border-b border-gray-200 dark:border-zinc-700 flex items-center justify-between">
+              <h3 className="text-lg font-semibold text-gray-900 dark:text-white flex items-center gap-2">
+                <ExclamationCircleIcon className="h-5 w-5 text-amber-500" />
+                {debugModal.title}
+              </h3>
+              <button
+                onClick={() => {
+                  navigator.clipboard.writeText(debugModal.content)
+                }}
+                className="flex items-center gap-1 px-3 py-1.5 text-sm bg-gray-100 dark:bg-zinc-800 hover:bg-gray-200 dark:hover:bg-zinc-700 rounded-lg transition-colors"
+                title="Copy to clipboard"
+              >
+                <ClipboardDocumentIcon className="h-4 w-4" />
+                Copy
+              </button>
+            </div>
+            <div className="p-6 max-h-96 overflow-y-auto">
+              <pre className="whitespace-pre-wrap font-mono text-sm text-gray-700 dark:text-gray-300 bg-gray-50 dark:bg-zinc-800 p-4 rounded-lg overflow-x-auto select-all">
+                {debugModal.content}
+              </pre>
+            </div>
+            <div className="px-6 py-4 border-t border-gray-200 dark:border-zinc-700 flex justify-end gap-3">
+              {debugModal.onContinue && (
+                <Button
+                  color="blue"
+                  onClick={() => {
+                    debugModal.onContinue?.()
+                    setDebugModal({ show: false, title: '', content: '' })
+                  }}
+                >
+                  Continue
+                </Button>
+              )}
+              <Button
+                color="white"
+                onClick={() => setDebugModal({ show: false, title: '', content: '' })}
+              >
+                {debugModal.onContinue ? 'Cancel' : 'Close'}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
