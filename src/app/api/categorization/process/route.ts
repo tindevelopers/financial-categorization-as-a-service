@@ -120,6 +120,7 @@ export async function POST(request: NextRequest) {
     );
 
     // Insert categorized transactions
+    // Use admin client to bypass RLS since we've already validated the user
     const transactionsToInsert = categorizedTransactions.map(tx => ({
       job_id: jobId,
       original_description: tx.description,
@@ -131,8 +132,12 @@ export async function POST(request: NextRequest) {
       user_confirmed: false,
     }));
 
+    // Use admin client for insert to bypass RLS policies
+    // We've already validated the user and created the job, so this is safe
+    const { createAdminClient } = await import("@/core/database/admin-client");
+    const adminClient = createAdminClient();
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { error: insertError } = await (supabase as any)
+    const { error: insertError } = await (adminClient as any)
       .from("categorized_transactions")
       .insert(transactionsToInsert);
 

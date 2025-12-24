@@ -4,6 +4,8 @@ import { createClient } from '@/core/database/server';
 export async function POST(request: NextRequest) {
   try {
     const supabase = await createClient();
+    // Cast to any for tables not in generated types
+    const db = supabase as any;
     
     // Get current user
     const { data: { user }, error: userError } = await supabase.auth.getUser();
@@ -16,7 +18,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { transaction_id, document_id } = body;
+    const { transaction_id, document_id, breakdown } = body;
 
     if (!transaction_id || !document_id) {
       return NextResponse.json(
@@ -26,7 +28,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Verify user owns both the transaction and document
-    const { data: transaction, error: txError } = await supabase
+    const { data: transaction, error: txError } = await db
       .from('categorized_transactions')
       .select(`
         *,
@@ -42,8 +44,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { data: document, error: docError } = await supabase
-      .from('documents')
+    const { data: document, error: docError } = await db
+      .from('financial_documents')
       .select('*')
       .eq('id', document_id)
       .eq('user_id', user.id)
@@ -54,6 +56,26 @@ export async function POST(request: NextRequest) {
         { error: 'Document not found or unauthorized' },
         { status: 404 }
       );
+    }
+
+    // Save tax breakdown if provided
+    if (breakdown) {
+      const { error: breakdownError } = await db
+        .from('financial_documents')
+        .update({
+          subtotal_amount: breakdown.subtotal,
+          tax_amount: breakdown.tax,
+          fee_amount: breakdown.fees,
+          net_amount: breakdown.net,
+          tax_rate: breakdown.taxRate,
+          line_items: breakdown.lineItems || [],
+        })
+        .eq('id', document_id);
+
+      if (breakdownError) {
+        console.error('Error saving breakdown:', breakdownError);
+        // Continue with matching even if breakdown save fails
+      }
     }
 
     // Use the database function to match
@@ -76,6 +98,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       success: true,
       message: 'Transaction matched with document successfully',
+      breakdown_saved: !!breakdown,
     });
   } catch (error) {
     console.error('Match error:', error);
@@ -90,6 +113,8 @@ export async function POST(request: NextRequest) {
 export async function DELETE(request: NextRequest) {
   try {
     const supabase = await createClient();
+    // Cast to any for tables not in generated types
+    const db = supabase as any;
     
     // Get current user
     const { data: { user }, error: userError } = await supabase.auth.getUser();
@@ -112,7 +137,7 @@ export async function DELETE(request: NextRequest) {
     }
 
     // Verify user owns the transaction
-    const { data: transaction, error: txError } = await supabase
+    const { data: transaction, error: txError } = await db
       .from('categorized_transactions')
       .select(`
         *,
@@ -156,4 +181,3 @@ export async function DELETE(request: NextRequest) {
     );
   }
 }
-

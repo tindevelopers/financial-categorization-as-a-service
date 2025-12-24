@@ -36,21 +36,23 @@ export default function SetupWizardPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          company_name: formData.companyName,
-          company_type: formData.companyType,
+          companyName: formData.companyName,
+          companyType: formData.companyType,
           setupCompleted: true,
         }),
       })
 
       if (!response.ok) {
-        throw new Error('Failed to create company')
+        const data = await response.json().catch(() => ({}))
+        throw new Error(data.details || data.error || 'Failed to create company')
       }
 
       router.push('/dashboard')
       router.refresh()
     } catch (error) {
       console.error('Setup error:', error)
-      alert('Failed to complete setup. Please try again.')
+      const message = error instanceof Error ? error.message : 'Unknown error'
+      alert(`Failed to complete setup: ${message}`)
     } finally {
       setSaving(false)
     }

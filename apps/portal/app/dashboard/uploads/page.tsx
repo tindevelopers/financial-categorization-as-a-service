@@ -1,8 +1,18 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Heading, Text, Button } from '@/components/catalyst'
-import { ArrowUpTrayIcon, DocumentTextIcon, ClockIcon } from '@heroicons/react/24/outline'
+import { 
+  ArrowUpTrayIcon, 
+  DocumentTextIcon, 
+  ClockIcon, 
+  TrashIcon,
+  CheckCircleIcon,
+  XCircleIcon,
+  ArrowPathIcon,
+  ExclamationTriangleIcon,
+  Squares2X2Icon
+} from '@heroicons/react/24/outline'
 import Link from 'next/link'
 import { createClient } from '@/core/database/client'
 
@@ -17,57 +27,187 @@ interface Upload {
   id: string
   original_filename: string
   status: string
+  status_message?: string
   created_at: string
   job_type: string
   total_items?: number
   processed_items?: number
+  failed_items?: number
+  error_code?: string
+  error_message?: string
   storage_info?: StorageInfo
 }
 
 export default function UploadsPage() {
   const [uploads, setUploads] = useState<Upload[]>([])
   const [loading, setLoading] = useState(true)
+  const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(null)
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [bulkDeleting, setBulkDeleting] = useState(false)
+  const [resettingStorage, setResettingStorage] = useState(false)
+  const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null)
+
+  const fetchUploads = async () => {
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'uploads/page.tsx:51',message:'fetchUploads started',data:{url:'/api/categorization/jobs?limit=20'},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'C'})}).catch(()=>{});
+    // #endregion
+    try {
+      // Use the new API endpoint that includes storage info
+      const response = await fetch('/api/categorization/jobs?limit=20')
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'uploads/page.tsx:57',message:'Fetch response received',data:{status:response.status,statusText:response.statusText,ok:response.ok,contentType:response.headers.get('content-type')},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'C'})}).catch(()=>{});
+      // #endregion
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'uploads/page.tsx:60',message:'Response not OK',data:{status:response.status,statusText:response.statusText,errorText:errorText.substring(0,200)},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'C'})}).catch(()=>{});
+        // #endregion
+        throw new Error('Failed to fetch uploads')
+      }
+
+      const result = await response.json()
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'uploads/page.tsx:66',message:'Response parsed successfully',data:{hasSuccess:result.success,jobsCount:result.jobs?.length,hasPagination:!!result.pagination},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'D'})}).catch(()=>{});
+      // #endregion
+      setUploads(result.jobs || [])
+    } catch (error: any) {
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'uploads/page.tsx:69',message:'fetchUploads exception',data:{errorMessage:error?.message || 'unknown',errorType:error?.constructor?.name || 'unknown',errorStack:error?.stack?.substring(0,200)},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'C'})}).catch(()=>{});
+      // #endregion
+      console.error('Error fetching uploads:', error)
+    } finally {
+      setLoading(false)
+    }
+  }
 
   useEffect(() => {
-    async function fetchUploads() {
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'uploads/page.tsx:23',message:'fetchUploads started',data:{hasSupabaseUrl:!!process.env.NEXT_PUBLIC_SUPABASE_URL,hasSupabaseKey:!!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'A'})}).catch(()=>{});
-      // #endregion
-      try {
-        // Use the new API endpoint that includes storage info
-        const response = await fetch('/api/categorization/jobs?limit=20')
-        
-        if (!response.ok) {
-          throw new Error('Failed to fetch uploads')
-        }
+    fetchUploads()
 
-        const result = await response.json()
-        setUploads(result.jobs || [])
-      } catch (error: any) {
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'uploads/page.tsx:50',message:'fetchUploads exception',data:{errorMessage:error?.message || 'unknown',errorType:error?.constructor?.name || 'unknown'},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'C'})}).catch(()=>{});
-        // #endregion
-        console.error('Error fetching uploads:', error)
-      } finally {
-        setLoading(false)
+    // Set up polling for jobs that are still processing
+    // Start polling immediately, will be adjusted based on active jobs
+    pollingIntervalRef.current = setInterval(() => {
+      fetchUploads()
+    }, 3000) // Poll every 3 seconds
+
+    // Also fetch again after a short delay to catch newly uploaded files
+    // (in case of redirect from upload page)
+    const timeoutId = setTimeout(() => {
+      fetchUploads()
+    }, 1000)
+
+    return () => {
+      if (pollingIntervalRef.current) {
+        clearInterval(pollingIntervalRef.current)
+        pollingIntervalRef.current = null
+      }
+      clearTimeout(timeoutId)
+    }
+  }, [])
+
+  // Update polling based on current uploads state
+  useEffect(() => {
+    const hasActiveJobs = uploads.some(u => 
+      ['received', 'queued', 'processing'].includes(u.status)
+    )
+
+    if (!hasActiveJobs && pollingIntervalRef.current) {
+      // Stop polling when no active jobs
+      clearInterval(pollingIntervalRef.current)
+      pollingIntervalRef.current = null
+    } else if (hasActiveJobs && !pollingIntervalRef.current) {
+      // Resume polling if there are active jobs
+      pollingIntervalRef.current = setInterval(() => {
+        fetchUploads()
+      }, 3000)
+    }
+  }, [uploads])
+
+  // Check for new uploads when page becomes visible (e.g., after redirect from upload page)
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        // Refresh immediately when page becomes visible
+        fetchUploads()
       }
     }
 
-    fetchUploads()
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+    
+    // Also check on focus (when user switches back to tab)
+    const handleFocus = () => {
+      fetchUploads()
+    }
+    window.addEventListener('focus', handleFocus)
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+      window.removeEventListener('focus', handleFocus)
+    }
   }, [])
 
-  const getStatusColor = (status: string) => {
+  const getStatusDisplay = (upload: Upload) => {
+    const status = upload.status
+    const statusMessage = upload.status_message || status
+    
     switch (status) {
-      case 'completed':
-        return 'text-green-600 dark:text-green-400'
+      case 'received':
+        return {
+          color: 'text-green-600 dark:text-green-400',
+          icon: CheckCircleIcon,
+          label: 'File Received',
+          message: statusMessage,
+        }
+      case 'queued':
+        return {
+          color: 'text-yellow-600 dark:text-yellow-400',
+          icon: ClockIcon,
+          label: 'Waiting to Process',
+          message: statusMessage,
+        }
       case 'processing':
-        return 'text-blue-600 dark:text-blue-400'
+        return {
+          color: 'text-blue-600 dark:text-blue-400',
+          icon: ArrowPathIcon,
+          label: 'Processing',
+          message: statusMessage,
+          spinning: true,
+        }
+      case 'reviewing':
+        return {
+          color: 'text-purple-600 dark:text-purple-400',
+          icon: CheckCircleIcon,
+          label: 'Ready for Review',
+          message: statusMessage,
+        }
+      case 'completed':
+        return {
+          color: 'text-green-600 dark:text-green-400',
+          icon: CheckCircleIcon,
+          label: 'Completed',
+          message: statusMessage,
+        }
       case 'failed':
-        return 'text-red-600 dark:text-red-400'
+        return {
+          color: 'text-red-600 dark:text-red-400',
+          icon: XCircleIcon,
+          label: 'Failed',
+          message: statusMessage,
+        }
       default:
-    return 'text-gray-600 dark:text-gray-400'
+        return {
+          color: 'text-gray-600 dark:text-gray-400',
+          icon: DocumentTextIcon,
+          label: status.charAt(0).toUpperCase() + status.slice(1),
+          message: statusMessage,
+        }
+    }
   }
-}
+
+  const getStatusColor = (status: string) => {
+    return getStatusDisplay({ status } as Upload).color
+  }
 
   const getStorageTierBadge = (tier?: 'hot' | 'archive' | 'restoring') => {
     if (!tier) return null
@@ -103,6 +243,128 @@ export default function UploadsPage() {
     }).format(date)
   }
 
+  const handleDelete = async (jobId: string) => {
+    if (!confirm('Are you sure you want to delete this upload? This will permanently delete the file, all transactions, and cannot be undone.')) {
+      return
+    }
+
+    setDeletingId(jobId)
+    try {
+      const response = await fetch(`/api/categorization/jobs/${jobId}`, {
+        method: 'DELETE',
+      })
+
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.error || 'Failed to delete upload')
+      }
+
+      // Remove from local state
+      setUploads(uploads.filter(upload => upload.id !== jobId))
+      setSelectedIds(prev => {
+        const next = new Set(prev)
+        next.delete(jobId)
+        return next
+      })
+    } catch (error: any) {
+      console.error('Error deleting upload:', error)
+      alert(`Failed to delete upload: ${error.message}`)
+    } finally {
+      setDeletingId(null)
+      setShowDeleteConfirm(null)
+    }
+  }
+
+  const handleSelectAll = () => {
+    if (selectedIds.size === uploads.length) {
+      setSelectedIds(new Set())
+    } else {
+      setSelectedIds(new Set(uploads.map(u => u.id)))
+    }
+  }
+
+  const handleToggleSelect = (jobId: string) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev)
+      if (next.has(jobId)) {
+        next.delete(jobId)
+      } else {
+        next.add(jobId)
+      }
+      return next
+    })
+  }
+
+  const handleBulkDelete = async () => {
+    if (selectedIds.size === 0) {
+      alert('Please select at least one file to delete')
+      return
+    }
+
+    const count = selectedIds.size
+    if (!confirm(`Are you sure you want to delete ${count} file${count > 1 ? 's' : ''}? This will permanently delete the files, all transactions, and cannot be undone.`)) {
+      return
+    }
+
+    setBulkDeleting(true)
+    try {
+      const response = await fetch('/api/categorization/jobs/bulk-delete', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ jobIds: Array.from(selectedIds) }),
+      })
+
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.error || 'Failed to delete files')
+      }
+
+      // Refresh the uploads list
+      await fetchUploads()
+      setSelectedIds(new Set())
+    } catch (error: any) {
+      console.error('Error bulk deleting uploads:', error)
+      alert(`Failed to delete files: ${error.message}`)
+    } finally {
+      setBulkDeleting(false)
+    }
+  }
+
+  const handleResetStorage = async () => {
+    if (!confirm('Are you sure you want to reset the entire storage facility? This will permanently delete ALL uploaded files, transactions, and cannot be undone. This action is irreversible.')) {
+      return
+    }
+
+    if (!confirm('This is your final warning. Are you absolutely sure you want to delete ALL files?')) {
+      return
+    }
+
+    setResettingStorage(true)
+    try {
+      const response = await fetch('/api/categorization/jobs/reset-storage', {
+        method: 'POST',
+      })
+
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.error || 'Failed to reset storage')
+      }
+
+      const result = await response.json()
+      // Refresh the uploads list
+      await fetchUploads()
+      setSelectedIds(new Set())
+      alert(`Storage reset successfully. Deleted ${result.deletedCount || 0} file(s).`)
+    } catch (error: any) {
+      console.error('Error resetting storage:', error)
+      alert(`Failed to reset storage: ${error.message}`)
+    } finally {
+      setResettingStorage(false)
+    }
+  }
+
   return (
     <div className="space-y-8">
       {/* Header */}
@@ -112,6 +374,44 @@ export default function UploadsPage() {
           <Text>Manage your uploaded files and transactions</Text>
         </div>
         <div className="flex gap-3">
+          {selectedIds.size > 0 && (
+            <Button 
+              color="red" 
+              className="gap-2"
+              onClick={handleBulkDelete}
+              disabled={bulkDeleting}
+            >
+              {bulkDeleting ? (
+                <>
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                  Deleting...
+                </>
+              ) : (
+                <>
+                  <TrashIcon className="h-5 w-5" />
+                  Delete Selected ({selectedIds.size})
+                </>
+              )}
+            </Button>
+          )}
+          <Button 
+            color="zinc" 
+            className="gap-2"
+            onClick={handleResetStorage}
+            disabled={resettingStorage || uploads.length === 0}
+          >
+            {resettingStorage ? (
+              <>
+                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-current"></div>
+                Resetting...
+              </>
+            ) : (
+              <>
+                <Squares2X2Icon className="h-5 w-5" />
+                Reset Storage
+              </>
+            )}
+          </Button>
           <Link href="/dashboard/uploads/receipts">
             <Button color="zinc" className="gap-2">
               <DocumentTextIcon className="h-5 w-5" />
@@ -149,6 +449,14 @@ export default function UploadsPage() {
             <table className="w-full">
               <thead className="bg-gray-50 dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700">
                 <tr>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider w-12">
+                    <input
+                      type="checkbox"
+                      checked={uploads.length > 0 && selectedIds.size === uploads.length}
+                      onChange={handleSelectAll}
+                      className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-700"
+                    />
+                  </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                     Filename
                   </th>
@@ -173,6 +481,14 @@ export default function UploadsPage() {
                 {uploads.map((upload) => (
                   <tr key={upload.id} className="hover:bg-gray-50 dark:hover:bg-gray-900/50">
                     <td className="px-6 py-4 whitespace-nowrap">
+                      <input
+                        type="checkbox"
+                        checked={selectedIds.has(upload.id)}
+                        onChange={() => handleToggleSelect(upload.id)}
+                        className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-700"
+                      />
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
                       <div className="flex items-center gap-3">
                         <DocumentTextIcon className="h-5 w-5 text-gray-400" />
                         <div>
@@ -186,9 +502,61 @@ export default function UploadsPage() {
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <span className={`text-sm font-medium capitalize ${getStatusColor(upload.status)}`}>
-                        {upload.status}
-                      </span>
+                      <div className="flex items-center gap-2">
+                        {(() => {
+                          const statusDisplay = getStatusDisplay(upload)
+                          const Icon = statusDisplay.icon
+                          return (
+                            <>
+                              <Icon 
+                                className={`h-5 w-5 ${statusDisplay.color} ${statusDisplay.spinning ? 'animate-spin' : ''}`} 
+                              />
+                              <div className="flex flex-col">
+                                <span className={`text-sm font-medium ${statusDisplay.color}`}>
+                                  {statusDisplay.label}
+                                </span>
+                                {statusDisplay.message && statusDisplay.message !== statusDisplay.label && (
+                                  <span className="text-xs text-gray-500 dark:text-gray-400">
+                                    {statusDisplay.message}
+                                  </span>
+                                )}
+                                {upload.status === 'processing' && upload.total_items && upload.processed_items !== undefined && (
+                                  <div className="mt-1">
+                                    <div className="w-32 bg-gray-200 dark:bg-gray-700 rounded-full h-1.5">
+                                      <div
+                                        className="bg-blue-500 h-1.5 rounded-full transition-all duration-300"
+                                        style={{ 
+                                          width: `${Math.min((upload.processed_items / upload.total_items) * 100, 100)}%` 
+                                        }}
+                                      />
+                                    </div>
+                                    <span className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                                      {upload.processed_items} / {upload.total_items}
+                                    </span>
+                                  </div>
+                                )}
+                                {upload.status === 'failed' && upload.error_code && (
+                                  <details className="mt-1">
+                                    <summary className="text-xs text-red-600 dark:text-red-400 cursor-pointer hover:underline">
+                                      Error details
+                                    </summary>
+                                    <div className="mt-1 p-2 bg-red-50 dark:bg-red-900/20 rounded text-xs">
+                                      <div className="font-mono text-red-700 dark:text-red-300">
+                                        Code: {upload.error_code}
+                                      </div>
+                                      {upload.error_message && (
+                                        <div className="text-red-600 dark:text-red-400 mt-1">
+                                          {upload.error_message}
+                                        </div>
+                                      )}
+                                    </div>
+                                  </details>
+                                )}
+                              </div>
+                            </>
+                          )
+                        })()}
+                      </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       {getStorageTierBadge(upload.storage_info?.tier)}
@@ -200,19 +568,39 @@ export default function UploadsPage() {
                       {formatDate(upload.created_at)}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-right text-sm">
-                      {upload.status === 'completed' && (
-                        <Link href={`/review/${upload.id}`}>
-                          <Button color="blue">
-                            View
-                          </Button>
-                        </Link>
-                      )}
-                      {upload.status === 'processing' && (
-                        <span className="inline-flex items-center gap-1 text-blue-600 dark:text-blue-400">
-                          <ClockIcon className="h-4 w-4" />
-                          Processing...
-                        </span>
-                      )}
+                      <div className="flex items-center justify-end gap-2">
+                        {upload.status === 'completed' && (
+                          <Link href={`/review/${upload.id}`}>
+                            <Button color="blue">
+                              View
+                            </Button>
+                          </Link>
+                        )}
+                        {['received', 'queued', 'processing'].includes(upload.status) && (
+                          <span className="inline-flex items-center gap-1 text-blue-600 dark:text-blue-400">
+                            <ClockIcon className="h-4 w-4" />
+                            {upload.status === 'processing' ? 'Processing...' : 'Waiting...'}
+                          </span>
+                        )}
+                        <Button
+                          color="red"
+                          onClick={() => handleDelete(upload.id)}
+                          disabled={deletingId === upload.id}
+                          className="gap-1"
+                        >
+                          {deletingId === upload.id ? (
+                            <>
+                              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                              Deleting...
+                            </>
+                          ) : (
+                            <>
+                              <TrashIcon className="h-4 w-4" />
+                              Delete
+                            </>
+                          )}
+                        </Button>
+                      </div>
                     </td>
                   </tr>
                 ))}

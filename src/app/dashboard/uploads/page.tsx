@@ -8,7 +8,7 @@ import { createClient } from '@/core/database/client'
 
 interface Upload {
   id: string
-  filename: string
+  original_filename: string
   status: string
   created_at: string
   transaction_count?: number
@@ -24,7 +24,7 @@ export default function UploadsPage() {
         const supabase = createClient()
         const { data, error } = await supabase
           .from('categorization_jobs')
-          .select('id, filename, status, created_at')
+          .select('id, original_filename, status, created_at')
           .order('created_at', { ascending: false })
           .limit(20)
 
@@ -135,7 +135,7 @@ export default function UploadsPage() {
                         <DocumentTextIcon className="h-5 w-5 text-gray-400" />
                         <div>
                           <div className="text-sm font-medium text-gray-900 dark:text-white">
-                            {upload.filename}
+                            {upload.original_filename}
                           </div>
                         </div>
                       </div>

@@ -424,14 +424,14 @@ const AppSidebar: React.FC = () => {
                 openSubmenu?.type === menuType && openSubmenu?.index === index
               }
               aria-controls={`submenu-${menuType}-${index}`}
-              className={`menu-item group  ${
+              className={`menu-item group ${
                 openSubmenu?.type === menuType && openSubmenu?.index === index
                   ? "menu-item-active"
                   : "menu-item-inactive"
               } cursor-pointer ${
                 !isExpanded && !isHovered
-                  ? "lg:justify-center"
-                  : "lg:justify-start"
+                  ? "justify-center"
+                  : "justify-start"
               }`}
             >
               <span
@@ -713,7 +713,7 @@ const AppSidebar: React.FC = () => {
 
   return (
     <aside
-      className={`fixed  flex flex-col xl:mt-0 top-0 px-5 left-0 bg-white dark:bg-gray-900 dark:border-gray-800 text-gray-900 h-full transition-all duration-300 ease-in-out z-50 border-r border-gray-200 
+      className={`fixed flex flex-col lg:mt-0 top-0 px-5 left-0 bg-white dark:bg-gray-900 dark:border-gray-800 text-gray-900 h-full transition-all duration-300 ease-in-out z-50 border-r border-gray-200 
         ${
           isExpanded || isMobileOpen
             ? "w-[290px]"
@@ -722,13 +722,13 @@ const AppSidebar: React.FC = () => {
             : "w-[90px]"
         }
         ${isMobileOpen ? "translate-x-0" : "-translate-x-full"}
-        xl:translate-x-0`}
+        lg:translate-x-0`}
       onMouseEnter={() => !isExpanded && setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >
       <div
         className={`py-8 flex flex-col gap-3 ${
-          !isExpanded && !isHovered ? "xl:items-center" : "items-start"
+          !isExpanded && !isHovered ? "lg:items-center" : "items-start"
         }`}
       >
         <Link href="/">
@@ -787,7 +787,7 @@ const AppSidebar: React.FC = () => {
               <h2
                 className={`mb-4 text-xs uppercase flex leading-5 text-gray-400 ${
                   !isExpanded && !isHovered
-                    ? "xl:justify-center"
+                    ? "lg:justify-center"
                     : "justify-start"
                 }`}
               >
@@ -803,7 +803,7 @@ const AppSidebar: React.FC = () => {
               <h2
                 className={`mb-4 text-xs uppercase flex leading-5 text-gray-400 ${
                   !isExpanded && !isHovered
-                    ? "xl:justify-center"
+                    ? "lg:justify-center"
                     : "justify-start"
                 }`}
               >
@@ -819,7 +819,7 @@ const AppSidebar: React.FC = () => {
               <h2
                 className={`mb-4 text-xs uppercase flex leading-5 text-gray-400 ${
                   !isExpanded && !isHovered
-                    ? "xl:justify-center"
+                    ? "lg:justify-center"
                     : "justify-start"
                 }`}
               >

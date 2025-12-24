@@ -33,11 +33,15 @@ GOOGLE_APPLICATION_CREDENTIALS=<path-to-service-account-key.json>
 # OR use GOOGLE_APPLICATION_CREDENTIALS_JSON with base64 encoded JSON
 ```
 
-#### Google Drive OAuth (Required for Cloud Storage)
+#### Google OAuth (Required for Google Sheets and Google Drive)
 ```
 GOOGLE_CLIENT_ID=<your-google-client-id>
 GOOGLE_CLIENT_SECRET=<your-google-client-secret>
-GOOGLE_REDIRECT_URI=https://your-domain.com/api/storage/drive/callback
+# For Google Sheets integration:
+GOOGLE_REDIRECT_URI=https://your-domain.com/api/integrations/google-sheets/callback
+# For Google Drive integration (if different):
+# GOOGLE_REDIRECT_URI=https://your-domain.com/api/storage/drive/callback
+# Note: If using both, you may need separate OAuth credentials or add both redirect URIs to the same OAuth app
 ```
 
 #### Dropbox OAuth (Required for Cloud Storage)
@@ -63,6 +67,10 @@ ENCRYPTION_KEY=<32-byte-hex-key>
 #### App URL (Required for OAuth redirects)
 ```
 NEXT_PUBLIC_APP_URL=https://your-domain.com
+# This is used to construct redirect URIs if GOOGLE_REDIRECT_URI is not set
+# Default redirect URIs:
+# - Google Sheets: ${NEXT_PUBLIC_APP_URL}/api/integrations/google-sheets/callback
+# - Google Drive: ${NEXT_PUBLIC_APP_URL}/api/storage/drive/callback
 ```
 
 ### Build Command

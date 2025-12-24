@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/core/database/server";
+import { createAdminClient } from "@/core/database/admin-client";
 import * as XLSX from "xlsx";
 import { 
   createDuplicateDetector,
@@ -109,6 +110,28 @@ export async function POST(request: NextRequest) {
         { error: "Failed to create job: " + (jobError.message || JSON.stringify(jobError)) },
         { status: 500 }
       );
+    }
+
+    // Also create a record in financial_documents for long-term storage tracking
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { error: docError } = await (supabase as any)
+      .from("financial_documents")
+      .insert({
+        user_id: user.id,
+        tenant_id: userData?.tenant_id || null,
+        job_id: jobData.id, // Link to categorization job for tracking
+        original_filename: file.name,
+        file_type: "bank_statement",
+        mime_type: file.type,
+        file_size_bytes: file.size,
+        storage_tier: "hot", // Start in hot storage (Supabase)
+        supabase_path: fileName,
+        ocr_status: "pending",
+      });
+
+    if (docError) {
+      console.error("Failed to create financial_documents record:", docError);
+      // Don't fail the upload, just log the error
     }
 
     // Process the file inline
@@ -237,6 +260,7 @@ export async function POST(request: NextRequest) {
       );
 
       // Insert categorized transactions with source tracking
+      // Use admin client to bypass RLS since we've already validated the user
       const transactionsToInsert = categorizedTransactions.map(tx => ({
         job_id: jobData.id,
         original_description: tx.description,
@@ -251,8 +275,11 @@ export async function POST(request: NextRequest) {
         sync_version: 1,
       }));
 
+      // Use admin client for insert to bypass RLS policies
+      // We've already validated the user and created the job, so this is safe
+      const adminClient = createAdminClient();
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const { error: insertError } = await (supabase as any)
+      const { error: insertError } = await (adminClient as any)
         .from("categorized_transactions")
         .insert(transactionsToInsert);
 

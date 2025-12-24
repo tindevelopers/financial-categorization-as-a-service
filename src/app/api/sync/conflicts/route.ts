@@ -128,27 +128,30 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Cast conflict to any to work around type inference issues
+    const conflictData = conflict as any;
+
     // Apply the resolution
-    if (resolution === 'external' && conflict.external_value) {
+    if (resolution === 'external' && conflictData.external_value) {
       // Update transaction with external value
-      const externalValue = conflict.external_value as Record<string, unknown>;
+      const externalValue = conflictData.external_value as Record<string, unknown>;
       
-      await supabase
-        .from('categorized_transactions')
-        .update({
-          category: externalValue.category,
-          subcategory: externalValue.subcategory,
-          user_notes: externalValue.user_notes,
-          last_modified_source: 'external',
-          sync_version: ((conflict.db_value as Record<string, unknown>)?.sync_version as number || 1) + 1,
-        })
-        .eq('id', conflict.transaction_id);
+      const updateData: any = {
+        category: externalValue.category,
+        subcategory: externalValue.subcategory,
+        user_notes: externalValue.user_notes,
+        last_modified_source: 'external',
+        sync_version: ((conflictData.db_value as Record<string, unknown>)?.sync_version as number || 1) + 1,
+      };
+      
+      await (supabase.from('categorized_transactions') as any)
+        .update(updateData)
+        .eq('id', conflictData.transaction_id);
     }
     // If 'db' resolution, no changes needed to the transaction
 
     // Mark conflict as resolved
-    const { error: updateError } = await supabase
-      .from('sync_conflicts')
+    const { error: updateError } = await (supabase.from('sync_conflicts') as any)
       .update({
         resolution_status: 'resolved',
         resolved_by: user.id,
@@ -206,8 +209,7 @@ export async function DELETE(request: NextRequest) {
       );
     }
 
-    const { error } = await supabase
-      .from('sync_conflicts')
+    const { error } = await (supabase.from('sync_conflicts') as any)
       .update({
         resolution_status: 'ignored',
         resolved_by: user.id,

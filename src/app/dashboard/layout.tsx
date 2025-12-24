@@ -10,7 +10,6 @@ import {
   SidebarSection,
   SidebarItem,
   SidebarLabel,
-  SidebarDivider,
   Navbar,
   NavbarSection,
   NavbarSpacer,
@@ -18,6 +17,8 @@ import {
 import { CompanySwitcher } from '@/components/navigation/CompanySwitcher'
 import { UserMenu } from '@/components/navigation/UserMenu'
 import { SidebarUserMenu } from '@/components/navigation/SidebarUserMenu'
+import { ChatContextProvider } from '@/context/ChatContext'
+import { FloatingChatBubble } from '@/components/chat'
 import {
   HomeIcon,
   BuildingOfficeIcon,
@@ -34,8 +35,12 @@ import {
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
 
+  // Don't show floating bubble on the chat page (it has its own full interface)
+  const showFloatingBubble = pathname !== '/dashboard/chat'
+
   return (
-    <SidebarLayout
+    <ChatContextProvider>
+      <SidebarLayout
       navbar={
         <Navbar>
           <NavbarSection>
@@ -161,7 +166,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       }
     >
       {children}
+      
+      {/* Floating AI Chat Bubble */}
+      {showFloatingBubble && <FloatingChatBubble position="bottom-right" />}
     </SidebarLayout>
+    </ChatContextProvider>
   )
 }
 

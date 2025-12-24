@@ -2,6 +2,21 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/database/server";
 
 /**
+ * OPTIONS /api/categorization/jobs
+ * Handle CORS preflight requests
+ */
+export async function OPTIONS() {
+  return new NextResponse(null, {
+    status: 200,
+    headers: {
+      "Access-Control-Allow-Origin": "*",
+      "Access-Control-Allow-Methods": "GET, OPTIONS",
+      "Access-Control-Allow-Headers": "Content-Type, Authorization",
+    },
+  });
+}
+
+/**
  * GET /api/categorization/jobs
  * List all categorization jobs for the current user with optional filters
  * Query params:
@@ -18,7 +33,14 @@ export async function GET(request: NextRequest) {
     if (authError || !user) {
       return NextResponse.json(
         { error: "Unauthorized" },
-        { status: 401 }
+        { 
+          status: 401,
+          headers: {
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Methods": "GET, OPTIONS",
+            "Access-Control-Allow-Headers": "Content-Type, Authorization",
+          },
+        }
       );
     }
 
@@ -29,25 +51,10 @@ export async function GET(request: NextRequest) {
     const limit = Math.min(parseInt(searchParams.get("limit") || "50"), 100);
     const offset = parseInt(searchParams.get("offset") || "0");
 
-    // Build query
+    // Build query with all columns including updated_at
     let query = supabase
       .from("categorization_jobs")
-      .select(`
-        id,
-        job_type,
-        status,
-        processing_mode,
-        original_filename,
-        file_url,
-        cloud_storage_provider,
-        total_items,
-        processed_items,
-        failed_items,
-        created_at,
-        started_at,
-        completed_at,
-        error_message
-      `)
+      .select("id,job_type,status,processing_mode,original_filename,file_url,cloud_storage_provider,total_items,processed_items,failed_items,error_message,created_at,updated_at,started_at,completed_at")
       .eq("user_id", user.id)
       .order("created_at", { ascending: false });
 
@@ -62,37 +69,51 @@ export async function GET(request: NextRequest) {
     // Apply pagination
     query = query.range(offset, offset + limit - 1);
 
+    // Execute query
     const { data: jobs, error: jobsError } = await query;
 
     if (jobsError) {
       console.error("Error fetching jobs:", jobsError);
       return NextResponse.json(
-        { error: "Failed to fetch jobs" },
-        { status: 500 }
+        { error: "Failed to fetch jobs", details: jobsError.message },
+        { 
+          status: 500,
+          headers: {
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Methods": "GET, OPTIONS",
+            "Access-Control-Allow-Headers": "Content-Type, Authorization",
+          },
+        }
       );
     }
 
     // Get financial documents for these jobs to include storage info
     const jobIds = jobs?.map(j => j.id) || [];
-    const { data: documents } = await supabase
-      .from("financial_documents")
-      .select("job_id, storage_tier, archived_at, file_size_bytes")
-      .in("job_id", jobIds);
+    let documents = null;
+    if (jobIds.length > 0) {
+      const { data: docs } = await supabase
+        .from("financial_documents")
+        .select("job_id, storage_tier, archived_at, file_size_bytes")
+        .in("job_id", jobIds);
+      documents = docs;
+    }
 
     // Create a map of job_id -> document info
     const docMap = new Map();
     documents?.forEach(doc => {
-      if (!docMap.has(doc.job_id)) {
-        docMap.set(doc.job_id, []);
+      if (doc?.job_id) {
+        if (!docMap.has(doc.job_id)) {
+          docMap.set(doc.job_id, []);
+        }
+        docMap.get(doc.job_id).push(doc);
       }
-      docMap.get(doc.job_id).push(doc);
     });
 
     // Enhance jobs with storage info
     const enhancedJobs = jobs?.map(job => {
       const jobDocs = docMap.get(job.id) || [];
-      const storageTiers = jobDocs.map(d => d.storage_tier);
-      const totalSize = jobDocs.reduce((sum, d) => sum + (d.file_size_bytes || 0), 0);
+      const storageTiers = jobDocs.map((d: any) => d.storage_tier);
+      const totalSize = jobDocs.reduce((sum: number, d: any) => sum + (d.file_size_bytes || 0), 0);
       
       return {
         ...job,
@@ -101,15 +122,15 @@ export async function GET(request: NextRequest) {
                 storageTiers.includes("restoring") ? "restoring" : "hot",
           total_size_bytes: totalSize,
           document_count: jobDocs.length,
-          archived_at: jobDocs.find(d => d.archived_at)?.archived_at || null,
+          archived_at: jobDocs.find((d: any) => d.archived_at)?.archived_at || null,
         }
       };
     });
 
     // Get total count for pagination
-    const { count, error: countError } = await supabase
+    const { count } = await supabase
       .from("categorization_jobs")
-      .select("*", { count: "exact", head: true })
+      .select("id", { count: "exact", head: true })
       .eq("user_id", user.id);
 
     return NextResponse.json({
@@ -121,13 +142,26 @@ export async function GET(request: NextRequest) {
         offset,
         has_more: (count || 0) > offset + limit,
       }
+    }, {
+      status: 200,
+      headers: {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "GET, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type, Authorization",
+      },
     });
   } catch (error: any) {
     console.error("Error in jobs endpoint:", error);
     return NextResponse.json(
       { error: error.message || "Internal server error" },
-      { status: 500 }
+      { 
+        status: 500,
+        headers: {
+          "Access-Control-Allow-Origin": "*",
+          "Access-Control-Allow-Methods": "GET, OPTIONS",
+          "Access-Control-Allow-Headers": "Content-Type, Authorization",
+        },
+      }
     );
   }
 }
-

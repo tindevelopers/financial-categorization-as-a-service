@@ -25,7 +25,7 @@ export interface Transaction {
   matched_document_id?: string | null;
 }
 
-export type SourceType = 'upload' | 'google_sheets' | 'manual' | 'api';
+export type SourceType = 'upload' | 'google_sheets' | 'manual' | 'api' | 'airtable';
 
 export type SyncDirection = 'push' | 'pull' | 'bidirectional';
 

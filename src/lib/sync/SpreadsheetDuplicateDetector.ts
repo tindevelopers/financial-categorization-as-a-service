@@ -33,9 +33,19 @@ export interface DuplicateDetectorOptions {
   };
 }
 
+interface InternalOptions {
+  similarityThreshold: number;
+  checkNearMatches: boolean;
+  nearMatchThresholds: {
+    amountDiffPercent: number;
+    dateDiffDays: number;
+    descriptionSimilarity: number;
+  };
+}
+
 export class SpreadsheetDuplicateDetector {
   private supabase: SupabaseClient;
-  private options: Required<DuplicateDetectorOptions>;
+  private options: InternalOptions;
 
   constructor(
     supabase: SupabaseClient,

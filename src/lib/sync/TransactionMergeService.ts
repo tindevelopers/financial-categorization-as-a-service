@@ -10,10 +10,9 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { SpreadsheetDuplicateDetector } from './SpreadsheetDuplicateDetector';
-import { calculateFingerprints, calculateFingerprint } from './fingerprint';
+import { generateFingerprints, generateTransactionFingerprint } from './fingerprint';
 import type { 
   Transaction, 
-  TransactionWithFingerprint,
   MergeResult,
   SourceType,
   SimilarityResult
@@ -50,7 +49,7 @@ export class TransactionMergeService {
     this.supabase = supabase;
     this.userId = userId;
     this.tenantId = tenantId;
-    this.duplicateDetector = new SpreadsheetDuplicateDetector(supabase, userId);
+    this.duplicateDetector = new SpreadsheetDuplicateDetector(supabase);
   }
 
   /**
@@ -68,7 +67,7 @@ export class TransactionMergeService {
     }
 
     // Detect duplicates
-    const similarity = await this.duplicateDetector.detectSimilarity(transactions);
+    const similarity = await this.duplicateDetector.detectSimilarity(transactions, this.userId);
 
     // Decide on merge strategy based on similarity
     if (similarity.action === 'proceed' && !options.forceMerge) {
@@ -88,23 +87,25 @@ export class TransactionMergeService {
     options: MergeOptions
   ): Promise<MergeResult> {
     // Ensure we have a job ID
-    let jobId = options.jobId;
+    let jobId: string | null | undefined = options.jobId;
     if (!jobId && options.createJob !== false) {
       jobId = await this.createJob(options);
     }
 
     if (!jobId) {
       return {
-        mode: 'rejected',
+        mode: 'reject',
         inserted: 0,
         skipped: 0,
         updated: 0,
+        similarityScore: 0,
         message: 'Failed to create categorization job',
       };
     }
 
     // Add fingerprints
-    const transactionsWithFingerprints = calculateFingerprints(transactions);
+    const fingerprintMap = generateFingerprints(transactions);
+    const transactionsWithFingerprints = Array.from(fingerprintMap.values());
 
     // Insert all transactions
     const insertResult = await this.insertTransactions(
@@ -118,7 +119,8 @@ export class TransactionMergeService {
       inserted: insertResult.inserted,
       skipped: 0,
       updated: 0,
-      newJobId: jobId,
+      similarityScore: 0,
+      jobId: jobId,
       message: `Inserted ${insertResult.inserted} transaction(s)`,
     };
   }
@@ -131,14 +133,14 @@ export class TransactionMergeService {
     options: MergeOptions
   ): Promise<MergeResult> {
     // If no new transactions, nothing to do
-    if (similarity.newCount === 0) {
+    if (similarity.totalNewTransactions === 0) {
       return {
         mode: 'merge',
         inserted: 0,
         skipped: similarity.matchingCount,
         updated: 0,
         similarityScore: similarity.similarityScore,
-        matchedJobId: similarity.existingJobId,
+        matchedJobId: similarity.existingJobId ?? undefined,
         message: `All ${similarity.matchingCount} transactions already exist. No new data added.`,
       };
     }
@@ -149,15 +151,16 @@ export class TransactionMergeService {
     // If high similarity and existing job, could add to that job
     // For now, we always create a new job for clarity
     if (!jobId && options.createJob !== false) {
-      jobId = await this.createJob(options);
+      jobId = (await this.createJob(options)) ?? undefined;
     }
 
     if (!jobId) {
       return {
-        mode: 'rejected',
+        mode: 'reject',
         inserted: 0,
         skipped: 0,
         updated: 0,
+        similarityScore: 0,
         message: 'Failed to create categorization job',
       };
     }
@@ -175,8 +178,8 @@ export class TransactionMergeService {
       skipped: similarity.matchingCount,
       updated: 0,
       similarityScore: similarity.similarityScore,
-      matchedJobId: similarity.existingJobId,
-      newJobId: jobId,
+      matchedJobId: similarity.existingJobId ?? undefined,
+      jobId: jobId,
       message: `Merged: ${insertResult.inserted} new, ${similarity.matchingCount} skipped (duplicates)`,
     };
   }
@@ -185,7 +188,7 @@ export class TransactionMergeService {
    * Insert transactions into the database
    */
   private async insertTransactions(
-    transactions: TransactionWithFingerprint[],
+    transactions: Transaction[],
     jobId: string,
     options: MergeOptions
   ): Promise<{ inserted: number; errors: number }> {
@@ -195,7 +198,7 @@ export class TransactionMergeService {
 
     const transactionsToInsert = transactions.map(tx => ({
       job_id: jobId,
-      original_description: tx.description,
+      original_description: tx.original_description,
       amount: tx.amount,
       date: this.formatDate(tx.date),
       category: tx.category || null,
@@ -288,7 +291,7 @@ export class TransactionMergeService {
   async previewMerge(
     transactions: Transaction[]
   ): Promise<SimilarityResult> {
-    return this.duplicateDetector.detectSimilarity(transactions);
+    return this.duplicateDetector.detectSimilarity(transactions, this.userId);
   }
 
   /**
@@ -301,8 +304,8 @@ export class TransactionMergeService {
   ): Promise<boolean> {
     const updateData: Record<string, unknown> = {};
     
-    if (updates.description !== undefined) {
-      updateData.original_description = updates.description;
+    if (updates.original_description !== undefined) {
+      updateData.original_description = updates.original_description;
     }
     if (updates.amount !== undefined) {
       updateData.amount = updates.amount;

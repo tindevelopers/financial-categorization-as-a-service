@@ -156,7 +156,7 @@ export function areTransactionsNearMatch(
     return {
       isNearMatch: true,
       matchType: 'description_diff',
-      difference: { descriptionSimilarity }
+      difference: { descriptionSimilarity: descSimilarity }
     };
   }
   

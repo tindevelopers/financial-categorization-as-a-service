@@ -36,7 +36,7 @@ export async function GET(request: NextRequest) {
 
     // Get sync history for each connection
     const connectionsWithHistory = await Promise.all(
-      (syncMetadata || []).map(async (meta) => {
+      (syncMetadata || []).map(async (meta: any) => {
         const { data: history } = await supabase
           .from('sync_history')
           .select('*')
@@ -109,7 +109,8 @@ export async function POST(request: NextRequest) {
       .eq('source_id', spreadsheetId)
       .single();
 
-    if (existingSync?.sync_status === 'syncing') {
+    const existingSyncData = existingSync as any;
+    if (existingSyncData?.sync_status === 'syncing') {
       return NextResponse.json(
         { error: 'A sync is already in progress for this spreadsheet' },
         { status: 409 }
