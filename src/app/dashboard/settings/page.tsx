@@ -26,6 +26,7 @@ interface IntegrationStatus {
     connected: boolean
     email?: string
     connectedAt?: string
+    credentialSource?: 'tenant' | 'platform'
   }
   airtable: {
     connected: boolean
@@ -73,6 +74,7 @@ interface TenantSettings {
   airtable_table_name?: string
   use_custom_credentials?: boolean
   is_enabled?: boolean
+  default_sharing_permission?: 'reader' | 'writer'
 }
 
 interface CompanyProfile {
@@ -107,6 +109,7 @@ export default function SettingsPage() {
   const [customClientId, setCustomClientId] = useState('')
   const [customClientSecret, setCustomClientSecret] = useState('')
   const [showClientSecret, setShowClientSecret] = useState(false)
+  const [defaultSharingPermission, setDefaultSharingPermission] = useState<'reader' | 'writer'>('reader')
   
   // Airtable form state
   const [airtableApiKey, setAirtableApiKey] = useState('')
@@ -123,6 +126,8 @@ export default function SettingsPage() {
   const [creatingSheet, setCreatingSheet] = useState(false)
   const [newSheetName, setNewSheetName] = useState('')
   const [showCreateSheetForm, setShowCreateSheetForm] = useState(false)
+  const [shareWithCompany, setShareWithCompany] = useState(true)
+  const [sharingPermission, setSharingPermission] = useState<'reader' | 'writer'>('reader')
 
   // Team invitations state
   const [teamInvitations, setTeamInvitations] = useState<TeamInvitation[]>([])
@@ -159,7 +164,18 @@ export default function SettingsPage() {
         if (googleSettings) {
           setUseCustomCredentials(googleSettings.use_custom_credentials || false)
           setCustomClientId(googleSettings.custom_client_id || '')
-          // Secret is masked, don't overwrite with masked value
+          setDefaultSharingPermission(googleSettings.default_sharing_permission || 'reader')
+          // If secret exists (even if masked), show masked value to indicate credentials are saved
+          if (googleSettings.custom_client_secret) {
+            setCustomClientSecret('••••••••')
+          }
+        }
+        
+        // Set default sharing permission for create sheet modal
+        if (data.entityType === 'company') {
+          const googleSettings = data.settings?.find((s: TenantSettings) => s.provider === 'google_sheets')
+          setSharingPermission(googleSettings?.default_sharing_permission || 'reader')
+          setShareWithCompany(true) // Default to true for company users
         }
         
         const airtableSettings = data.settings?.find((s: TenantSettings) => s.provider === 'airtable')
@@ -294,7 +310,11 @@ export default function SettingsPage() {
       const response = await fetch('/api/integrations/google-sheets/create-sheet', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: sheetName }),
+        body: JSON.stringify({ 
+          name: sheetName,
+          shareWithCompany: entityType === 'company' ? shareWithCompany : false,
+          sharingPermission: entityType === 'company' ? sharingPermission : undefined,
+        }),
       })
 
       if (response.ok) {
@@ -523,6 +543,7 @@ Window Origin: ${window.location.origin}`;
           custom_client_secret: useCustomCredentials && customClientSecret !== '••••••••' 
             ? customClientSecret 
             : undefined,
+          default_sharing_permission: entityType === 'company' ? defaultSharingPermission : undefined,
         }),
       })
       
@@ -711,6 +732,13 @@ Window Origin: ${window.location.origin}`;
                         {integrations.googleSheets.email && (
                           <p className="text-xs text-gray-500">
                             Account: {integrations.googleSheets.email}
+                            {entityType === 'company' && integrations.googleSheets.credentialSource && (
+                              <span className="ml-2">
+                                ({integrations.googleSheets.credentialSource === 'tenant' 
+                                  ? 'using company credentials' 
+                                  : 'using personal OAuth'})
+                              </span>
+                            )}
                           </p>
                         )}
                       </div>
@@ -917,6 +945,26 @@ Window Origin: ${window.location.origin}`;
                       </div>
                     </div>
                   )}
+                  
+                  {/* Default Sharing Permission (Company only) */}
+                  <div className="space-y-2 pt-4 border-t border-gray-200 dark:border-zinc-700">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                        Default Sharing Permission
+                      </label>
+                      <p className="text-xs text-gray-500 mb-2">
+                        When company users create new sheets, this permission level will be used by default
+                      </p>
+                      <select
+                        value={defaultSharingPermission}
+                        onChange={(e) => setDefaultSharingPermission(e.target.value as 'reader' | 'writer')}
+                        className="w-full px-3 py-2 border border-gray-300 dark:border-zinc-600 rounded-lg bg-white dark:bg-zinc-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      >
+                        <option value="reader">Reader (View only)</option>
+                        <option value="writer">Writer (Can edit)</option>
+                      </select>
+                    </div>
+                  </div>
                 </div>
               )}
 
@@ -994,6 +1042,42 @@ Window Origin: ${window.location.origin}`;
                                 className="w-full px-3 py-2 border border-gray-300 dark:border-zinc-600 rounded-lg bg-white dark:bg-zinc-800 text-gray-900 dark:text-white mb-3"
                                 disabled={creatingSheet}
                               />
+                              
+                              {/* Sharing options (Company only) */}
+                              {entityType === 'company' && (
+                                <div className="space-y-3 mb-3">
+                                  <label className="flex items-center gap-2 cursor-pointer">
+                                    <input
+                                      type="checkbox"
+                                      checked={shareWithCompany}
+                                      onChange={(e) => setShareWithCompany(e.target.checked)}
+                                      disabled={creatingSheet}
+                                      className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                                    />
+                                    <span className="text-sm text-gray-700 dark:text-gray-300">
+                                      Share with all company users
+                                    </span>
+                                  </label>
+                                  
+                                  {shareWithCompany && (
+                                    <div>
+                                      <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+                                        Permission Level
+                                      </label>
+                                      <select
+                                        value={sharingPermission}
+                                        onChange={(e) => setSharingPermission(e.target.value as 'reader' | 'writer')}
+                                        disabled={creatingSheet}
+                                        className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-zinc-600 rounded-lg bg-white dark:bg-zinc-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                      >
+                                        <option value="reader">Reader (View only)</option>
+                                        <option value="writer">Writer (Can edit)</option>
+                                      </select>
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+                              
                               <div className="flex gap-2">
                                 <Button
                                   color="green"

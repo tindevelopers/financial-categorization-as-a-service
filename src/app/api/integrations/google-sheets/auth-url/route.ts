@@ -1,6 +1,7 @@
 import { createClient } from '@/core/database/server'
 import { NextRequest, NextResponse } from 'next/server'
 import { decrypt } from '@/lib/encryption'
+import { getUserEntityType } from '@/core/entity/helpers'
 
 /**
  * Get the base URL from the request origin
@@ -26,8 +27,9 @@ function getBaseUrlFromRequest(request: NextRequest): string {
 }
 
 /**
- * Get Google OAuth credentials
- * Priority: 1) Custom tenant credentials, 2) Environment variables
+ * Get Google OAuth credentials based on entity type
+ * Individual users: Always use platform credentials
+ * Company users: Check tenant credentials first, fallback to platform
  */
 async function getGoogleCredentials(supabase: any, userId: string, requestBaseUrl: string): Promise<{
   clientId: string | null;
@@ -37,7 +39,21 @@ async function getGoogleCredentials(supabase: any, userId: string, requestBaseUr
 }> {
   const defaultRedirectUri = `${requestBaseUrl}/api/integrations/google-sheets/callback`
 
-  // Get user's tenant ID
+  // Determine entity type
+  const entityType = await getUserEntityType(userId)
+  console.log('[Google Sheets OAuth] Entity type:', entityType, 'for user:', userId)
+
+  // Individual users always use platform credentials
+  if (entityType === 'individual') {
+    return {
+      clientId: process.env.GOOGLE_CLIENT_ID || null,
+      clientSecret: process.env.GOOGLE_CLIENT_SECRET || null,
+      redirectUri: process.env.GOOGLE_REDIRECT_URI || defaultRedirectUri,
+      source: 'platform',
+    }
+  }
+
+  // Company users: Check for custom tenant credentials first
   const { data: userData } = await supabase
     .from('users')
     .select('tenant_id')
@@ -66,6 +82,7 @@ async function getGoogleCredentials(supabase: any, userId: string, requestBaseUr
       }
 
       if (decryptedSecret) {
+        console.log('[Google Sheets OAuth] Using company credentials for tenant:', tenantId)
         return {
           clientId: tenantSettings.custom_client_id,
           clientSecret: decryptedSecret,
@@ -77,6 +94,7 @@ async function getGoogleCredentials(supabase: any, userId: string, requestBaseUr
   }
 
   // Fall back to platform-level environment variables
+  console.log('[Google Sheets OAuth] Using platform credentials (fallback for company user)')
   return {
     clientId: process.env.GOOGLE_CLIENT_ID || null,
     clientSecret: process.env.GOOGLE_CLIENT_SECRET || null,
@@ -130,9 +148,10 @@ export async function GET(request: NextRequest) {
       })
 
     // Build Google OAuth URL
+    // Note: Using drive (not drive.file) to allow sharing files with other users
     const scopes = [
       'https://www.googleapis.com/auth/spreadsheets',
-      'https://www.googleapis.com/auth/drive.file',
+      'https://www.googleapis.com/auth/drive',
       'https://www.googleapis.com/auth/userinfo.email',
     ]
 

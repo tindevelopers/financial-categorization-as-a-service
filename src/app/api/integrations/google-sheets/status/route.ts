@@ -28,6 +28,7 @@ export async function GET() {
       connected: !!integration?.access_token,
       email: integration?.provider_email || null,
       connectedAt: integration?.created_at || null,
+      credentialSource: integration?.metadata?.credential_source || 'platform',
     })
   } catch (error) {
     console.error('Error checking Google Sheets status:', error)

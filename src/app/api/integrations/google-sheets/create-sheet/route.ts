@@ -2,6 +2,7 @@ import { createClient } from '@/core/database/server'
 import { NextRequest, NextResponse } from 'next/server'
 import { google } from 'googleapis'
 import { decrypt } from '@/lib/encryption'
+import { getUserEntityType, getCompanyUsersWithProviderEmails } from '@/core/entity/helpers'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -89,11 +90,13 @@ export async function POST(request: NextRequest) {
     // Parse request body
     const body = await request.json()
     const sheetName = body.name || 'FinCat Transactions Export'
+    const shareWithCompany = body.shareWithCompany !== false // Default: true
+    const sharingPermission = body.sharingPermission // 'reader' | 'writer', optional
 
     // Get stored tokens
     const { data: integration, error: intError } = await (supabase as any)
       .from('user_integrations')
-      .select('access_token, refresh_token, token_expires_at, metadata')
+      .select('access_token, refresh_token, token_expires_at, metadata, provider_email')
       .eq('user_id', user.id)
       .eq('provider', 'google_sheets')
       .single()
@@ -249,6 +252,74 @@ export async function POST(request: NextRequest) {
       },
     })
 
+    // Auto-share with company users if applicable
+    let sharedWithUsers: string[] = []
+    if (shareWithCompany) {
+      try {
+        // Check if user is a company user
+        const entityType = await getUserEntityType(user.id)
+        
+        if (entityType === 'company') {
+          // Get user's tenant ID
+          const { data: userData } = await supabase
+            .from('users')
+            .select('tenant_id')
+            .eq('id', user.id)
+            .single()
+          
+          const tenantId = userData?.tenant_id
+          
+          if (tenantId) {
+            // Get default sharing permission from tenant settings
+            const { data: tenantSettings } = await (supabase as any)
+              .from('tenant_integration_settings')
+              .select('default_sharing_permission')
+              .eq('tenant_id', tenantId)
+              .eq('provider', 'google_sheets')
+              .single()
+            
+            const permission = sharingPermission || tenantSettings?.default_sharing_permission || 'reader'
+            
+            // Get company users with their Google account emails
+            const companyUsers = await getCompanyUsersWithProviderEmails(tenantId)
+            
+            // Share sheet with each company user
+            const drive = google.drive({ version: 'v3', auth: oauth2Client })
+            
+            for (const companyUser of companyUsers) {
+              // Skip sharing with the creator (they already own it)
+              // Compare emails case-insensitively
+              if (companyUser.provider_email?.toLowerCase() === integration.provider_email?.toLowerCase()) {
+                continue
+              }
+              
+              try {
+                await drive.permissions.create({
+                  fileId: spreadsheetId!,
+                  requestBody: {
+                    role: permission,
+                    type: 'user',
+                    emailAddress: companyUser.provider_email,
+                  },
+                  sendNotificationEmail: false, // Don't send email notifications
+                })
+                sharedWithUsers.push(companyUser.provider_email)
+                console.log(`[create-sheet] Shared sheet with ${companyUser.provider_email} (${permission})`)
+              } catch (shareError: any) {
+                // Log but don't fail - sharing errors shouldn't break sheet creation
+                console.error(`[create-sheet] Failed to share with ${companyUser.provider_email}:`, shareError.message)
+              }
+            }
+            
+            console.log(`[create-sheet] Shared sheet with ${sharedWithUsers.length} company users`)
+          }
+        }
+      } catch (shareError) {
+        // Log but don't fail - sharing errors shouldn't break sheet creation
+        console.error('[create-sheet] Error during auto-sharing:', shareError)
+      }
+    }
+
     return NextResponse.json({
       success: true,
       spreadsheet: {
@@ -257,6 +328,7 @@ export async function POST(request: NextRequest) {
         url: spreadsheetUrl,
       },
       message: `Created new spreadsheet: ${sheetName}`,
+      sharedWithUsers: sharedWithUsers.length > 0 ? sharedWithUsers : undefined,
     }, { headers: corsHeaders })
 
   } catch (error: any) {
