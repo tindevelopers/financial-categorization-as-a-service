@@ -58,6 +58,7 @@ export async function middleware(request: NextRequest) {
   );
 
   // Refresh session if expired - this is critical for Server Components
+  // getUser() automatically refreshes the session if needed when using @supabase/ssr
   const {
     data: { user },
     error: authError,
@@ -66,6 +67,10 @@ export async function middleware(request: NextRequest) {
   // Log auth status for debugging
   if (authError) {
     console.log("[middleware] Auth error:", authError.message);
+  } else if (!user) {
+    console.log("[middleware] No user found in session");
+  } else {
+    console.log("[middleware] User authenticated:", user.id);
   }
 
   // Try subdomain routing first
@@ -166,6 +171,35 @@ export async function middleware(request: NextRequest) {
       // Platform Admin - set a special header
       request.headers.set("x-user-type", "platform-admin");
       response.headers.set("x-user-type", "platform-admin");
+    }
+  }
+
+  // Company setup flow check (for new financial categorization features)
+  // TODO: Re-enable after regenerating Supabase types
+  /*
+  if (user && pathname.startsWith('/dashboard') && pathname !== '/dashboard/setup') {
+    // Check if user has completed company setup
+    const { data: companies } = await supabase
+      .from('company_profiles')
+      .select('id, setup_completed')
+      .eq('user_id', user.id)
+      .order('created_at', { ascending: false })
+      .limit(1);
+
+    // If no company or setup not completed, redirect to setup
+    if (!companies || companies.length === 0 || !companies[0].setup_completed) {
+      const setupUrl = new URL('/dashboard/setup', request.url);
+      return NextResponse.redirect(setupUrl);
+    }
+  }
+  */
+
+  // Redirect authenticated users from root to dashboard
+  // This applies to all cases - including Vercel preview URLs
+  if (user && pathname === '/') {
+    // Only redirect if NOT on admin subdomain (admin subdomain users go to /saas/dashboard)
+    if (subdomainInfo.subdomain !== 'admin') {
+      return NextResponse.redirect(new URL('/dashboard', request.url));
     }
   }
 

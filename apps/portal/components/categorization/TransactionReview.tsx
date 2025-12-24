@@ -45,10 +45,19 @@ export default function TransactionReview({ jobId }: TransactionReviewProps) {
 
   const loadTransactions = async () => {
     try {
-      const response = await fetch(`/api/categorization/jobs/${jobId}/transactions`);
+      const response = await fetch(`/api/categorization/jobs/${jobId}/transactions`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include', // Include cookies for authentication
+      });
+      
       if (!response.ok) {
-        throw new Error("Failed to load transactions");
+        const errorData = await response.json().catch(() => ({ error: `HTTP ${response.status}` }));
+        throw new Error(errorData.error || errorData.details || "Failed to load transactions");
       }
+      
       const data = await response.json();
       const newTransactions = data.transactions || [];
       
@@ -59,6 +68,7 @@ export default function TransactionReview({ jobId }: TransactionReviewProps) {
       }
       // If no transactions yet but job exists, keep loading state
     } catch (err: any) {
+      console.error("Error loading transactions:", err);
       setError(err.message);
       setLoading(false);
     }
@@ -68,6 +78,7 @@ export default function TransactionReview({ jobId }: TransactionReviewProps) {
     try {
       const response = await fetch(`/api/categorization/transactions/${id}/confirm`, {
         method: "POST",
+        credentials: 'include',
       });
       if (!response.ok) throw new Error("Failed to confirm");
       await loadTransactions();
@@ -81,6 +92,7 @@ export default function TransactionReview({ jobId }: TransactionReviewProps) {
       const response = await fetch(`/api/categorization/transactions/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
+        credentials: 'include',
         body: JSON.stringify({
           category: editCategory,
           subcategory: editSubcategory || null,
@@ -99,19 +111,50 @@ export default function TransactionReview({ jobId }: TransactionReviewProps) {
     try {
       const response = await fetch(`/api/categorization/jobs/${jobId}/export/google-sheets`, {
         method: "POST",
+        credentials: 'include',
       });
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.message || "Export failed");
+
+      const contentType = response.headers.get("content-type") || "unknown";
+
+      // Check if response is CSV (fallback when Google Sheets API not configured)
+      if (contentType.includes("text/csv") || contentType.includes("application/csv")) {
+        const csvData = await response.text();
+        const blob = new Blob([csvData], { type: 'text/csv' });
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `transactions-${jobId}.csv`;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+        alert("Google Sheets export is not configured. Downloaded as CSV instead.");
+        return;
       }
+
+      if (!response.ok) {
+        // Try to parse as JSON for error message
+        try {
+          const error = await response.json();
+          throw new Error(error.error || error.message || "Export failed");
+        } catch (jsonError) {
+          // If JSON parsing fails, use status text
+          throw new Error(`Export failed: ${response.statusText || response.status}`);
+        }
+      }
+      
       const data = await response.json();
       
       if (data.sheetUrl) {
         window.open(data.sheetUrl, "_blank");
         alert("Google Sheet created successfully! Opening in new tab...");
+      } else if (data.csvAvailable) {
+        // Server indicates CSV is available but not configured
+        alert("Google Sheets export requires additional configuration. Please contact support.");
       }
     } catch (err: any) {
       setError(err.message);
+      alert(`Export error: ${err.message}`);
     } finally {
       setExporting(false);
     }

@@ -1,6 +1,7 @@
 import { waitUntil } from "@vercel/functions";
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/database/server";
+import { createJobErrorResponse, mapErrorToCode } from "@/lib/errors/job-errors";
 
 export async function POST(request: NextRequest) {
   try {
@@ -70,6 +71,7 @@ async function processInvoicesBatch(
       .from("categorization_jobs")
       .update({ 
         status: "processing",
+        status_message: "Processing invoices...",
         started_at: new Date().toISOString(),
       })
       .eq("id", jobId);
@@ -82,11 +84,14 @@ async function processInvoicesBatch(
       .in("processing_status", ["pending", "failed"]);
 
     if (!documents || documents.length === 0) {
+      const errorResponse = createJobErrorResponse("PROCESSING_FAILED", "No documents found");
       await supabase
         .from("categorization_jobs")
         .update({ 
           status: "failed",
-          error_message: "No documents found",
+          error_code: errorResponse.error_code,
+          error_message: errorResponse.error_message,
+          status_message: errorResponse.status_message,
         })
         .eq("id", jobId);
       return;
@@ -115,11 +120,13 @@ async function processInvoicesBatch(
       }
 
       // Update progress
+      const progressMessage = `Processing ${processedCount + failedCount} of ${documents.length} invoices...`;
       await supabase
         .from("categorization_jobs")
         .update({ 
           processed_items: processedCount,
           failed_items: failedCount,
+          status_message: progressMessage,
         })
         .eq("id", jobId);
 
@@ -131,22 +138,45 @@ async function processInvoicesBatch(
 
     // Mark job as complete
     const finalStatus = failedCount === documents.length ? "failed" : "reviewing";
-    await supabase
-      .from("categorization_jobs")
-      .update({ 
-        status: finalStatus,
-        completed_at: new Date().toISOString(),
-      })
-      .eq("id", jobId);
+    const finalMessage = failedCount === documents.length 
+      ? "Processing failed for all invoices"
+      : `Processing complete. ${processedCount} invoice${processedCount !== 1 ? "s" : ""} ready for review.`;
+    
+    if (finalStatus === "failed") {
+      const errorResponse = createJobErrorResponse("PROCESSING_FAILED", "All invoices failed to process");
+      await supabase
+        .from("categorization_jobs")
+        .update({ 
+          status: finalStatus,
+          error_code: errorResponse.error_code,
+          error_message: errorResponse.error_message,
+          status_message: finalMessage,
+          completed_at: new Date().toISOString(),
+        })
+        .eq("id", jobId);
+    } else {
+      await supabase
+        .from("categorization_jobs")
+        .update({ 
+          status: finalStatus,
+          status_message: finalMessage,
+          completed_at: new Date().toISOString(),
+        })
+        .eq("id", jobId);
+    }
 
     console.log(`Job ${jobId} completed: ${processedCount} processed, ${failedCount} failed`);
   } catch (error: any) {
     console.error(`Error processing batch for job ${jobId}:`, error);
+    const errorCode = mapErrorToCode(error);
+    const errorResponse = createJobErrorResponse(errorCode, error.message);
     await supabase
       .from("categorization_jobs")
       .update({ 
         status: "failed",
-        error_message: error.message,
+        error_code: errorResponse.error_code,
+        error_message: errorResponse.error_message,
+        status_message: errorResponse.status_message,
       })
       .eq("id", jobId);
   }
@@ -208,7 +238,11 @@ async function processSingleInvoice(
         processing_status: "failed",
       })
       .eq("id", doc.id);
-    throw error;
+    // Re-throw with mapped error code for better error handling
+    const errorCode = mapErrorToCode(error);
+    const mappedError = new Error(error.message || "Invoice processing failed");
+    (mappedError as any).code = errorCode;
+    throw mappedError;
   }
 }
 

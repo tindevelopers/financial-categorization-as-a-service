@@ -97,82 +97,51 @@ export default function TransactionReview({ jobId }: TransactionReviewProps) {
   const handleExportToGoogleSheets = async () => {
     setExporting(true);
     try {
-      // #region agent log
-      fetch("http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          sessionId: "debug-session",
-          runId: "run1",
-          hypothesisId: "H1",
-          location: "src/components/consumer/TransactionReview.tsx:handleExportToGoogleSheets:before",
-          message: "Export request start",
-          data: { jobId },
-          timestamp: Date.now(),
-        }),
-      }).catch(() => {});
-      // #endregion
-
       const response = await fetch(`/api/categorization/jobs/${jobId}/export/google-sheets`, {
         method: "POST",
       });
 
       const contentType = response.headers.get("content-type") || "unknown";
-      let responsePreview = "";
-      try {
-        responsePreview = (await response.clone().text()).slice(0, 120);
-      } catch {
-        responsePreview = "unreadable";
-      }
 
-      // #region agent log
-      fetch("http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          sessionId: "debug-session",
-          runId: "run1",
-          hypothesisId: "H1",
-          location: "src/components/consumer/TransactionReview.tsx:handleExportToGoogleSheets:afterResponse",
-          message: "Export response received",
-          data: {
-            status: response.status,
-            ok: response.ok,
-            contentType,
-            preview: responsePreview,
-          },
-          timestamp: Date.now(),
-        }),
-      }).catch(() => {});
-      // #endregion
+      // Check if response is CSV (fallback when Google Sheets API not configured)
+      if (contentType.includes("text/csv") || contentType.includes("application/csv")) {
+        const csvData = await response.text();
+        const blob = new Blob([csvData], { type: 'text/csv' });
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `transactions-${jobId}.csv`;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+        alert("Google Sheets export is not configured. Downloaded as CSV instead.");
+        return;
+      }
 
       if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.message || "Export failed");
+        // Try to parse as JSON for error message
+        try {
+          const error = await response.json();
+          throw new Error(error.error || error.message || "Export failed");
+        } catch (jsonError) {
+          // If JSON parsing fails, use status text
+          throw new Error(`Export failed: ${response.statusText || response.status}`);
+        }
       }
+      
       const data = await response.json();
       
       if (data.sheetUrl) {
         window.open(data.sheetUrl, "_blank");
         alert("Google Sheet created successfully! Opening in new tab...");
+      } else if (data.csvAvailable) {
+        // Server indicates CSV is available but not configured
+        alert("Google Sheets export requires additional configuration. Please contact support.");
       }
     } catch (err: any) {
-      // #region agent log
-      fetch("http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          sessionId: "debug-session",
-          runId: "run1",
-          hypothesisId: "H2",
-          location: "src/components/consumer/TransactionReview.tsx:handleExportToGoogleSheets:catch",
-          message: "Export failed on client",
-          data: { error: err?.message ?? "unknown" },
-          timestamp: Date.now(),
-        }),
-      }).catch(() => {});
-      // #endregion
       setError(err.message);
+      alert(`Export error: ${err.message}`);
     } finally {
       setExporting(false);
     }

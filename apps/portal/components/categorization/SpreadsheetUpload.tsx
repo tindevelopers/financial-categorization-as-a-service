@@ -71,23 +71,56 @@ export default function SpreadsheetUpload() {
       const formData = new FormData();
       formData.append('file', file);
 
-    const response = await fetch('/api/categorization/upload', {
-        method: 'POST',
-        body: formData,
-        credentials: 'include',
+      // Create XMLHttpRequest for progress tracking
+      const xhr = new XMLHttpRequest();
+
+      // Track upload progress
+      xhr.upload.addEventListener('progress', (e) => {
+        if (e.lengthComputable) {
+          const percentComplete = Math.round((e.loaded / e.total) * 90); // Reserve 10% for processing
+          setUploadState(prev => ({ ...prev, progress: percentComplete }));
+        }
       });
 
+      // Handle completion
+      const uploadPromise = new Promise<any>((resolve, reject) => {
+        xhr.addEventListener('load', () => {
+          if (xhr.status >= 200 && xhr.status < 300) {
+            try {
+              const data = JSON.parse(xhr.responseText);
+              resolve(data);
+            } catch (e) {
+              reject(new Error('Invalid response from server'));
+            }
+          } else {
+            try {
+              const error = JSON.parse(xhr.responseText);
+              reject(new Error(error.error || error.message || 'Upload failed'));
+            } catch (e) {
+              reject(new Error(`Upload failed with status ${xhr.status}`));
+            }
+          }
+        });
+
+        xhr.addEventListener('error', () => {
+          reject(new Error('Network error during upload'));
+        });
+
+        xhr.addEventListener('abort', () => {
+          reject(new Error('Upload cancelled'));
+        });
+
+        xhr.open('POST', '/api/categorization/upload');
+        xhr.send(formData);
+      });
+
+      const data = await uploadPromise;
+
     // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'SpreadsheetUpload.tsx:75',message:'handleUpload response',data:{status:response.status,ok:response.ok,durationMs:Date.now()-startTime},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'A'})}).catch(()=>{});
+    fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'SpreadsheetUpload.tsx:75',message:'handleUpload response',data:{status:200,ok:true,durationMs:Date.now()-startTime},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'A'})}).catch(()=>{});
     // #endregion
-
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || error.message || 'Upload failed');
-      }
-
-      const data = await response.json();
       
+      // Set to 100% when done
       setUploadState(prev => ({
         ...prev,
         uploading: false,
@@ -95,21 +128,35 @@ export default function SpreadsheetUpload() {
         jobId: data.jobId,
       }));
 
-      // Wait a moment for processing to start, then redirect
-      // In Phase 2, we'll add proper polling/status checking
-      setTimeout(() => {
-        if (data.jobId) {
-          window.location.href = `/review/${data.jobId}`;
-        }
-      }, 1000);
+      // Show success message and redirect to uploads page to see status
+      if (data.jobId) {
+        // Redirect to uploads page where user can see the processing status
+        // Add a timestamp to force refresh
+        setTimeout(() => {
+          window.location.href = `/dashboard/uploads?refresh=${Date.now()}`;
+        }, 1500);
+      }
   } catch (error: any) {
     // #region agent log
     fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'SpreadsheetUpload.tsx:96',message:'handleUpload error',data:{errorMessage:error?.message || 'unknown',durationMs:Date.now()-startTime},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'C'})}).catch(()=>{});
     // #endregion
+      // Try to extract error message from response
+      let errorMessage = error.message || 'An error occurred during upload';
+      try {
+        const errorData = JSON.parse(error.message);
+        if (errorData.status_message) {
+          errorMessage = errorData.status_message;
+        } else if (errorData.error) {
+          errorMessage = errorData.error;
+        }
+      } catch {
+        // Use the error message as-is
+      }
+      
       setUploadState(prev => ({
         ...prev,
         uploading: false,
-        error: error.message || 'An error occurred during upload',
+        error: errorMessage,
       }));
     }
   };
@@ -147,8 +194,17 @@ export default function SpreadsheetUpload() {
           {uploadState.uploading ? (
             <>
               <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mb-4"></div>
-              <p className="text-lg font-medium text-gray-900 dark:text-white">
-                Uploading... {uploadState.progress}%
+              <p className="text-lg font-medium text-gray-900 dark:text-white mb-2">
+                Uploading {uploadState.file?.name}...
+              </p>
+              <div className="w-64 bg-gray-200 dark:bg-gray-700 rounded-full h-3 mb-2">
+                <div 
+                  className="bg-blue-500 h-3 rounded-full transition-all duration-300"
+                  style={{ width: `${uploadState.progress}%` }}
+                ></div>
+              </div>
+              <p className="text-sm text-gray-600 dark:text-gray-400">
+                {uploadState.progress}% complete
               </p>
             </>
           ) : uploadState.file ? (

@@ -13,6 +13,7 @@
   "dependencies": {
     "@ai-sdk/gateway": "^2.0.22",
     "@ai-sdk/openai": "^2.0.88",
+    "@headlessui/react": "^2.2.9",
     "@heroicons/react": "^2.2.0",
     "@supabase/ssr": "^0.8.0",
     "@supabase/supabase-js": "^2.86.2",

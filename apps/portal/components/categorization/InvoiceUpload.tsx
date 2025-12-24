@@ -114,8 +114,10 @@ export default function InvoiceUpload() {
       });
 
       if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.message || "Upload failed");
+        const errorData = await response.json();
+        const error = new Error(errorData.error || errorData.message || "Upload failed");
+        (error as any).data = errorData;
+        throw error;
       }
 
       const data = await response.json();
@@ -127,17 +129,27 @@ export default function InvoiceUpload() {
         jobId: data.jobId,
       }));
 
-      // Redirect to review page
+      // Redirect to uploads page to see processing status
       if (data.jobId) {
         setTimeout(() => {
-          window.location.href = `/review/${data.jobId}`;
-        }, 1000);
+          window.location.href = `/dashboard/uploads`;
+        }, 1500);
       }
     } catch (error: any) {
+      // Try to extract error message from response
+      let errorMessage = error.message || "An error occurred during upload";
+      if (error.data) {
+        if (error.data.status_message) {
+          errorMessage = error.data.status_message;
+        } else if (error.data.error) {
+          errorMessage = error.data.error;
+        }
+      }
+      
       setUploadState(prev => ({
         ...prev,
         uploading: false,
-        error: error.message || "An error occurred during upload",
+        error: errorMessage,
       }));
     }
   };

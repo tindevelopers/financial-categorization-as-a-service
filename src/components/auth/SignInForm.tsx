@@ -52,7 +52,7 @@ export default function SignInForm() {
       let redirectPath = "/saas/dashboard"; // Default to admin dashboard
       
       if (isOrganizationAdmin) {
-        redirectPath = "/upload"; // Consumer portal
+        redirectPath = "/dashboard"; // Consumer portal - new dashboard
       } else if (isPlatformAdmin) {
         redirectPath = "/saas/dashboard"; // Admin dashboard
       }

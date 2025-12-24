@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/core/database/server";
+import { createAdminClient } from "@/core/database/admin-client";
 import * as XLSX from "xlsx";
+import { 
+  createDuplicateDetector,
+  type Transaction as SyncTransaction 
+} from "@/lib/sync";
 
 interface Transaction {
   date: Date | string;
@@ -107,6 +112,28 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Also create a record in financial_documents for long-term storage tracking
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { error: docError } = await (supabase as any)
+      .from("financial_documents")
+      .insert({
+        user_id: user.id,
+        tenant_id: userData?.tenant_id || null,
+        job_id: jobData.id, // Link to categorization job for tracking
+        original_filename: file.name,
+        file_type: "bank_statement",
+        mime_type: file.type,
+        file_size_bytes: file.size,
+        storage_tier: "hot", // Start in hot storage (Supabase)
+        supabase_path: fileName,
+        ocr_status: "pending",
+      });
+
+    if (docError) {
+      console.error("Failed to create financial_documents record:", docError);
+      // Don't fail the upload, just log the error
+    }
+
     // Process the file inline
     try {
       // Parse spreadsheet from buffer directly (no need to re-download)
@@ -135,21 +162,105 @@ export async function POST(request: NextRequest) {
         });
       }
 
-      // Update job with total items
+      // Convert to sync transaction format for duplicate detection
+      const syncTransactions: SyncTransaction[] = transactions.map(tx => ({
+        original_description: tx.description,
+        amount: tx.amount,
+        date: typeof tx.date === 'string' ? tx.date : tx.date.toISOString().split('T')[0],
+      }));
+
+      // Check for duplicates using the duplicate detector
+      const duplicateDetector = createDuplicateDetector(supabase);
+      const similarity = await duplicateDetector.detectSimilarity(
+        syncTransactions,
+        user.id
+      );
+      
+      // Determine which transactions to process based on duplicate detection
+      let transactionsToProcess: Transaction[];
+      let skippedCount = 0;
+      let mergeMode = false;
+
+      if (similarity.similarityScore >= 95) {
+        // High similarity - only process new transactions
+        mergeMode = true;
+        skippedCount = similarity.matchingCount;
+        
+        if (similarity.newTransactions.length === 0) {
+          // All duplicates - update job as completed with no new data
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          await (supabase as any)
+            .from("categorization_jobs")
+            .update({ 
+              status: "completed",
+              total_items: 0,
+              processed_items: 0,
+              error_message: `All ${similarity.matchingCount} transactions already exist. No new data added.`,
+              completed_at: new Date().toISOString(),
+            })
+            .eq("id", jobData.id);
+          
+          return NextResponse.json({
+            success: true,
+            jobId: jobData.id,
+            transactionCount: 0,
+            skippedCount: similarity.matchingCount,
+            similarityScore: similarity.similarityScore,
+            mergeMode: true,
+            matchedJobId: similarity.existingJobId,
+            message: `All ${similarity.matchingCount} transactions already exist. No new data added.`,
+          });
+        }
+
+        // Filter to only new transactions based on fingerprint matching
+        const newFingerprintSet = new Set(
+          similarity.newTransactions.map(t => t.transaction_fingerprint)
+        );
+        
+        transactionsToProcess = transactions.filter((tx, index) => {
+          const syncTx = syncTransactions[index];
+          // Check if this transaction's fingerprint is in the new set
+          return similarity.newTransactions.some(nt => 
+            nt.original_description === syncTx.original_description &&
+            nt.amount === syncTx.amount &&
+            nt.date === syncTx.date
+          );
+        });
+      } else if (similarity.matchingCount > 0) {
+        // Some duplicates - merge mode with partial new data
+        mergeMode = true;
+        skippedCount = similarity.matchingCount;
+        
+        // Filter to only new transactions
+        transactionsToProcess = transactions.filter((tx, index) => {
+          const syncTx = syncTransactions[index];
+          return similarity.newTransactions.some(nt => 
+            nt.original_description === syncTx.original_description &&
+            nt.amount === syncTx.amount &&
+            nt.date === syncTx.date
+          );
+        });
+      } else {
+        // All new - process everything
+        transactionsToProcess = transactions;
+      }
+
+      // Update job with total items (new transactions only)
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       await (supabase as any)
         .from("categorization_jobs")
-        .update({ total_items: transactions.length })
+        .update({ total_items: transactionsToProcess.length })
         .eq("id", jobData.id);
 
       // Categorize transactions
       const categorizedTransactions = await categorizeTransactions(
-        transactions,
+        transactionsToProcess,
         user.id,
         supabase
       );
 
-      // Insert categorized transactions
+      // Insert categorized transactions with source tracking
+      // Use admin client to bypass RLS since we've already validated the user
       const transactionsToInsert = categorizedTransactions.map(tx => ({
         job_id: jobData.id,
         original_description: tx.description,
@@ -159,10 +270,16 @@ export async function POST(request: NextRequest) {
         subcategory: tx.subcategory || null,
         confidence_score: tx.confidenceScore || 0.5,
         user_confirmed: false,
+        source_type: 'upload',
+        source_identifier: file.name,
+        sync_version: 1,
       }));
 
+      // Use admin client for insert to bypass RLS policies
+      // We've already validated the user and created the job, so this is safe
+      const adminClient = createAdminClient();
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const { error: insertError } = await (supabase as any)
+      const { error: insertError } = await (adminClient as any)
         .from("categorized_transactions")
         .insert(transactionsToInsert);
 
@@ -190,16 +307,27 @@ export async function POST(request: NextRequest) {
         .from("categorization_jobs")
         .update({ 
           status: "reviewing",
-          processed_items: transactions.length,
+          processed_items: transactionsToProcess.length,
           completed_at: new Date().toISOString(),
         })
         .eq("id", jobData.id);
 
+      // Build response message
+      let message = `File uploaded and processed successfully. ${transactionsToProcess.length} transactions added.`;
+      if (mergeMode && skippedCount > 0) {
+        message = `Merged: ${transactionsToProcess.length} new transactions added, ${skippedCount} duplicates skipped.`;
+      }
+
       return NextResponse.json({
         success: true,
         jobId: jobData.id,
-        transactionCount: transactions.length,
-        message: "File uploaded and processed successfully",
+        transactionCount: transactionsToProcess.length,
+        skippedCount: skippedCount,
+        totalInUpload: transactions.length,
+        similarityScore: similarity.similarityScore,
+        mergeMode: mergeMode,
+        matchedJobId: similarity.existingJobId,
+        message: message,
       });
     } catch (processError) {
       console.error("Processing error:", processError);
