@@ -125,10 +125,29 @@ export async function GET() {
     console.log('[Google Sheets OAuth] Client ID:', credentials.clientId?.substring(0, 20) + '...')
     console.log('[Google Sheets OAuth] Credential Source:', credentials.source)
 
+    // #region agent log - Debug final credentials
+    const debugCredentialsInfo = {
+      redirectUri: credentials.redirectUri,
+      clientIdPrefix: credentials.clientId?.substring(0, 25),
+      source: credentials.source,
+    };
+    console.log('[DEBUG] Final credentials:', JSON.stringify(debugCredentialsInfo));
+    // #endregion
+
     return NextResponse.json({ 
       authUrl: authUrl.toString(),
       credentialSource: credentials.source,
       redirectUri: credentials.redirectUri, // Include in response for debugging
+      // #region agent log - Include debug info in response for remote debugging
+      _debug: {
+        envInfo: {
+          NEXT_PUBLIC_APP_URL: process.env.NEXT_PUBLIC_APP_URL || '(not set)',
+          VERCEL_URL: process.env.VERCEL_URL || '(not set)',
+          GOOGLE_REDIRECT_URI_ENV: process.env.GOOGLE_REDIRECT_URI || '(not set)',
+        },
+        credentials: debugCredentialsInfo,
+      },
+      // #endregion
     })
   } catch (error) {
     console.error('Error generating auth URL:', error)
