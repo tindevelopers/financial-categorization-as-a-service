@@ -17,19 +17,13 @@ CREATE EXTENSION IF NOT EXISTS pgsodium;
 -- ============================================================================
 -- VAULT SECRETS TABLE
 -- ============================================================================
--- Supabase provides a built-in vault schema. If it doesn't exist, create it.
--- Note: In production Supabase, vault schema already exists with secrets table.
+-- Use app_vault schema to avoid conflicts with Supabase's managed vault schema
+-- Note: Supabase Cloud manages the 'vault' schema, so we use 'app_vault' instead
 
-DO $$
-BEGIN
-  -- Check if vault schema exists
-  IF NOT EXISTS (SELECT 1 FROM pg_namespace WHERE nspname = 'vault') THEN
-    CREATE SCHEMA vault;
-  END IF;
-END $$;
+CREATE SCHEMA IF NOT EXISTS app_vault;
 
--- Create secrets table if it doesn't exist (Supabase may have this already)
-CREATE TABLE IF NOT EXISTS vault.secrets (
+-- Create secrets table
+CREATE TABLE IF NOT EXISTS app_vault.secrets (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   name TEXT NOT NULL,
   description TEXT,
@@ -41,22 +35,22 @@ CREATE TABLE IF NOT EXISTS vault.secrets (
 );
 
 -- Create index for faster lookups by name
-CREATE INDEX IF NOT EXISTS idx_vault_secrets_name ON vault.secrets(name);
+CREATE INDEX IF NOT EXISTS idx_vault_secrets_name ON app_vault.secrets(name);
 
 -- ============================================================================
 -- VAULT HELPER FUNCTIONS
 -- ============================================================================
 
 -- Drop existing functions if they exist (for idempotency)
-DROP FUNCTION IF EXISTS vault.create_secret(TEXT, TEXT, TEXT);
-DROP FUNCTION IF EXISTS vault.get_secret(UUID);
-DROP FUNCTION IF EXISTS vault.update_secret(UUID, TEXT);
-DROP FUNCTION IF EXISTS vault.delete_secret(UUID);
+DROP FUNCTION IF EXISTS app_vault.create_secret(TEXT, TEXT, TEXT);
+DROP FUNCTION IF EXISTS app_vault.get_secret(UUID);
+DROP FUNCTION IF EXISTS app_vault.update_secret(UUID, TEXT);
+DROP FUNCTION IF EXISTS app_vault.delete_secret(UUID);
 
 -- ----------------------------------------------------------------------------
 -- Create a new secret with encryption
 -- ----------------------------------------------------------------------------
-CREATE OR REPLACE FUNCTION vault.create_secret(
+CREATE OR REPLACE FUNCTION app_vault.create_secret(
   p_name TEXT,
   p_secret TEXT,
   p_description TEXT DEFAULT NULL
@@ -94,7 +88,7 @@ BEGIN
   );
   
   -- Insert the encrypted secret
-  INSERT INTO vault.secrets (name, description, secret, key_id, nonce, created_at, updated_at)
+  INSERT INTO app_vault.secrets (name, description, secret, key_id, nonce, created_at, updated_at)
   VALUES (p_name, p_description, v_encrypted, v_key_id, v_nonce, NOW(), NOW())
   RETURNING id INTO v_id;
   
@@ -105,7 +99,7 @@ EXCEPTION WHEN OTHERS THEN
   -- This allows the migration to work in development environments
   RAISE WARNING 'pgsodium encryption not available, storing secret with basic protection';
   
-  INSERT INTO vault.secrets (name, description, secret, key_id, nonce, created_at, updated_at)
+  INSERT INTO app_vault.secrets (name, description, secret, key_id, nonce, created_at, updated_at)
   VALUES (
     p_name, 
     p_description, 
@@ -124,7 +118,7 @@ $$ LANGUAGE plpgsql SECURITY DEFINER;
 -- ----------------------------------------------------------------------------
 -- Retrieve and decrypt a secret by ID
 -- ----------------------------------------------------------------------------
-CREATE OR REPLACE FUNCTION vault.get_secret(p_id UUID) 
+CREATE OR REPLACE FUNCTION app_vault.get_secret(p_id UUID) 
 RETURNS TEXT AS $$
 DECLARE
   v_secret RECORD;
@@ -132,7 +126,7 @@ DECLARE
 BEGIN
   -- Get the secret record
   SELECT * INTO v_secret
-  FROM vault.secrets
+  FROM app_vault.secrets
   WHERE id = p_id;
   
   IF NOT FOUND THEN
@@ -163,7 +157,7 @@ $$ LANGUAGE plpgsql SECURITY DEFINER;
 -- ----------------------------------------------------------------------------
 -- Update an existing secret
 -- ----------------------------------------------------------------------------
-CREATE OR REPLACE FUNCTION vault.update_secret(
+CREATE OR REPLACE FUNCTION app_vault.update_secret(
   p_id UUID,
   p_secret TEXT
 ) RETURNS BOOLEAN AS $$
@@ -173,7 +167,7 @@ DECLARE
 BEGIN
   -- Get the existing secret record
   SELECT * INTO v_secret
-  FROM vault.secrets
+  FROM app_vault.secrets
   WHERE id = p_id;
   
   IF NOT FOUND THEN
@@ -197,7 +191,7 @@ BEGIN
   END IF;
   
   -- Update the secret
-  UPDATE vault.secrets
+  UPDATE app_vault.secrets
   SET secret = v_encrypted, updated_at = NOW()
   WHERE id = p_id;
   
@@ -212,14 +206,14 @@ $$ LANGUAGE plpgsql SECURITY DEFINER;
 -- ----------------------------------------------------------------------------
 -- Delete a secret and its associated key
 -- ----------------------------------------------------------------------------
-CREATE OR REPLACE FUNCTION vault.delete_secret(p_id UUID) 
+CREATE OR REPLACE FUNCTION app_vault.delete_secret(p_id UUID) 
 RETURNS BOOLEAN AS $$
 DECLARE
   v_key_id UUID;
 BEGIN
   -- Get the key_id before deleting
   SELECT key_id INTO v_key_id
-  FROM vault.secrets
+  FROM app_vault.secrets
   WHERE id = p_id;
   
   IF NOT FOUND THEN
@@ -227,7 +221,7 @@ BEGIN
   END IF;
   
   -- Delete the secret
-  DELETE FROM vault.secrets WHERE id = p_id;
+  DELETE FROM app_vault.secrets WHERE id = p_id;
   
   -- Delete the associated key if it exists
   IF v_key_id IS NOT NULL THEN
@@ -246,23 +240,23 @@ $$ LANGUAGE plpgsql SECURITY DEFINER;
 -- ROW LEVEL SECURITY FOR VAULT
 -- ============================================================================
 
-ALTER TABLE vault.secrets ENABLE ROW LEVEL SECURITY;
+ALTER TABLE app_vault.secrets ENABLE ROW LEVEL SECURITY;
 
 -- Drop existing policies if they exist
-DROP POLICY IF EXISTS "Service role can manage all secrets" ON vault.secrets;
-DROP POLICY IF EXISTS "No direct access to secrets" ON vault.secrets;
+DROP POLICY IF EXISTS "Service role can manage all secrets" ON app_vault.secrets;
+DROP POLICY IF EXISTS "No direct access to secrets" ON app_vault.secrets;
 
 -- Only service role can access secrets directly
 -- All user access should go through RPC functions
 CREATE POLICY "Service role can manage all secrets" 
-  ON vault.secrets
+  ON app_vault.secrets
   FOR ALL 
   USING (auth.role() = 'service_role');
 
 -- Regular users cannot access secrets table directly
 -- They must use the vault functions which are SECURITY DEFINER
 CREATE POLICY "No direct access to secrets" 
-  ON vault.secrets
+  ON app_vault.secrets
   FOR ALL 
   USING (FALSE);
 
@@ -270,10 +264,10 @@ CREATE POLICY "No direct access to secrets"
 -- COMMENTS
 -- ============================================================================
 
-COMMENT ON SCHEMA vault IS 'Secure storage for encrypted secrets using pgsodium';
-COMMENT ON TABLE vault.secrets IS 'Encrypted secrets storage - access via vault.get_secret() only';
-COMMENT ON FUNCTION vault.create_secret(TEXT, TEXT, TEXT) IS 'Create a new encrypted secret, returns secret UUID';
-COMMENT ON FUNCTION vault.get_secret(UUID) IS 'Retrieve and decrypt a secret by ID';
-COMMENT ON FUNCTION vault.update_secret(UUID, TEXT) IS 'Update an existing secret with new value';
-COMMENT ON FUNCTION vault.delete_secret(UUID) IS 'Delete a secret and its encryption key';
+COMMENT ON SCHEMA app_vault IS 'Secure storage for encrypted secrets using pgsodium';
+COMMENT ON TABLE app_vault.secrets IS 'Encrypted secrets storage - access via app_vault.get_secret() only';
+COMMENT ON FUNCTION app_vault.create_secret(TEXT, TEXT, TEXT) IS 'Create a new encrypted secret, returns secret UUID';
+COMMENT ON FUNCTION app_vault.get_secret(UUID) IS 'Retrieve and decrypt a secret by ID';
+COMMENT ON FUNCTION app_vault.update_secret(UUID, TEXT) IS 'Update an existing secret with new value';
+COMMENT ON FUNCTION app_vault.delete_secret(UUID) IS 'Delete a secret and its encryption key';
 

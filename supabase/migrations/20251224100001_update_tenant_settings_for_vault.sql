@@ -13,9 +13,9 @@ ADD COLUMN IF NOT EXISTS api_key_vault_id UUID;
 -- Add foreign key constraints (optional, vault.secrets may not exist yet)
 -- We'll add these as soft references for flexibility
 COMMENT ON COLUMN tenant_integration_settings.client_secret_vault_id IS 
-  'Reference to vault.secrets for OAuth client secret';
+  'Reference to app_vault.secrets for OAuth client secret';
 COMMENT ON COLUMN tenant_integration_settings.api_key_vault_id IS 
-  'Reference to vault.secrets for API keys (Airtable, etc.)';
+  'Reference to app_vault.secrets for API keys (Airtable, etc.)';
 
 -- ============================================================================
 -- MIGRATION FUNCTION: Move existing secrets to vault
@@ -36,7 +36,7 @@ BEGIN
   LOOP
     BEGIN
       -- Create secret in vault
-      v_secret_id := vault.create_secret(
+      v_secret_id := app_vault.create_secret(
         'tenant_' || r.tenant_id::TEXT || '_' || r.provider || '_client_secret',
         r.custom_client_secret,
         'OAuth client secret for ' || r.provider
@@ -64,7 +64,7 @@ BEGIN
   LOOP
     BEGIN
       -- Create secret in vault
-      v_secret_id := vault.create_secret(
+      v_secret_id := app_vault.create_secret(
         'tenant_' || r.tenant_id::TEXT || '_' || r.provider || '_api_key',
         r.airtable_api_key,
         'API key for ' || r.provider
@@ -128,12 +128,12 @@ BEGIN
   
   -- If there's an existing vault secret, update it
   IF v_old_vault_id IS NOT NULL THEN
-    PERFORM vault.update_secret(v_old_vault_id, p_secret_value);
+    PERFORM app_vault.update_secret(v_old_vault_id, p_secret_value);
     RETURN v_old_vault_id;
   END IF;
   
   -- Create a new vault secret
-  v_secret_id := vault.create_secret(
+  v_secret_id := app_vault.create_secret(
     v_name,
     p_secret_value,
     p_provider || ' ' || p_secret_type || ' for tenant'
@@ -186,7 +186,7 @@ BEGIN
   
   -- If we have a vault ID, use vault to decrypt
   IF v_vault_id IS NOT NULL THEN
-    RETURN vault.get_secret(v_vault_id);
+    RETURN app_vault.get_secret(v_vault_id);
   END IF;
   
   -- If we have a legacy secret, return it (already encrypted with app-level encryption)
