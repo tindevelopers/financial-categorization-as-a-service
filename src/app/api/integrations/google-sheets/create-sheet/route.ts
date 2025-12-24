@@ -273,11 +273,40 @@ export async function POST(request: NextRequest) {
           ? `https://console.developers.google.com/apis/api/sheets.googleapis.com/overview?project=${projectId}`
           : 'https://console.developers.google.com/apis/library/sheets.googleapis.com'
         
+        // Try to get credential source from integration metadata
+        let credentialSource = 'platform'
+        try {
+          const supabase = await createClient()
+          const { data: { user } } = await supabase.auth.getUser()
+          if (user) {
+            const { data: integration } = await (supabase as any)
+              .from('user_integrations')
+              .select('metadata')
+              .eq('user_id', user.id)
+              .eq('provider', 'google_sheets')
+              .single()
+            credentialSource = integration?.metadata?.credential_source || 'platform'
+          }
+        } catch (e) {
+          // If we can't determine, default to platform
+        }
+        
+        const isTenantCredentials = credentialSource === 'tenant'
+        const errorTitle = isTenantCredentials 
+          ? 'Google Sheets API not enabled in your Google Cloud project'
+          : 'Google Sheets API not enabled (Platform Configuration Issue)'
+        
+        const errorDetails = isTenantCredentials
+          ? `You're using custom OAuth credentials. The Google Sheets API needs to be enabled in your Google Cloud project (${projectId}). Please visit the Google Cloud Console to enable it.`
+          : `The platform's Google Cloud project needs to have the Sheets API enabled. Please contact your administrator or platform support.`
+        
         return NextResponse.json({ 
-          error: 'Google Sheets API not enabled',
-          details: `The Google Sheets API needs to be enabled in your Google Cloud project. Please visit the Google Cloud Console to enable it.`,
-          enableLink,
-          apiNotEnabled: true
+          error: errorTitle,
+          details: errorDetails,
+          enableLink: isTenantCredentials ? enableLink : null,
+          apiNotEnabled: true,
+          credentialSource,
+          isTenantCredentials
         }, { status: 403, headers: corsHeaders })
       }
       

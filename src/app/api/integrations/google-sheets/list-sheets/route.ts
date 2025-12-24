@@ -184,11 +184,23 @@ export async function GET() {
             ? `https://console.developers.google.com/apis/api/drive.googleapis.com/overview?project=${projectId}`
             : 'https://console.developers.google.com/apis/library/drive.googleapis.com'
           
+          // Differentiate between platform and tenant credentials
+          const isTenantCredentials = credentialSource === 'tenant'
+          const errorTitle = isTenantCredentials 
+            ? 'Google Drive API not enabled in your Google Cloud project'
+            : 'Google Drive API not enabled (Platform Configuration Issue)'
+          
+          const errorDetails = isTenantCredentials
+            ? `You're using custom OAuth credentials. The Google Drive API needs to be enabled in your Google Cloud project (${projectId}). Please visit the Google Cloud Console to enable it.`
+            : `The platform's Google Cloud project needs to have the Drive API enabled. Please contact your administrator or platform support.`
+          
           return NextResponse.json({ 
-            error: 'Google Drive API not enabled',
-            details: `The Google Drive API needs to be enabled in your Google Cloud project. Please visit ${enableLink} to enable it, then try again.`,
-            enableLink,
-            apiNotEnabled: true
+            error: errorTitle,
+            details: errorDetails,
+            enableLink: isTenantCredentials ? enableLink : null,
+            apiNotEnabled: true,
+            credentialSource,
+            isTenantCredentials
           }, { status: 403 })
         }
         

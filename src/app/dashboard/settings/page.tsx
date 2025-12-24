@@ -219,15 +219,24 @@ export default function SettingsPage() {
         setShowSheetPicker(true)
       } else {
         const error = await response.json()
-        if (error.apiNotEnabled && error.enableLink) {
-          // Show a helpful message with link to enable the API
-          const shouldOpen = confirm(
-            `The Google Drive API needs to be enabled in your Google Cloud project.\n\n` +
-            `Click OK to open the Google Cloud Console and enable it.\n\n` +
-            `After enabling, wait a few minutes and try again.`
-          )
-          if (shouldOpen) {
-            window.open(error.enableLink, '_blank')
+        if (error.apiNotEnabled) {
+          // Differentiate between tenant and platform credentials
+          if (error.isTenantCredentials && error.enableLink) {
+            // Tenant using custom credentials - they need to enable the API
+            const shouldOpen = confirm(
+              `${error.error}\n\n${error.details}\n\n` +
+              `Click OK to open the Google Cloud Console and enable it.\n\n` +
+              `After enabling, wait a few minutes and try again.`
+            )
+            if (shouldOpen) {
+              window.open(error.enableLink, '_blank')
+            }
+          } else {
+            // Platform credentials - this is a platform configuration issue
+            alert(
+              `${error.error}\n\n${error.details}\n\n` +
+              `This is a platform configuration issue. Please contact your administrator or platform support.`
+            )
           }
         } else if (error.needsReconnect) {
           alert('Your Google connection has expired. Please reconnect.')
@@ -305,14 +314,24 @@ export default function SettingsPage() {
         await handleSelectSheet(data.spreadsheet.id)
       } else {
         const error = await response.json()
-        if (error.apiNotEnabled && error.enableLink) {
-          const shouldOpen = confirm(
-            `The Google Sheets API needs to be enabled in your Google Cloud project.\n\n` +
-            `Click OK to open the Google Cloud Console and enable it.\n\n` +
-            `After enabling, wait a few minutes and try again.`
-          )
-          if (shouldOpen) {
-            window.open(error.enableLink, '_blank')
+        if (error.apiNotEnabled) {
+          // Differentiate between tenant and platform credentials
+          if (error.isTenantCredentials && error.enableLink) {
+            // Tenant using custom credentials - they need to enable the API
+            const shouldOpen = confirm(
+              `${error.error}\n\n${error.details}\n\n` +
+              `Click OK to open the Google Cloud Console and enable it.\n\n` +
+              `After enabling, wait a few minutes and try again.`
+            )
+            if (shouldOpen) {
+              window.open(error.enableLink, '_blank')
+            }
+          } else {
+            // Platform credentials - this is a platform configuration issue
+            alert(
+              `${error.error}\n\n${error.details}\n\n` +
+              `This is a platform configuration issue. Please contact your administrator or platform support.`
+            )
           }
         } else if (error.needsReconnect) {
           alert('Your Google connection has expired. Please reconnect.')
