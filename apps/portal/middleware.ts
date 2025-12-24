@@ -85,7 +85,18 @@ export async function middleware(request: NextRequest) {
       }
     );
 
-    // Get user session
+    // Refresh session to ensure cookies are properly set
+    // This is important for maintaining authentication after OAuth redirects
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+    
+    // Refresh the session if it exists
+    if (session) {
+      await supabase.auth.refreshSession();
+    }
+    
+    // Get user from refreshed session
     const {
       data: { user },
     } = await supabase.auth.getUser();

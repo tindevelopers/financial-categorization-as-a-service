@@ -130,13 +130,45 @@ export default function SettingsPage() {
   const [copiedLink, setCopiedLink] = useState<string | null>(null)
 
   useEffect(() => {
-    loadSettings()
+    // Check for OAuth callback parameters and refresh session if needed
+    const urlParams = new URLSearchParams(window.location.search)
+    const success = urlParams.get('success')
+    const error = urlParams.get('error')
+    
+    if (success || error) {
+      // Refresh the session after OAuth redirect
+      // This ensures cookies are properly set before making API calls
+      const refreshSession = async () => {
+        try {
+          const { createBrowserClient } = await import('@supabase/ssr')
+          const supabase = createBrowserClient(
+            process.env.NEXT_PUBLIC_SUPABASE_URL!,
+            process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+          )
+          await supabase.auth.refreshSession()
+          
+          // Clear the URL parameters after refreshing
+          window.history.replaceState({}, '', window.location.pathname)
+        } catch (error) {
+          console.error('Failed to refresh session:', error)
+        }
+      }
+      
+      refreshSession().then(() => {
+        // Load settings after session refresh
+        loadSettings()
+      })
+    } else {
+      loadSettings()
+    }
   }, [])
 
   const loadSettings = async () => {
     try {
       // Load entity type and tenant settings
-      const settingsResponse = await fetch('/api/tenant-settings/integrations')
+      const settingsResponse = await fetch('/api/tenant-settings/integrations', {
+        credentials: 'include',
+      })
       if (settingsResponse.ok) {
         const data = await settingsResponse.json()
         setEntityType(data.entityType || 'individual')
@@ -159,21 +191,27 @@ export default function SettingsPage() {
       }
 
       // Load Google Sheets connection status
-      const gsResponse = await fetch('/api/integrations/google-sheets/status')
+      const gsResponse = await fetch('/api/integrations/google-sheets/status', {
+        credentials: 'include',
+      })
       if (gsResponse.ok) {
         const gsData = await gsResponse.json()
         setIntegrations(prev => ({ ...prev, googleSheets: gsData }))
       }
 
       // Load Airtable connection status
-      const airtableResponse = await fetch('/api/integrations/airtable/status')
+      const airtableResponse = await fetch('/api/integrations/airtable/status', {
+        credentials: 'include',
+      })
       if (airtableResponse.ok) {
         const airtableData = await airtableResponse.json()
         setIntegrations(prev => ({ ...prev, airtable: airtableData }))
       }
 
       // Load sheet preferences
-      const prefsResponse = await fetch('/api/integrations/google-sheets/preferences')
+      const prefsResponse = await fetch('/api/integrations/google-sheets/preferences', {
+        credentials: 'include',
+      })
       if (prefsResponse.ok) {
         const prefsData = await prefsResponse.json()
         if (prefsData.preferences) {
@@ -183,7 +221,9 @@ export default function SettingsPage() {
       }
 
       // Load team data (for companies)
-      const teamResponse = await fetch('/api/team/invitations')
+      const teamResponse = await fetch('/api/team/invitations', {
+        credentials: 'include',
+      })
       if (teamResponse.ok) {
         const teamData = await teamResponse.json()
         setTeamInvitations(teamData.invitations || [])
