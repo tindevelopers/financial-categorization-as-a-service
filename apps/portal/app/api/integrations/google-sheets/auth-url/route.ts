@@ -1,10 +1,11 @@
 import { createClient } from '@/lib/database/server'
 import { NextResponse } from 'next/server'
 import { decrypt } from '@/lib/encryption'
+import { getSecret, isVaultAvailable } from '@/lib/vault'
 
 /**
  * Get Google OAuth credentials
- * Priority: 1) Custom tenant credentials, 2) Environment variables
+ * Priority: 1) Custom tenant credentials (from vault or encrypted), 2) Environment variables
  */
 async function getGoogleCredentials(supabase: any, userId: string): Promise<{
   clientId: string | null;
@@ -35,13 +36,36 @@ async function getGoogleCredentials(supabase: any, userId: string): Promise<{
       .eq('use_custom_credentials', true)
       .single()
 
-    if (tenantSettings?.custom_client_id && tenantSettings?.custom_client_secret) {
-      // Decrypt the client secret
+    if (tenantSettings?.custom_client_id) {
       let decryptedSecret = null
-      try {
-        decryptedSecret = decrypt(tenantSettings.custom_client_secret)
-      } catch (error) {
-        console.error('Failed to decrypt client secret:', error)
+      
+      // Try to get secret from vault first
+      if (tenantSettings.client_secret_vault_id) {
+        try {
+          // Use RPC function to get decrypted secret
+          const { data: vaultSecret } = await supabase.rpc('get_integration_secret', {
+            p_tenant_id: tenantId,
+            p_provider: 'google_sheets',
+            p_secret_type: 'client_secret',
+          })
+          
+          if (vaultSecret) {
+            decryptedSecret = vaultSecret
+            console.log('[Google Sheets OAuth] Retrieved secret from vault')
+          }
+        } catch (error) {
+          console.error('Failed to retrieve secret from vault:', error)
+        }
+      }
+      
+      // Fall back to legacy encrypted secret
+      if (!decryptedSecret && tenantSettings.custom_client_secret) {
+        try {
+          decryptedSecret = decrypt(tenantSettings.custom_client_secret)
+          console.log('[Google Sheets OAuth] Retrieved secret from legacy encryption')
+        } catch (error) {
+          console.error('Failed to decrypt client secret:', error)
+        }
       }
 
       if (decryptedSecret) {
@@ -138,4 +162,3 @@ export async function GET() {
     )
   }
 }
-

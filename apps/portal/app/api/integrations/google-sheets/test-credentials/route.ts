@@ -2,6 +2,20 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/database/server";
 import { google } from "googleapis";
 
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type, Authorization",
+};
+
+/**
+ * OPTIONS /api/integrations/google-sheets/test-credentials
+ * Handle CORS preflight requests
+ */
+export async function OPTIONS() {
+  return NextResponse.json({}, { headers: corsHeaders });
+}
+
 /**
  * POST /api/integrations/google-sheets/test-credentials
  * Test Google OAuth credentials by validating format and generating OAuth URL
@@ -14,7 +28,7 @@ export async function POST(request: NextRequest) {
     if (authError || !user) {
       return NextResponse.json(
         { error: "Unauthorized" },
-        { status: 401 }
+        { status: 401, headers: corsHeaders }
       );
     }
 
@@ -24,7 +38,7 @@ export async function POST(request: NextRequest) {
     if (!clientId || !clientSecret) {
       return NextResponse.json(
         { error: "Client ID and Client Secret are required" },
-        { status: 400 }
+        { status: 400, headers: corsHeaders }
       );
     }
 
@@ -128,7 +142,7 @@ export async function POST(request: NextRequest) {
       message: results.valid 
         ? "Credentials are valid and ready to use!" 
         : "Credentials validation failed. Please check the errors above.",
-    });
+    }, { headers: corsHeaders });
   } catch (error: any) {
     console.error("Error testing credentials:", error);
     return NextResponse.json(
@@ -139,7 +153,7 @@ export async function POST(request: NextRequest) {
         errors: [error.message || "Internal server error"],
         warnings: [],
       },
-      { status: 500 }
+      { status: 500, headers: corsHeaders }
     );
   }
 }

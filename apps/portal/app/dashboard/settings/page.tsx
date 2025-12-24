@@ -370,6 +370,7 @@ export default function SettingsPage() {
       const response = await fetch('/api/integrations/google-sheets/test-credentials', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({
           clientId: customClientId,
           clientSecret: customClientSecret,

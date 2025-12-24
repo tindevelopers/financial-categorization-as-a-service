@@ -3,12 +3,17 @@
  * 
  * GET - Retrieve tenant's integration settings
  * POST - Save/update tenant's integration settings
+ * DELETE - Remove tenant's integration settings
+ * 
+ * Uses Supabase Vault for secure secret storage when available,
+ * with fallback to application-level encryption.
  */
 
 import { createClient } from '@/lib/database/server';
 import { NextResponse } from 'next/server';
-import { encrypt, decrypt, isEncrypted } from '@/lib/encryption';
+import { encrypt, isEncrypted } from '@/lib/encryption';
 import { getEntityInfo } from '@/lib/entity-type';
+import { saveSecret, isVaultAvailable, maskSecretValue } from '@/lib/vault';
 
 interface IntegrationSettingsInput {
   provider: string;
@@ -58,10 +63,18 @@ export async function GET(request: Request) {
     }
 
     // Mask sensitive values in response
+    // Check for both vault-stored secrets (vault IDs) and legacy encrypted secrets
     const maskedSettings = (settings || []).map((setting: any) => ({
       ...setting,
-      custom_client_secret: setting.custom_client_secret ? '••••••••' : null,
-      airtable_api_key: setting.airtable_api_key ? '••••••••' : null,
+      // Mask secrets - show indicator if vault ID or legacy secret exists
+      custom_client_secret: (setting.client_secret_vault_id || setting.custom_client_secret) 
+        ? '••••••••' 
+        : null,
+      airtable_api_key: (setting.api_key_vault_id || setting.airtable_api_key) 
+        ? '••••••••' 
+        : null,
+      // Include vault status for debugging (optional, remove in production)
+      _vault_enabled: !!setting.client_secret_vault_id || !!setting.api_key_vault_id,
     }));
 
     return NextResponse.json({
@@ -79,6 +92,9 @@ export async function GET(request: Request) {
 
 /**
  * POST - Save/update tenant's integration settings
+ * 
+ * Secrets are stored in Supabase Vault when available,
+ * with fallback to application-level encryption.
  */
 export async function POST(request: Request) {
   try {
@@ -112,7 +128,11 @@ export async function POST(request: Request) {
       }, { status: 403 });
     }
 
-    // Prepare data for upsert
+    // Check if vault is available
+    const vaultAvailable = await isVaultAvailable(supabase);
+    console.log('[Tenant Settings] Vault available:', vaultAvailable);
+
+    // Prepare data for upsert (non-secret fields)
     const settingsData: any = {
       tenant_id: entityInfo.tenantId,
       provider: body.provider,
@@ -122,27 +142,13 @@ export async function POST(request: Request) {
       updated_at: new Date().toISOString(),
     };
 
-    // Handle custom OAuth credentials (Google Sheets)
+    // Handle non-secret fields
     if (body.custom_client_id !== undefined) {
       settingsData.custom_client_id = body.custom_client_id || null;
-    }
-    
-    if (body.custom_client_secret !== undefined && body.custom_client_secret !== '••••••••') {
-      // Encrypt the secret before storing
-      settingsData.custom_client_secret = body.custom_client_secret 
-        ? encrypt(body.custom_client_secret) 
-        : null;
     }
 
     if (body.custom_redirect_uri !== undefined) {
       settingsData.custom_redirect_uri = body.custom_redirect_uri || null;
-    }
-
-    // Handle Airtable credentials
-    if (body.airtable_api_key !== undefined && body.airtable_api_key !== '••••••••') {
-      settingsData.airtable_api_key = body.airtable_api_key 
-        ? encrypt(body.airtable_api_key) 
-        : null;
     }
 
     if (body.airtable_base_id !== undefined) {
@@ -151,6 +157,67 @@ export async function POST(request: Request) {
 
     if (body.airtable_table_name !== undefined) {
       settingsData.airtable_table_name = body.airtable_table_name || null;
+    }
+
+    // Handle secrets - use vault if available, otherwise fall back to encryption
+    if (body.custom_client_secret !== undefined && body.custom_client_secret !== '••••••••') {
+      if (body.custom_client_secret) {
+        if (vaultAvailable) {
+          // Store in vault via RPC
+          const vaultId = await saveSecret(
+            supabase,
+            entityInfo.tenantId,
+            body.provider,
+            'client_secret',
+            body.custom_client_secret
+          );
+          
+          if (vaultId) {
+            settingsData.client_secret_vault_id = vaultId;
+            settingsData.custom_client_secret = null; // Clear legacy storage
+            console.log('[Tenant Settings] Client secret stored in vault:', vaultId);
+          } else {
+            // Vault failed, fall back to encryption
+            console.warn('[Tenant Settings] Vault storage failed, using encryption fallback');
+            settingsData.custom_client_secret = encrypt(body.custom_client_secret);
+          }
+        } else {
+          // Vault not available, use encryption
+          settingsData.custom_client_secret = encrypt(body.custom_client_secret);
+          console.log('[Tenant Settings] Using encryption fallback for client secret');
+        }
+      } else {
+        // Clearing the secret
+        settingsData.custom_client_secret = null;
+        settingsData.client_secret_vault_id = null;
+      }
+    }
+
+    if (body.airtable_api_key !== undefined && body.airtable_api_key !== '••••••••') {
+      if (body.airtable_api_key) {
+        if (vaultAvailable) {
+          const vaultId = await saveSecret(
+            supabase,
+            entityInfo.tenantId,
+            body.provider,
+            'api_key',
+            body.airtable_api_key
+          );
+          
+          if (vaultId) {
+            settingsData.api_key_vault_id = vaultId;
+            settingsData.airtable_api_key = null;
+            console.log('[Tenant Settings] API key stored in vault:', vaultId);
+          } else {
+            settingsData.airtable_api_key = encrypt(body.airtable_api_key);
+          }
+        } else {
+          settingsData.airtable_api_key = encrypt(body.airtable_api_key);
+        }
+      } else {
+        settingsData.airtable_api_key = null;
+        settingsData.api_key_vault_id = null;
+      }
     }
 
     // Upsert the settings
@@ -170,8 +237,13 @@ export async function POST(request: Request) {
     // Return masked result
     const maskedResult = {
       ...result,
-      custom_client_secret: result.custom_client_secret ? '••••••••' : null,
-      airtable_api_key: result.airtable_api_key ? '••••••••' : null,
+      custom_client_secret: (result.client_secret_vault_id || result.custom_client_secret) 
+        ? '••••••••' 
+        : null,
+      airtable_api_key: (result.api_key_vault_id || result.airtable_api_key) 
+        ? '••••••••' 
+        : null,
+      _storage_method: vaultAvailable ? 'vault' : 'encryption',
     };
 
     return NextResponse.json({
@@ -211,6 +283,31 @@ export async function DELETE(request: Request) {
       return NextResponse.json({ error: 'No tenant associated with user' }, { status: 400 });
     }
 
+    // Get existing settings to find vault IDs
+    const { data: existingSettings } = await (supabase as any)
+      .from('tenant_integration_settings')
+      .select('client_secret_vault_id, api_key_vault_id')
+      .eq('tenant_id', entityInfo.tenantId)
+      .eq('provider', provider)
+      .single();
+
+    // Delete vault secrets if they exist
+    if (existingSettings?.client_secret_vault_id) {
+      await supabase.rpc('vault.delete_secret', { 
+        p_id: existingSettings.client_secret_vault_id 
+      }).catch(() => {
+        // Ignore errors - vault might not be available
+      });
+    }
+
+    if (existingSettings?.api_key_vault_id) {
+      await supabase.rpc('vault.delete_secret', { 
+        p_id: existingSettings.api_key_vault_id 
+      }).catch(() => {
+        // Ignore errors
+      });
+    }
+
     // Delete the settings
     const { error: deleteError } = await (supabase as any)
       .from('tenant_integration_settings')
@@ -230,4 +327,3 @@ export async function DELETE(request: Request) {
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
-
