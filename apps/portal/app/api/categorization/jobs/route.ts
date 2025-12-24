@@ -71,13 +71,12 @@ export async function GET(request: NextRequest) {
     // Note: PostgREST may try to reference updated_at if it thinks it exists in metadata
     // We explicitly avoid it by only selecting columns that exist in production schema
     // FIX: PostgREST requires ORDER BY when using .range() for pagination stability
-    // If no ORDER BY is provided, PostgREST may try to add updated_at automatically
-    // We explicitly order by id (which exists) to prevent PostgREST from adding updated_at
+    // We explicitly order by created_at (which exists) to prevent PostgREST from adding updated_at
     let query = supabase
       .from("categorization_jobs")
       .select("id,job_type,status,processing_mode,original_filename,file_url,cloud_storage_provider,total_items,processed_items,failed_items,error_message,created_at,started_at,completed_at")
       .eq("user_id", user.id)
-      .order("id", { ascending: false }); // Explicit order on id to prevent PostgREST from adding updated_at
+      .order("created_at", { ascending: false }); // Explicit order on created_at to prevent PostgREST from adding updated_at
 
     // Apply filters
     if (status) {

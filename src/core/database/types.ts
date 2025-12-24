@@ -686,7 +686,6 @@ export interface Database {
           processed_count: number | null;
           metadata: Record<string, any> | null;
           created_at: string;
-          updated_at: string;
         };
         Insert: {
           id?: string;
@@ -703,7 +702,6 @@ export interface Database {
           processed_count?: number | null;
           metadata?: Record<string, any> | null;
           created_at?: string;
-          updated_at?: string;
         };
         Update: {
           id?: string;
@@ -720,7 +718,6 @@ export interface Database {
           processed_count?: number | null;
           metadata?: Record<string, any> | null;
           created_at?: string;
-          updated_at?: string;
         };
         Relationships: [];
       };
