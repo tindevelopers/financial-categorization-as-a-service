@@ -70,13 +70,14 @@ export async function GET(request: NextRequest) {
     // Use comma-separated string to ensure PostgREST doesn't try to add updated_at
     // Note: PostgREST may try to reference updated_at if it thinks it exists in metadata
     // We explicitly avoid it by only selecting columns that exist in production schema
-    // FIX: PostgREST requires ORDER BY when using .range() for pagination stability
-    // We explicitly order by created_at (which exists) to prevent PostgREST from adding updated_at
+    // FIX: Add explicit secondary sort on id to prevent PostgREST from automatically
+    // adding updated_at as a secondary sort key for pagination stability when using .range()
     let query = supabase
       .from("categorization_jobs")
       .select("id,job_type,status,processing_mode,original_filename,file_url,cloud_storage_provider,total_items,processed_items,failed_items,error_message,created_at,started_at,completed_at")
       .eq("user_id", user.id)
-      .order("created_at", { ascending: false }); // Explicit order on created_at to prevent PostgREST from adding updated_at
+      .order("created_at", { ascending: false }) // Primary sort on created_at
+      .order("id", { ascending: false }); // Secondary sort on id to prevent PostgREST from adding updated_at
 
     // Apply filters
     if (status) {
@@ -87,6 +88,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Apply pagination - PostgREST requires ORDER BY before .range()
+    // The explicit secondary sort on id should prevent PostgREST from adding updated_at
     query = query.range(offset, offset + limit - 1);
     // #region agent log
     console.log(JSON.stringify({location:'api/categorization/jobs/route.ts:87',message:'Before query execution',data:{userId:user.id,limit,offset,status,jobType,queryBuilder:typeof query},timestamp:Date.now(),sessionId:'debug-session',runId:'debug-run-1',hypothesisId:'H4'}));
