@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@/lib/database/server";
+import { createClient } from "@/core/database/server";
 import { google } from "googleapis";
 
 const corsHeaders = {
