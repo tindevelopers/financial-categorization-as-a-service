@@ -26,26 +26,11 @@ export async function OPTIONS() {
  *  - offset: pagination offset (default: 0)
  */
 export async function GET(request: NextRequest) {
-  // #region agent log
-  console.log(JSON.stringify({location:'api/categorization/jobs/route.ts:28',message:'GET /api/categorization/jobs entry',data:{url:request.url,searchParams:Object.fromEntries(request.nextUrl.searchParams),method:request.method},timestamp:Date.now(),sessionId:'debug-session',runId:'debug-run-1',hypothesisId:'H2'}));
-  // #endregion
   try {
-    // #region agent log
-    console.log(JSON.stringify({location:'api/categorization/jobs/route.ts:32',message:'Creating Supabase client',data:{},timestamp:Date.now(),sessionId:'debug-session',runId:'debug-run-1',hypothesisId:'H3'}));
-    // #endregion
     const supabase = await createClient();
-    // #region agent log
-    console.log(JSON.stringify({location:'api/categorization/jobs/route.ts:36',message:'Supabase client created - calling getUser',data:{},timestamp:Date.now(),sessionId:'debug-session',runId:'debug-run-1',hypothesisId:'H3'}));
-    // #endregion
     const { data: { user }, error: authError } = await supabase.auth.getUser();
-    // #region agent log
-    console.log(JSON.stringify({location:'api/categorization/jobs/route.ts:40',message:'Auth check result',data:{hasUser:!!user,userId:user?.id || null,hasAuthError:!!authError,authErrorCode:authError?.code || null,authErrorMessage:authError?.message || null},timestamp:Date.now(),sessionId:'debug-session',runId:'debug-run-1',hypothesisId:'H3'}));
-    // #endregion
 
     if (authError || !user) {
-      // #region agent log
-      console.log(JSON.stringify({location:'api/categorization/jobs/route.ts:45',message:'Auth failed returning 401',data:{authError:authError?.message || null,hasUser:!!user,userId:user?.id || null},timestamp:Date.now(),sessionId:'debug-session',runId:'debug-run-1',hypothesisId:'H3'}));
-      // #endregion
       return NextResponse.json(
         { error: "Unauthorized" },
         { 
@@ -66,18 +51,12 @@ export async function GET(request: NextRequest) {
     const limit = Math.min(parseInt(searchParams.get("limit") || "50"), 100);
     const offset = parseInt(searchParams.get("offset") || "0");
 
-    // Build query - explicitly select only columns that exist (no updated_at)
-    // Use comma-separated string to ensure PostgREST doesn't try to add updated_at
-    // Note: PostgREST may try to reference updated_at if it thinks it exists in metadata
-    // We explicitly avoid it by only selecting columns that exist in production schema
-    // FIX: Add explicit secondary sort on id to prevent PostgREST from automatically
-    // adding updated_at as a secondary sort key for pagination stability when using .range()
+    // Build query with all columns including updated_at
     let query = supabase
       .from("categorization_jobs")
-      .select("id,job_type,status,processing_mode,original_filename,file_url,cloud_storage_provider,total_items,processed_items,failed_items,error_message,created_at,started_at,completed_at")
+      .select("id,job_type,status,processing_mode,original_filename,file_url,cloud_storage_provider,total_items,processed_items,failed_items,error_message,created_at,updated_at,started_at,completed_at")
       .eq("user_id", user.id)
-      .order("created_at", { ascending: false }) // Primary sort on created_at
-      .order("id", { ascending: false }); // Secondary sort on id to prevent PostgREST from adding updated_at
+      .order("created_at", { ascending: false });
 
     // Apply filters
     if (status) {
@@ -87,25 +66,14 @@ export async function GET(request: NextRequest) {
       query = query.eq("job_type", jobType);
     }
 
-    // Apply pagination - PostgREST requires ORDER BY before .range()
-    // The explicit secondary sort on id should prevent PostgREST from adding updated_at
+    // Apply pagination
     query = query.range(offset, offset + limit - 1);
-    // #region agent log
-    console.log(JSON.stringify({location:'api/categorization/jobs/route.ts:87',message:'Before query execution',data:{userId:user.id,limit,offset,status,jobType,queryBuilder:typeof query},timestamp:Date.now(),sessionId:'debug-session',runId:'debug-run-1',hypothesisId:'H4'}));
-    // #endregion
 
-    // Execute query - PostgREST will build the actual SQL query
+    // Execute query
     const { data: jobs, error: jobsError } = await query;
-    // #region agent log
-    console.log(JSON.stringify({location:'api/categorization/jobs/route.ts:106',message:'Query result',data:{hasJobs:!!jobs,jobsCount:jobs?.length || 0,hasError:!!jobsError,errorCode:jobsError?.code || null,errorMessage:jobsError?.message || null,errorDetails:jobsError?.details || null,errorHint:jobsError?.hint || null},timestamp:Date.now(),sessionId:'debug-session',runId:'debug-run-1',hypothesisId:'H4'}));
-    // #endregion
 
     if (jobsError) {
       console.error("Error fetching jobs:", jobsError);
-      console.log(JSON.stringify({location:'api/categorization/jobs/route.ts:111',message:'Query error details',data:{errorCode:jobsError.code,errorMessage:jobsError.message,errorDetails:jobsError.details,errorHint:jobsError.hint},timestamp:Date.now(),sessionId:'debug-session',runId:'debug-run-1',hypothesisId:'H4'}));
-      // #region agent log
-      console.log(JSON.stringify({location:'api/categorization/jobs/route.ts:113',message:'Query error returning 500',data:{errorCode:jobsError.code,errorMessage:jobsError.message,errorDetails:jobsError.details,errorHint:jobsError.hint},timestamp:Date.now(),sessionId:'debug-session',runId:'debug-run-1',hypothesisId:'H4'}));
-      // #endregion
       return NextResponse.json(
         { error: "Failed to fetch jobs", details: jobsError.message },
         { 
@@ -144,8 +112,8 @@ export async function GET(request: NextRequest) {
     // Enhance jobs with storage info
     const enhancedJobs = jobs?.map(job => {
       const jobDocs = docMap.get(job.id) || [];
-      const storageTiers = jobDocs.map(d => d.storage_tier);
-      const totalSize = jobDocs.reduce((sum, d) => sum + (d.file_size_bytes || 0), 0);
+      const storageTiers = jobDocs.map((d: any) => d.storage_tier);
+      const totalSize = jobDocs.reduce((sum: number, d: any) => sum + (d.file_size_bytes || 0), 0);
       
       return {
         ...job,
@@ -154,22 +122,18 @@ export async function GET(request: NextRequest) {
                 storageTiers.includes("restoring") ? "restoring" : "hot",
           total_size_bytes: totalSize,
           document_count: jobDocs.length,
-          archived_at: jobDocs.find(d => d.archived_at)?.archived_at || null,
+          archived_at: jobDocs.find((d: any) => d.archived_at)?.archived_at || null,
         }
       };
     });
 
     // Get total count for pagination
-    // Use id column instead of * to avoid issues with missing updated_at column
-    const { count, error: countError } = await supabase
+    const { count } = await supabase
       .from("categorization_jobs")
       .select("id", { count: "exact", head: true })
       .eq("user_id", user.id);
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'api/categorization/jobs/route.ts:111',message:'Count query result',data:{count,hasCountError:!!countError,countErrorCode:countError?.code,countErrorMessage:countError?.message},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'B'})}).catch(()=>{});
-    // #endregion
 
-    const response = {
+    return NextResponse.json({
       success: true,
       jobs: enhancedJobs || [],
       pagination: {
@@ -178,11 +142,7 @@ export async function GET(request: NextRequest) {
         offset,
         has_more: (count || 0) > offset + limit,
       }
-    };
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'api/categorization/jobs/route.ts:155',message:'Returning success response',data:{jobsCount:response.jobs.length,totalCount:response.pagination.total,hasJobs:response.jobs.length > 0},timestamp:Date.now(),sessionId:'debug-session',runId:'debug-run-1',hypothesisId:'H2'})}).catch(()=>{});
-    // #endregion
-    return NextResponse.json(response, {
+    }, {
       status: 200,
       headers: {
         "Access-Control-Allow-Origin": "*",
@@ -192,9 +152,6 @@ export async function GET(request: NextRequest) {
     });
   } catch (error: any) {
     console.error("Error in jobs endpoint:", error);
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'api/categorization/jobs/route.ts:159',message:'Exception caught',data:{errorMessage:error?.message || 'unknown',errorType:error?.constructor?.name || 'unknown',errorStack:error?.stack?.substring(0,300) || 'no stack'},timestamp:Date.now(),sessionId:'debug-session',runId:'debug-run-1',hypothesisId:'H1'})}).catch(()=>{});
-    // #endregion
     return NextResponse.json(
       { error: error.message || "Internal server error" },
       { 
@@ -208,4 +165,3 @@ export async function GET(request: NextRequest) {
     );
   }
 }
-
