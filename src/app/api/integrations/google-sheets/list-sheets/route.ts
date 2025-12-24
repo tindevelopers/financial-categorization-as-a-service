@@ -174,6 +174,24 @@ export async function GET() {
       
       // Check for specific Google API errors
       if (driveError.code === 403) {
+        // Check if this is specifically an API not enabled error
+        const errorMessage = driveError.message || ''
+        if (errorMessage.includes('has not been used in project') || errorMessage.includes('is disabled')) {
+          // Extract project ID from error message for a helpful link
+          const projectMatch = errorMessage.match(/project (\d+)/)
+          const projectId = projectMatch ? projectMatch[1] : ''
+          const enableLink = projectId 
+            ? `https://console.developers.google.com/apis/api/drive.googleapis.com/overview?project=${projectId}`
+            : 'https://console.developers.google.com/apis/library/drive.googleapis.com'
+          
+          return NextResponse.json({ 
+            error: 'Google Drive API not enabled',
+            details: `The Google Drive API needs to be enabled in your Google Cloud project. Please visit ${enableLink} to enable it, then try again.`,
+            enableLink,
+            apiNotEnabled: true
+          }, { status: 403 })
+        }
+        
         return NextResponse.json({ 
           error: 'Access denied. The Google Drive API may not be enabled or your credentials may not have permission.',
           details: driveError.message,

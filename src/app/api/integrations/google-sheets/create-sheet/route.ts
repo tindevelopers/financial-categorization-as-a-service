@@ -254,7 +254,34 @@ export async function POST(request: NextRequest) {
     }, { headers: corsHeaders })
 
   } catch (error: any) {
-    console.error('Error creating sheet:', error)
+    console.error('[create-sheet] Error:', error.message, error.code)
+    
+    // Check for specific Google API errors
+    if (error.code === 403) {
+      const errorMessage = error.message || ''
+      if (errorMessage.includes('has not been used in project') || errorMessage.includes('is disabled')) {
+        // Extract project ID from error message
+        const projectMatch = errorMessage.match(/project (\d+)/)
+        const projectId = projectMatch ? projectMatch[1] : ''
+        const enableLink = projectId 
+          ? `https://console.developers.google.com/apis/api/sheets.googleapis.com/overview?project=${projectId}`
+          : 'https://console.developers.google.com/apis/library/sheets.googleapis.com'
+        
+        return NextResponse.json({ 
+          error: 'Google Sheets API not enabled',
+          details: `The Google Sheets API needs to be enabled in your Google Cloud project. Please visit the Google Cloud Console to enable it.`,
+          enableLink,
+          apiNotEnabled: true
+        }, { status: 403, headers: corsHeaders })
+      }
+      
+      return NextResponse.json({ 
+        error: 'Access denied to Google Sheets',
+        details: error.message,
+        needsReconnect: true
+      }, { status: 403, headers: corsHeaders })
+    }
+    
     return NextResponse.json(
       { 
         error: 'Failed to create spreadsheet',

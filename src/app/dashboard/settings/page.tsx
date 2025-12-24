@@ -219,9 +219,21 @@ export default function SettingsPage() {
         setShowSheetPicker(true)
       } else {
         const error = await response.json()
-        if (error.needsReconnect) {
+        if (error.apiNotEnabled && error.enableLink) {
+          // Show a helpful message with link to enable the API
+          const shouldOpen = confirm(
+            `The Google Drive API needs to be enabled in your Google Cloud project.\n\n` +
+            `Click OK to open the Google Cloud Console and enable it.\n\n` +
+            `After enabling, wait a few minutes and try again.`
+          )
+          if (shouldOpen) {
+            window.open(error.enableLink, '_blank')
+          }
+        } else if (error.needsReconnect) {
           alert('Your Google connection has expired. Please reconnect.')
           setIntegrations(prev => ({ ...prev, googleSheets: { connected: false } }))
+        } else {
+          alert(error.details || error.error || 'Failed to load spreadsheets')
         }
       }
     } catch (error) {
@@ -293,12 +305,21 @@ export default function SettingsPage() {
         await handleSelectSheet(data.spreadsheet.id)
       } else {
         const error = await response.json()
-        if (error.needsReconnect) {
+        if (error.apiNotEnabled && error.enableLink) {
+          const shouldOpen = confirm(
+            `The Google Sheets API needs to be enabled in your Google Cloud project.\n\n` +
+            `Click OK to open the Google Cloud Console and enable it.\n\n` +
+            `After enabling, wait a few minutes and try again.`
+          )
+          if (shouldOpen) {
+            window.open(error.enableLink, '_blank')
+          }
+        } else if (error.needsReconnect) {
           alert('Your Google connection has expired. Please reconnect.')
           setIntegrations(prev => ({ ...prev, googleSheets: { connected: false } }))
           setShowSheetPicker(false)
         } else {
-          alert(error.error || 'Failed to create spreadsheet')
+          alert(error.details || error.error || 'Failed to create spreadsheet')
         }
       }
     } catch (error) {
