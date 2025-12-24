@@ -1,20 +1,41 @@
 import { createClient } from '@/core/database/server'
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { decrypt } from '@/lib/encryption'
+
+/**
+ * Get the base URL from the request origin
+ * This ensures we use the actual domain the user is accessing (e.g., tenant subdomain)
+ */
+function getBaseUrlFromRequest(request: NextRequest): string {
+  // Try to get origin from headers
+  const origin = request.headers.get('origin')
+  if (origin) {
+    return origin
+  }
+  
+  // Fall back to constructing from host header
+  const host = request.headers.get('host')
+  if (host) {
+    const protocol = host.includes('localhost') ? 'http' : 'https'
+    return `${protocol}://${host}`
+  }
+  
+  // Last resort: use environment variables
+  return process.env.NEXT_PUBLIC_APP_URL || 
+    (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000')
+}
 
 /**
  * Get Google OAuth credentials
  * Priority: 1) Custom tenant credentials, 2) Environment variables
  */
-async function getGoogleCredentials(supabase: any, userId: string): Promise<{
+async function getGoogleCredentials(supabase: any, userId: string, requestBaseUrl: string): Promise<{
   clientId: string | null;
   clientSecret: string | null;
   redirectUri: string;
   source: 'tenant' | 'platform';
 }> {
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 
-    (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000')
-  const defaultRedirectUri = `${baseUrl}/api/integrations/google-sheets/callback`
+  const defaultRedirectUri = `${requestBaseUrl}/api/integrations/google-sheets/callback`
 
   // Get user's tenant ID
   const { data: userData } = await supabase
@@ -64,7 +85,7 @@ async function getGoogleCredentials(supabase: any, userId: string): Promise<{
   }
 }
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
     const supabase = await createClient()
     const { data: { user }, error: authError } = await supabase.auth.getUser()
@@ -73,8 +94,12 @@ export async function GET() {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
+    // Get the base URL from the actual request origin (handles tenant subdomains)
+    const requestBaseUrl = getBaseUrlFromRequest(request)
+    console.log('[Google Sheets OAuth] Request base URL:', requestBaseUrl)
+
     // Get credentials (checks tenant settings first, then env vars)
-    const credentials = await getGoogleCredentials(supabase, user.id)
+    const credentials = await getGoogleCredentials(supabase, user.id, requestBaseUrl)
 
     if (!credentials.clientId) {
       return NextResponse.json({
