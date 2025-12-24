@@ -92,6 +92,14 @@ export default function SettingsPage() {
   const [connecting, setConnecting] = useState(false)
   const [disconnecting, setDisconnecting] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [testing, setTesting] = useState(false)
+  const [testResults, setTestResults] = useState<{
+    valid: boolean
+    errors: string[]
+    warnings: string[]
+    oauthUrl: string | null
+    message: string
+  } | null>(null)
   const [activeTab, setActiveTab] = useState<'google' | 'airtable'>('google')
   
   // Form state for custom credentials
@@ -344,6 +352,44 @@ export default function SettingsPage() {
       console.error('Failed to disconnect Google Sheets:', error)
     } finally {
       setDisconnecting(false)
+    }
+  }
+
+  const handleTestCredentials = async () => {
+    if (!customClientId || !customClientSecret) {
+      alert('Please enter both Client ID and Client Secret before testing')
+      return
+    }
+
+    setTesting(true)
+    setTestResults(null)
+    try {
+      const baseUrl = process.env.NEXT_PUBLIC_APP_URL || window.location.origin
+      const redirectUri = `${baseUrl}/api/integrations/google-sheets/callback`
+      
+      const response = await fetch('/api/integrations/google-sheets/test-credentials', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          clientId: customClientId,
+          clientSecret: customClientSecret,
+          redirectUri,
+        }),
+      })
+      
+      const data = await response.json()
+      setTestResults(data)
+    } catch (error) {
+      console.error('Failed to test credentials:', error)
+      setTestResults({
+        valid: false,
+        errors: ['Failed to test credentials. Please try again.'],
+        warnings: [],
+        oauthUrl: null,
+        message: 'Test failed',
+      })
+    } finally {
+      setTesting(false)
     }
   }
 
@@ -661,13 +707,97 @@ export default function SettingsPage() {
                         </div>
                       </div>
 
-                      <Button
-                        color="blue"
-                        onClick={handleSaveGoogleSettings}
-                        disabled={saving}
-                      >
-                        {saving ? 'Saving...' : 'Save Credentials'}
-                      </Button>
+                      {/* Test Results */}
+                      {testResults && (
+                        <div className={`rounded-lg p-4 border ${
+                          testResults.valid
+                            ? 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800'
+                            : 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800'
+                        }`}>
+                          <div className="flex items-start gap-3">
+                            {testResults.valid ? (
+                              <CheckCircleIcon className="h-5 w-5 text-green-500 flex-shrink-0 mt-0.5" />
+                            ) : (
+                              <ExclamationCircleIcon className="h-5 w-5 text-red-500 flex-shrink-0 mt-0.5" />
+                            )}
+                            <div className="flex-1">
+                              <p className={`font-medium ${
+                                testResults.valid
+                                  ? 'text-green-900 dark:text-green-200'
+                                  : 'text-red-900 dark:text-red-200'
+                              }`}>
+                                {testResults.message}
+                              </p>
+                              
+                              {testResults.errors.length > 0 && (
+                                <div className="mt-2">
+                                  <p className="text-sm font-medium text-red-800 dark:text-red-300 mb-1">
+                                    Errors:
+                                  </p>
+                                  <ul className="text-sm text-red-700 dark:text-red-400 space-y-1 list-disc list-inside">
+                                    {testResults.errors.map((error, idx) => (
+                                      <li key={idx}>{error}</li>
+                                    ))}
+                                  </ul>
+                                </div>
+                              )}
+                              
+                              {testResults.warnings.length > 0 && (
+                                <div className="mt-2">
+                                  <p className="text-sm font-medium text-amber-800 dark:text-amber-300 mb-1">
+                                    Warnings:
+                                  </p>
+                                  <ul className="text-sm text-amber-700 dark:text-amber-400 space-y-1 list-disc list-inside">
+                                    {testResults.warnings.map((warning, idx) => (
+                                      <li key={idx}>{warning}</li>
+                                    ))}
+                                  </ul>
+                                </div>
+                              )}
+                              
+                              {testResults.valid && testResults.oauthUrl && (
+                                <div className="mt-3 pt-3 border-t border-green-200 dark:border-green-800">
+                                  <p className="text-sm text-green-800 dark:text-green-300 mb-2">
+                                    ✅ Credentials are valid! You can now:
+                                  </p>
+                                  <ul className="text-sm text-green-700 dark:text-green-400 space-y-1 list-disc list-inside mb-3">
+                                    <li>Save these credentials</li>
+                                    <li>Connect your Google account</li>
+                                    <li>Export transactions to Google Sheets</li>
+                                  </ul>
+                                  <p className="text-xs text-green-600 dark:text-green-500">
+                                    Note: Make sure the redirect URI is added to your Google Cloud Console OAuth settings.
+                                  </p>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      <div className="flex gap-3">
+                        <Button
+                          color="blue"
+                          onClick={handleSaveGoogleSettings}
+                          disabled={saving}
+                        >
+                          {saving ? 'Saving...' : 'Save Credentials'}
+                        </Button>
+                        <Button
+                          color="white"
+                          onClick={handleTestCredentials}
+                          disabled={testing || !customClientId || !customClientSecret}
+                        >
+                          {testing ? (
+                            <>
+                              <div className="animate-spin h-4 w-4 border-2 border-gray-300 border-t-blue-500 rounded-full mr-2"></div>
+                              Testing...
+                            </>
+                          ) : (
+                            'Test Credentials'
+                          )}
+                        </Button>
+                      </div>
                     </div>
                   )}
                 </div>
