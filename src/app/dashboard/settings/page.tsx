@@ -120,6 +120,9 @@ export default function SettingsPage() {
   const [loadingSheets, setLoadingSheets] = useState(false)
   const [showSheetPicker, setShowSheetPicker] = useState(false)
   const [selectedSheet, setSelectedSheet] = useState<string>('')
+  const [creatingSheet, setCreatingSheet] = useState(false)
+  const [newSheetName, setNewSheetName] = useState('')
+  const [showCreateSheetForm, setShowCreateSheetForm] = useState(false)
 
   // Team invitations state
   const [teamInvitations, setTeamInvitations] = useState<TeamInvitation[]>([])
@@ -259,6 +262,50 @@ export default function SettingsPage() {
       alert('Failed to save sheet selection')
     } finally {
       setSaving(false)
+    }
+  }
+
+  const handleCreateNewSheet = async () => {
+    const sheetName = newSheetName.trim() || 'FinCat Transactions Export'
+    
+    setCreatingSheet(true)
+    try {
+      const response = await fetch('/api/integrations/google-sheets/create-sheet', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: sheetName }),
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        // Add the new sheet to the list and select it
+        const newSheet = {
+          id: data.spreadsheet.id,
+          name: data.spreadsheet.name,
+          modifiedAt: new Date().toISOString(),
+          url: data.spreadsheet.url,
+        }
+        setSpreadsheets(prev => [newSheet, ...prev])
+        setShowCreateSheetForm(false)
+        setNewSheetName('')
+        
+        // Automatically select the new sheet
+        await handleSelectSheet(data.spreadsheet.id)
+      } else {
+        const error = await response.json()
+        if (error.needsReconnect) {
+          alert('Your Google connection has expired. Please reconnect.')
+          setIntegrations(prev => ({ ...prev, googleSheets: { connected: false } }))
+          setShowSheetPicker(false)
+        } else {
+          alert(error.error || 'Failed to create spreadsheet')
+        }
+      }
+    } catch (error) {
+      console.error('Failed to create sheet:', error)
+      alert('Failed to create spreadsheet. Please try again.')
+    } finally {
+      setCreatingSheet(false)
     }
   }
 
@@ -891,10 +938,71 @@ Window Origin: ${window.location.origin}`;
                             Choose where to export your transactions
                           </p>
                         </div>
-                        <div className="p-6 max-h-96 overflow-y-auto">
+                        
+                        {/* Create New Sheet Section */}
+                        <div className="px-6 pt-4">
+                          {showCreateSheetForm ? (
+                            <div className="p-4 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
+                              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                                Spreadsheet Name
+                              </label>
+                              <input
+                                type="text"
+                                value={newSheetName}
+                                onChange={(e) => setNewSheetName(e.target.value)}
+                                placeholder="FinCat Transactions Export"
+                                className="w-full px-3 py-2 border border-gray-300 dark:border-zinc-600 rounded-lg bg-white dark:bg-zinc-800 text-gray-900 dark:text-white mb-3"
+                                disabled={creatingSheet}
+                              />
+                              <div className="flex gap-2">
+                                <Button
+                                  color="green"
+                                  onClick={handleCreateNewSheet}
+                                  disabled={creatingSheet}
+                                  className="flex-1"
+                                >
+                                  {creatingSheet ? 'Creating...' : 'Create & Select'}
+                                </Button>
+                                <Button
+                                  color="white"
+                                  onClick={() => {
+                                    setShowCreateSheetForm(false)
+                                    setNewSheetName('')
+                                  }}
+                                  disabled={creatingSheet}
+                                >
+                                  Cancel
+                                </Button>
+                              </div>
+                            </div>
+                          ) : (
+                            <button
+                              onClick={() => setShowCreateSheetForm(true)}
+                              className="w-full p-3 border-2 border-dashed border-green-300 dark:border-green-700 rounded-lg text-green-600 dark:text-green-400 hover:bg-green-50 dark:hover:bg-green-900/20 transition-colors flex items-center justify-center gap-2"
+                            >
+                              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                              </svg>
+                              Create New Spreadsheet
+                            </button>
+                          )}
+                        </div>
+
+                        {/* Divider */}
+                        {spreadsheets.length > 0 && (
+                          <div className="px-6 py-3">
+                            <div className="flex items-center gap-3">
+                              <div className="flex-1 border-t border-gray-200 dark:border-zinc-700" />
+                              <span className="text-xs text-gray-500 uppercase">or select existing</span>
+                              <div className="flex-1 border-t border-gray-200 dark:border-zinc-700" />
+                            </div>
+                          </div>
+                        )}
+
+                        <div className="px-6 pb-4 max-h-64 overflow-y-auto">
                           {spreadsheets.length === 0 ? (
-                            <p className="text-center text-gray-500 py-8">
-                              No spreadsheets found. Create one in Google Sheets first.
+                            <p className="text-center text-gray-500 py-4 text-sm">
+                              No existing spreadsheets found in your Google Drive.
                             </p>
                           ) : (
                             <div className="space-y-2">
@@ -902,12 +1010,12 @@ Window Origin: ${window.location.origin}`;
                                 <button
                                   key={sheet.id}
                                   onClick={() => handleSelectSheet(sheet.id)}
-                                  disabled={saving}
+                                  disabled={saving || creatingSheet}
                                   className={`w-full text-left p-3 rounded-lg border transition-colors ${
                                     selectedSheet === sheet.id
                                       ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
                                       : 'border-gray-200 dark:border-zinc-700 hover:border-gray-300 dark:hover:border-zinc-600'
-                                  }`}
+                                  } ${(saving || creatingSheet) ? 'opacity-50 cursor-not-allowed' : ''}`}
                                 >
                                   <p className="font-medium text-gray-900 dark:text-white">
                                     {sheet.name}
@@ -920,21 +1028,17 @@ Window Origin: ${window.location.origin}`;
                             </div>
                           )}
                         </div>
-                        <div className="px-6 py-4 border-t border-gray-200 dark:border-zinc-700 flex justify-end gap-3">
+                        <div className="px-6 py-4 border-t border-gray-200 dark:border-zinc-700 flex justify-end">
                           <Button
                             color="white"
-                            onClick={() => setShowSheetPicker(false)}
+                            onClick={() => {
+                              setShowSheetPicker(false)
+                              setShowCreateSheetForm(false)
+                              setNewSheetName('')
+                            }}
                           >
-                            Cancel
+                            Close
                           </Button>
-                          <a
-                            href="https://sheets.google.com/create"
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="inline-flex items-center justify-center px-4 py-2 text-sm font-medium text-blue-600 bg-blue-50 rounded-lg hover:bg-blue-100"
-                          >
-                            Create New Sheet
-                          </a>
                         </div>
                       </div>
                     </div>
