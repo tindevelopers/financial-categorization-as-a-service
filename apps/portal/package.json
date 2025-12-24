@@ -23,7 +23,7 @@
     "@tinadmin/core": "workspace:*",
     "@tinadmin/ui-consumer": "workspace:*",
     "@vercel/functions": "^3.3.4",
-    "ai": "^5.0.115",
+    "ai": "^6.0.3",
     "autoprefixer": "^10.4.20",
     "clsx": "^2.1.1",
     "dropbox": "^10.34.0",
