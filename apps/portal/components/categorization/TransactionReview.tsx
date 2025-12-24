@@ -45,10 +45,19 @@ export default function TransactionReview({ jobId }: TransactionReviewProps) {
 
   const loadTransactions = async () => {
     try {
-      const response = await fetch(`/api/categorization/jobs/${jobId}/transactions`);
+      const response = await fetch(`/api/categorization/jobs/${jobId}/transactions`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include', // Include cookies for authentication
+      });
+      
       if (!response.ok) {
-        throw new Error("Failed to load transactions");
+        const errorData = await response.json().catch(() => ({ error: `HTTP ${response.status}` }));
+        throw new Error(errorData.error || errorData.details || "Failed to load transactions");
       }
+      
       const data = await response.json();
       const newTransactions = data.transactions || [];
       
@@ -59,6 +68,7 @@ export default function TransactionReview({ jobId }: TransactionReviewProps) {
       }
       // If no transactions yet but job exists, keep loading state
     } catch (err: any) {
+      console.error("Error loading transactions:", err);
       setError(err.message);
       setLoading(false);
     }
@@ -68,6 +78,7 @@ export default function TransactionReview({ jobId }: TransactionReviewProps) {
     try {
       const response = await fetch(`/api/categorization/transactions/${id}/confirm`, {
         method: "POST",
+        credentials: 'include',
       });
       if (!response.ok) throw new Error("Failed to confirm");
       await loadTransactions();
@@ -81,6 +92,7 @@ export default function TransactionReview({ jobId }: TransactionReviewProps) {
       const response = await fetch(`/api/categorization/transactions/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
+        credentials: 'include',
         body: JSON.stringify({
           category: editCategory,
           subcategory: editSubcategory || null,
@@ -99,6 +111,7 @@ export default function TransactionReview({ jobId }: TransactionReviewProps) {
     try {
       const response = await fetch(`/api/categorization/jobs/${jobId}/export/google-sheets`, {
         method: "POST",
+        credentials: 'include',
       });
 
       const contentType = response.headers.get("content-type") || "unknown";
