@@ -287,9 +287,14 @@ export async function POST(request: NextRequest) {
             const drive = google.drive({ version: 'v3', auth: oauth2Client })
             
             for (const companyUser of companyUsers) {
+              // Skip if no provider email
+              if (!companyUser.provider_email) {
+                continue
+              }
+              
               // Skip sharing with the creator (they already own it)
               // Compare emails case-insensitively
-              if (companyUser.provider_email?.toLowerCase() === integration.provider_email?.toLowerCase()) {
+              if (companyUser.provider_email.toLowerCase() === integration.provider_email?.toLowerCase()) {
                 continue
               }
               
