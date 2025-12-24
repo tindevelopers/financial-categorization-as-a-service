@@ -344,11 +344,21 @@ Click OK to continue to Google OAuth.`;
         window.location.href = data.authUrl
       } else {
         const error = await response.json()
-        alert(error.message || 'Failed to start Google Sheets connection')
+        // #region agent log - Show detailed error for debugging
+        const errorDetails = `API Error (${response.status}):
+${JSON.stringify(error, null, 2)}
+
+This could mean:
+- Not authenticated (401)
+- Google credentials not configured (503)
+- Server error (500)`;
+        alert(errorDetails);
+        console.error('[DEBUG] Auth URL API error:', response.status, error);
+        // #endregion
       }
     } catch (error) {
       console.error('Failed to connect Google Sheets:', error)
-      alert('Failed to connect Google Sheets. Please try again.')
+      alert('Failed to connect Google Sheets. Network error: ' + (error as Error).message)
     } finally {
       setConnecting(false)
     }
