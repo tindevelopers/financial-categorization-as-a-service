@@ -87,13 +87,18 @@ export async function GET() {
 
     // Get the credential source from metadata (set during OAuth)
     const credentialSource = integration.metadata?.credential_source || 'platform'
+    console.log('[list-sheets] User:', user.id, 'Credential source:', credentialSource)
+    console.log('[list-sheets] Integration metadata:', JSON.stringify(integration.metadata))
     
     // Get the appropriate credentials
     const credentials = await getGoogleCredentials(supabase, user.id, credentialSource)
+    console.log('[list-sheets] Got credentials - clientId:', credentials.clientId?.substring(0, 20) + '...')
 
     if (!credentials.clientId || !credentials.clientSecret) {
+      console.error('[list-sheets] Missing credentials - clientId:', !!credentials.clientId, 'clientSecret:', !!credentials.clientSecret)
       return NextResponse.json({ 
         error: 'Google Sheets credentials not configured',
+        details: 'Could not find OAuth credentials. Please check your tenant settings or reconnect.',
         connected: false 
       }, { status: 500 })
     }
@@ -141,26 +146,52 @@ export async function GET() {
     // List spreadsheets using Drive API
     const drive = google.drive({ version: 'v3', auth: oauth2Client })
     
-    const response = await drive.files.list({
-      q: "mimeType='application/vnd.google-apps.spreadsheet'",
-      fields: 'files(id, name, modifiedTime, webViewLink)',
-      orderBy: 'modifiedTime desc',
-      pageSize: 50,
-    })
+    console.log('[list-sheets] Attempting to list spreadsheets with credential source:', credentialSource)
+    
+    try {
+      const response = await drive.files.list({
+        q: "mimeType='application/vnd.google-apps.spreadsheet'",
+        fields: 'files(id, name, modifiedTime, webViewLink)',
+        orderBy: 'modifiedTime desc',
+        pageSize: 50,
+      })
 
-    const spreadsheets = response.data.files?.map(file => ({
-      id: file.id,
-      name: file.name,
-      modifiedAt: file.modifiedTime,
-      url: file.webViewLink,
-    })) || []
+      const spreadsheets = response.data.files?.map(file => ({
+        id: file.id,
+        name: file.name,
+        modifiedAt: file.modifiedTime,
+        url: file.webViewLink,
+      })) || []
 
-    return NextResponse.json({ 
-      spreadsheets,
-      connected: true 
-    })
+      console.log('[list-sheets] Successfully listed', spreadsheets.length, 'spreadsheets')
+
+      return NextResponse.json({ 
+        spreadsheets,
+        connected: true 
+      })
+    } catch (driveError: any) {
+      console.error('[list-sheets] Drive API error:', driveError.message, driveError.code)
+      
+      // Check for specific Google API errors
+      if (driveError.code === 403) {
+        return NextResponse.json({ 
+          error: 'Access denied. The Google Drive API may not be enabled or your credentials may not have permission.',
+          details: driveError.message,
+          needsReconnect: true
+        }, { status: 403 })
+      }
+      
+      if (driveError.code === 401) {
+        return NextResponse.json({ 
+          error: 'Authentication failed. Please reconnect Google Sheets.',
+          needsReconnect: true
+        }, { status: 401 })
+      }
+      
+      throw driveError
+    }
   } catch (error: any) {
-    console.error('Error listing sheets:', error)
+    console.error('[list-sheets] Error:', error.message, error.stack)
     return NextResponse.json(
       { error: 'Failed to list spreadsheets', details: error.message },
       { status: 500 }

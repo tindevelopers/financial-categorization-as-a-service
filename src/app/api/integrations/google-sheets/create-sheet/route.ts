@@ -107,13 +107,17 @@ export async function POST(request: NextRequest) {
 
     // Get the credential source from metadata
     const credentialSource = integration.metadata?.credential_source || 'platform'
+    console.log('[create-sheet] User:', user.id, 'Credential source:', credentialSource)
     
     // Get the appropriate credentials
     const credentials = await getGoogleCredentials(supabase, user.id, credentialSource)
+    console.log('[create-sheet] Got credentials - clientId:', credentials.clientId?.substring(0, 20) + '...')
 
     if (!credentials.clientId || !credentials.clientSecret) {
+      console.error('[create-sheet] Missing credentials')
       return NextResponse.json({ 
         error: 'Google Sheets credentials not configured',
+        details: 'Could not find OAuth credentials. Please check your tenant settings.',
       }, { status: 500, headers: corsHeaders })
     }
 
