@@ -178,7 +178,11 @@ async function processSpreadsheet(jobId: string, userId: string, supabase: any) 
       if (autoSyncSheets && autoSyncSheets.length > 0) {
         console.log(`Auto-syncing to ${autoSyncSheets.length} Google Sheet(s)...`);
         
-        const syncService = createGoogleSheetsSyncService(supabase);
+        // TODO: Re-enable when GoogleSheetsSyncService is available in portal app
+        // const syncService = createGoogleSheetsSyncService(supabase);
+        console.log(`Auto-sync temporarily disabled: GoogleSheetsSyncService not available (${autoSyncSheets.length} sheet(s) would be synced)`);
+        // Skip sync for now
+        return;
         
         for (const sheet of autoSyncSheets) {
           try {
