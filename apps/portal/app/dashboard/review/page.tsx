@@ -11,6 +11,9 @@ import {
   ArrowPathIcon,
 } from "@heroicons/react/24/outline"
 
+// Component version marker for debugging
+const COMPONENT_VERSION = "v2.0-with-bulk-actions-2025-12-25"
+
 interface Job {
   id: string
   original_filename: string | null
@@ -38,11 +41,20 @@ export default function ReviewJobsPage() {
   const [bulkDeleting, setBulkDeleting] = useState(false)
   const [bulkRereviewing, setBulkRereviewing] = useState(false)
 
+  // #region agent log
+  useEffect(() => {
+    fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'review/page.tsx:42',message:'Component mounted',data:{componentVersion:COMPONENT_VERSION,timestamp:Date.now(),selectedIdsSize:selectedIds.size,jobsCount:jobs.length,loading,hasCheckboxes:true,hasBulkActions:true},timestamp:Date.now(),sessionId:'debug-session',runId:'initial',hypothesisId:'B'})}).catch(()=>{});
+  }, []);
+  // #endregion
+
   useEffect(() => {
     loadJobs()
   }, [])
 
   const loadJobs = async () => {
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'review/page.tsx:43',message:'loadJobs called',data:{timestamp:Date.now()},timestamp:Date.now(),sessionId:'debug-session',runId:'initial',hypothesisId:'B'})}).catch(()=>{});
+    // #endregion
     try {
       const response = await fetch("/api/categorization/jobs", {
         method: 'GET',
@@ -64,8 +76,14 @@ export default function ReviewJobsPage() {
       
       const data = await response.json()
       const jobsList = data.jobs || []
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'review/page.tsx:65',message:'Jobs loaded',data:{jobsCount:jobsList.length,firstJobId:jobsList[0]?.id,hasCheckboxes:true},timestamp:Date.now(),sessionId:'debug-session',runId:'initial',hypothesisId:'B'})}).catch(()=>{});
+      // #endregion
       setJobs(jobsList)
     } catch (err: any) {
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'review/page.tsx:68',message:'loadJobs error',data:{error:err.message},timestamp:Date.now(),sessionId:'debug-session',runId:'initial',hypothesisId:'B'})}).catch(()=>{});
+      // #endregion
       setError(err.message)
     } finally {
       setLoading(false)
@@ -81,6 +99,9 @@ export default function ReviewJobsPage() {
   }
 
   const handleToggleSelect = (jobId: string) => {
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'review/page.tsx:81',message:'Checkbox clicked',data:{jobId,currentSelected:selectedIds.has(jobId),selectedCount:selectedIds.size},timestamp:Date.now(),sessionId:'debug-session',runId:'initial',hypothesisId:'C'})}).catch(()=>{});
+    // #endregion
     setSelectedIds(prev => {
       const next = new Set(prev)
       if (next.has(jobId)) {
@@ -88,6 +109,9 @@ export default function ReviewJobsPage() {
       } else {
         next.add(jobId)
       }
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'review/page.tsx:91',message:'Selection updated',data:{newSelectedCount:next.size,willShowButtons:next.size>0},timestamp:Date.now(),sessionId:'debug-session',runId:'initial',hypothesisId:'C'})}).catch(()=>{});
+      // #endregion
       return next
     })
   }
@@ -236,6 +260,12 @@ export default function ReviewJobsPage() {
           </p>
         </div>
         <div className="flex gap-3">
+          {/* #region agent log */}
+          {(() => {
+            fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'review/page.tsx:238',message:'Rendering bulk actions',data:{selectedIdsSize:selectedIds.size,shouldShowButtons:selectedIds.size>0,hasCheckboxes:true},timestamp:Date.now(),sessionId:'debug-session',runId:'initial',hypothesisId:'A'})}).catch(()=>{});
+            return null;
+          })()}
+          {/* #endregion */}
           {selectedIds.size > 0 && (
             <>
               <button
@@ -305,6 +335,12 @@ export default function ReviewJobsPage() {
             <thead className="bg-gray-50 dark:bg-zinc-800">
               <tr>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider w-12">
+                  {/* #region agent log */}
+                  {(() => {
+                    fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'review/page.tsx:240',message:'Rendering select all checkbox',data:{jobsCount:jobs.length,selectedCount:selectedIds.size,isChecked:jobs.length>0&&selectedIds.size===jobs.length},timestamp:Date.now(),sessionId:'debug-session',runId:'initial',hypothesisId:'A'})}).catch(()=>{});
+                    return null;
+                  })()}
+                  {/* #endregion */}
                   <input
                     type="checkbox"
                     checked={jobs.length > 0 && selectedIds.size === jobs.length}
@@ -387,6 +423,14 @@ export default function ReviewJobsPage() {
                     }`}
                   >
                   <td className="px-6 py-4 whitespace-nowrap">
+                    {/* #region agent log */}
+                    {(() => {
+                      if (groupIndex === 0 && !isGrouped) {
+                        fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'review/page.tsx:322',message:'Rendering row checkbox',data:{jobId:job.id,isSelected:selectedIds.has(job.id),totalSelected:selectedIds.size},timestamp:Date.now(),sessionId:'debug-session',runId:'initial',hypothesisId:'A'})}).catch(()=>{});
+                      }
+                      return null;
+                    })()}
+                    {/* #endregion */}
                     <input
                       type="checkbox"
                       checked={selectedIds.has(job.id)}
