@@ -11,8 +11,9 @@ import {
   ArrowPathIcon,
 } from "@heroicons/react/24/outline"
 
-// Component version marker for debugging
-const COMPONENT_VERSION = "v2.0-with-bulk-actions-2025-12-25"
+// Component version marker for debugging - UPDATE THIS TO BUST CACHE
+const COMPONENT_VERSION = "v2.1-with-bulk-actions-2025-12-25-cache-bust"
+const BUILD_TIMESTAMP = Date.now()
 const IS_PRODUCTION = typeof window !== 'undefined' && window.location.hostname !== 'localhost' && !window.location.hostname.includes('127.0.0.1')
 const BUILD_ENV = process.env.NODE_ENV || 'unknown'
 
@@ -291,7 +292,7 @@ export default function ReviewJobsPage() {
     <div className="p-6 space-y-6">
       {/* #region agent log - Version indicator for deployment verification */}
       <div className="mb-2 px-3 py-1 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded text-xs text-blue-700 dark:text-blue-300" style={{fontFamily:'monospace'}}>
-        Component Version: {COMPONENT_VERSION} | Env: {BUILD_ENV} | Host: {typeof window !== 'undefined' ? window.location.hostname : 'server'} | Production: {IS_PRODUCTION ? 'Yes' : 'No'}
+        Component Version: {COMPONENT_VERSION} | Build: {BUILD_TIMESTAMP} | Env: {BUILD_ENV} | Host: {typeof window !== 'undefined' ? window.location.hostname : 'server'} | Production: {IS_PRODUCTION ? 'Yes' : 'No'}
       </div>
       {/* #endregion */}
       <div className="flex items-center justify-between">
