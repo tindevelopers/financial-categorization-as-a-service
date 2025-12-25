@@ -1,5 +1,6 @@
 import { generateObject } from "ai";
 import { gateway } from "@ai-sdk/gateway";
+import { z } from "zod";
 import type { AICategorizationService, Transaction, CategoryResult } from "./AICategorizationService";
 
 export class VercelAICategorizationService implements AICategorizationService {
@@ -28,39 +29,16 @@ export class VercelAICategorizationService implements AICategorizationService {
 
       const { object } = await generateObject({
         model: this.model,
-        schema: {
-          type: "object",
-          properties: {
-            categorizations: {
-              type: "array",
-              items: {
-                type: "object",
-                properties: {
-                  category: {
-                    type: "string",
-                    description: "The primary category for this transaction",
-                  },
-                  subcategory: {
-                    type: ["string", "null"],
-                    description: "Optional subcategory (can be null if not applicable)",
-                  },
-                  confidenceScore: {
-                    type: "number",
-                    description: "Confidence score from 0.0 to 1.0",
-                    minimum: 0,
-                    maximum: 1,
-                  },
-                  reasoning: {
-                    type: "string",
-                    description: "Brief explanation of why this category was chosen",
-                  },
-                },
-                required: ["category", "confidenceScore"],
-              },
-            },
-          },
-          required: ["categorizations"],
-        },
+        schema: z.object({
+          categorizations: z.array(
+            z.object({
+              category: z.string().describe("The primary category for this transaction"),
+              subcategory: z.string().nullable().optional().describe("Optional subcategory (can be null if not applicable)"),
+              confidenceScore: z.number().min(0).max(1).describe("Confidence score from 0.0 to 1.0"),
+              reasoning: z.string().describe("Brief explanation of why this category was chosen"),
+            })
+          ),
+        }),
         prompt,
         temperature: 0.3, // Lower temperature for more consistent categorization
       });
