@@ -11,10 +11,6 @@ import {
   ArrowPathIcon,
 } from "@heroicons/react/24/outline"
 
-// Force dynamic rendering - prevent static generation/caching
-export const dynamic = 'force-dynamic'
-export const revalidate = 0
-
 // Component version marker for debugging
 const COMPONENT_VERSION = "v2.0-with-bulk-actions-2025-12-25"
 const IS_PRODUCTION = typeof window !== 'undefined' && window.location.hostname !== 'localhost' && !window.location.hostname.includes('127.0.0.1')
