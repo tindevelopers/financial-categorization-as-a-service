@@ -100,30 +100,59 @@ export async function POST(request: NextRequest) {
     fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'upload/route.ts:64',message:'Upload request received',data:{fileName:file.name,fileSize:file.size,fileType:file.type,userId:user.id},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'C'})}).catch(()=>{});
     // #endregion
 
-    // Validate bank_account_id if provided
-    let bankAccountData = null;
-    if (bankAccountId) {
-      const { data: bankAccount, error: bankAccountError } = await supabase
-        .from("bank_accounts")
-        .select("id, default_spreadsheet_id, spreadsheet_tab_name, account_name")
-        .eq("id", bankAccountId)
-        .eq("user_id", user.id)
-        .eq("is_active", true)
-        .single();
+    // Enforce profile/company name
+    const { data: profile } = await supabase
+      .from("company_profiles")
+      .select("id, company_name")
+      .eq("user_id", user.id)
+      .maybeSingle();
 
-      if (bankAccountError || !bankAccount) {
-        return NextResponse.json(
-          { error: "Invalid or inactive bank account" },
-          { status: 400 }
-        );
-      }
-
-      bankAccountData = bankAccount;
+    if (!profile || !profile.company_name) {
+      return NextResponse.json(
+        { error: "PROFILE_INCOMPLETE", error_code: "PROFILE_INCOMPLETE" },
+        { status: 400 }
+      );
     }
 
-    // Determine spreadsheet_id and spreadsheet_tab_id
-    let finalSpreadsheetId = spreadsheetId || bankAccountData?.default_spreadsheet_id || null;
-    let finalSpreadsheetTabId = spreadsheetTabId || bankAccountData?.spreadsheet_tab_name || null;
+    // Require bank_account_id
+    if (!bankAccountId) {
+      return NextResponse.json(
+        { error: "BANK_ACCOUNT_REQUIRED", error_code: "BANK_ACCOUNT_REQUIRED" },
+        { status: 400 }
+      );
+    }
+
+    // Validate bank account and spreadsheet requirement
+    const { data: bankAccount, error: bankAccountError } = await supabase
+      .from("bank_accounts")
+      .select("id, default_spreadsheet_id, spreadsheet_tab_name, account_name, is_active")
+      .eq("id", bankAccountId)
+      .eq("user_id", user.id)
+      .single();
+
+    if (bankAccountError || !bankAccount || !bankAccount.is_active) {
+      return NextResponse.json(
+        { error: "Invalid or inactive bank account", error_code: "BANK_ACCOUNT_INVALID" },
+        { status: 400 }
+      );
+    }
+
+    if (!bankAccount.default_spreadsheet_id) {
+      return NextResponse.json(
+        { error: "SPREADSHEET_REQUIRED", error_code: "SPREADSHEET_REQUIRED" },
+        { status: 400 }
+      );
+    }
+
+    const finalSpreadsheetId = spreadsheetId || bankAccount.default_spreadsheet_id || null;
+    const finalSpreadsheetTabId = spreadsheetTabId || bankAccount.spreadsheet_tab_name || null;
+
+    if (!finalSpreadsheetId) {
+      return NextResponse.json(
+        { error: "SPREADSHEET_REQUIRED", error_code: "SPREADSHEET_REQUIRED" },
+        { status: 400 }
+      );
+    }
 
     // Convert file to buffer and calculate hash
     const fileBuffer = Buffer.from(await file.arrayBuffer());

@@ -57,10 +57,13 @@ export default function SpreadsheetUpload() {
   const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([]);
   const [selectedBankAccountId, setSelectedBankAccountId] = useState<string>("");
   const [loadingBankAccounts, setLoadingBankAccounts] = useState(true);
+  const [profileReady, setProfileReady] = useState(false);
+  const [profileLoading, setProfileLoading] = useState(true);
 
   // Fetch bank accounts on mount
   React.useEffect(() => {
     fetchBankAccounts();
+    fetchProfileStatus();
   }, []);
 
   const fetchBankAccounts = async () => {
@@ -78,6 +81,24 @@ export default function SpreadsheetUpload() {
       console.error("Error fetching bank accounts:", error);
     } finally {
       setLoadingBankAccounts(false);
+    }
+  };
+
+  const fetchProfileStatus = async () => {
+    try {
+      const response = await fetch("/api/company");
+      if (response.ok) {
+        const data = await response.json();
+        const companies = data.companies || [];
+        const hasName = companies.some((c: any) => c.company_name);
+        setProfileReady(hasName);
+      } else {
+        setProfileReady(false);
+      }
+    } catch {
+      setProfileReady(false);
+    } finally {
+      setProfileLoading(false);
     }
   };
 
@@ -122,6 +143,20 @@ export default function SpreadsheetUpload() {
   }, []);
 
   const handleUpload = async (file: File) => {
+    // Gating checks
+    if (!profileReady && !profileLoading) {
+      setUploadState(prev => ({ ...prev, error: "Please complete your profile (individual/company name) before uploading." }));
+      return;
+    }
+    if (!selectedBankAccountId) {
+      setUploadState(prev => ({ ...prev, error: "Please select a bank account before uploading." }));
+      return;
+    }
+    if (selectedBankAccount && !selectedBankAccount.default_spreadsheet_id) {
+      setUploadState(prev => ({ ...prev, error: "Please set a default spreadsheet for this bank account before uploading." }));
+      return;
+    }
+
     setUploadState(prev => ({ ...prev, uploading: true, progress: 0 }));
   const startTime = Date.now();
 
@@ -274,6 +309,18 @@ export default function SpreadsheetUpload() {
 
   const handleForceUpload = async () => {
     if (!pendingFile) return;
+    if (!profileReady && !profileLoading) {
+      setUploadState(prev => ({ ...prev, error: "Please complete your profile (individual/company name) before uploading." }));
+      return;
+    }
+    if (!selectedBankAccountId) {
+      setUploadState(prev => ({ ...prev, error: "Please select a bank account before uploading." }));
+      return;
+    }
+    if (selectedBankAccount && !selectedBankAccount.default_spreadsheet_id) {
+      setUploadState(prev => ({ ...prev, error: "Please set a default spreadsheet for this bank account before uploading." }));
+      return;
+    }
     
     setUploadState(prev => ({ 
       ...prev, 
@@ -520,6 +567,14 @@ export default function SpreadsheetUpload() {
       {/* Bank Account Selection */}
       {!uploadState.uploading && (
         <div className="mb-6">
+          {!profileLoading && !profileReady && (
+            <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-4 mb-3">
+              <p className="text-sm text-yellow-800 dark:text-yellow-200">
+                Please complete your profile (individual/company name) before uploading.
+                <Link href="/dashboard/settings" className="underline ml-1">Go to settings</Link>
+              </p>
+            </div>
+          )}
           <label htmlFor="bank-account" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
             Select Bank Account <span className="text-red-500">*</span>
           </label>

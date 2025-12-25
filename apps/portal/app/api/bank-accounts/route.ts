@@ -90,6 +90,13 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    if (!default_spreadsheet_id) {
+      return NextResponse.json(
+        { error: "default_spreadsheet_id is required", error_code: "SPREADSHEET_REQUIRED" },
+        { status: 400 }
+      );
+    }
+
     // Validate account_type
     const validAccountTypes = ["checking", "savings", "credit_card", "business"];
     if (!validAccountTypes.includes(account_type)) {

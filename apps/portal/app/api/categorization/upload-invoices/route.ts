@@ -30,22 +30,48 @@ export async function POST(request: NextRequest) {
     const fileCount = parseInt(formData.get("fileCount") as string || "0");
     const bankAccountId = formData.get("bank_account_id") as string | null;
 
-    // Validate bank_account_id if provided
-    if (bankAccountId) {
-      const { data: bankAccount, error: bankAccountError } = await supabase
-        .from("bank_accounts")
-        .select("id")
-        .eq("id", bankAccountId)
-        .eq("user_id", user.id)
-        .eq("is_active", true)
-        .single();
+    // Enforce profile/company name
+    const { data: profile } = await supabase
+      .from("company_profiles")
+      .select("id, company_name")
+      .eq("user_id", user.id)
+      .maybeSingle();
 
-      if (bankAccountError || !bankAccount) {
-        return NextResponse.json(
-          { error: "Invalid or inactive bank account" },
-          { status: 400 }
-        );
-      }
+    if (!profile || !profile.company_name) {
+      return NextResponse.json(
+        { error: "PROFILE_INCOMPLETE", error_code: "PROFILE_INCOMPLETE" },
+        { status: 400 }
+      );
+    }
+
+    // Require bank account
+    if (!bankAccountId) {
+      return NextResponse.json(
+        { error: "BANK_ACCOUNT_REQUIRED", error_code: "BANK_ACCOUNT_REQUIRED" },
+        { status: 400 }
+      );
+    }
+
+    // Validate bank account and spreadsheet requirement
+    const { data: bankAccount, error: bankAccountError } = await supabase
+      .from("bank_accounts")
+      .select("id, default_spreadsheet_id, spreadsheet_tab_name, is_active")
+      .eq("id", bankAccountId)
+      .eq("user_id", user.id)
+      .single();
+
+    if (bankAccountError || !bankAccount || !bankAccount.is_active) {
+      return NextResponse.json(
+        { error: "Invalid or inactive bank account", error_code: "BANK_ACCOUNT_INVALID" },
+        { status: 400 }
+      );
+    }
+
+    if (!bankAccount.default_spreadsheet_id) {
+      return NextResponse.json(
+        { error: "SPREADSHEET_REQUIRED", error_code: "SPREADSHEET_REQUIRED" },
+        { status: 400 }
+      );
     }
 
     if (fileCount === 0) {

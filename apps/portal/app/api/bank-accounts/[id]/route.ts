@@ -65,7 +65,15 @@ export async function PATCH(
     if (iban !== undefined) updates.iban = iban;
     if (currency !== undefined) updates.currency = currency;
     if (spreadsheet_tab_name !== undefined) updates.spreadsheet_tab_name = spreadsheet_tab_name;
-    if (default_spreadsheet_id !== undefined) updates.default_spreadsheet_id = default_spreadsheet_id;
+    if (default_spreadsheet_id !== undefined) {
+      if (!default_spreadsheet_id) {
+        return NextResponse.json(
+          { error: "default_spreadsheet_id is required", error_code: "SPREADSHEET_REQUIRED" },
+          { status: 400 }
+        );
+      }
+      updates.default_spreadsheet_id = default_spreadsheet_id;
+    }
     if (is_active !== undefined) updates.is_active = is_active;
 
     // Update bank account

@@ -23,6 +23,14 @@ interface UploadState {
   };
 }
 
+interface BankAccount {
+  id: string;
+  account_name: string;
+  bank_name: string;
+  account_type: string;
+  default_spreadsheet_id: string | null;
+}
+
 export default function InvoiceUpload() {
   const [uploadState, setUploadState] = useState<UploadState>({
     files: [],
@@ -35,9 +43,16 @@ export default function InvoiceUpload() {
       google_drive: false,
     },
   });
+  const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([]);
+  const [selectedBankAccountId, setSelectedBankAccountId] = useState<string>("");
+  const [loadingBankAccounts, setLoadingBankAccounts] = useState(true);
+  const [profileReady, setProfileReady] = useState(false);
+  const [profileLoading, setProfileLoading] = useState(true);
 
   useEffect(() => {
     checkCloudStorageConnections();
+    fetchBankAccounts();
+    fetchProfileStatus();
   }, []);
 
   const checkCloudStorageConnections = async () => {
@@ -55,6 +70,41 @@ export default function InvoiceUpload() {
       }
     } catch (error) {
       // Ignore errors, assume not connected
+    }
+  };
+
+  const fetchBankAccounts = async () => {
+    try {
+      const response = await fetch("/api/bank-accounts");
+      const data = await response.json();
+      if (data.success && data.bank_accounts) {
+        setBankAccounts(data.bank_accounts);
+        if (data.bank_accounts.length === 1) {
+          setSelectedBankAccountId(data.bank_accounts[0].id);
+        }
+      }
+    } catch (error) {
+      console.error("Error fetching bank accounts:", error);
+    } finally {
+      setLoadingBankAccounts(false);
+    }
+  };
+
+  const fetchProfileStatus = async () => {
+    try {
+      const response = await fetch("/api/company");
+      if (response.ok) {
+        const data = await response.json();
+        const companies = data.companies || [];
+        const hasName = companies.some((c: any) => c.company_name);
+        setProfileReady(hasName);
+      } else {
+        setProfileReady(false);
+      }
+    } catch {
+      setProfileReady(false);
+    } finally {
+      setProfileLoading(false);
     }
   };
 
@@ -99,6 +149,22 @@ export default function InvoiceUpload() {
       return;
     }
 
+    if (!profileReady && !profileLoading) {
+      setUploadState(prev => ({ ...prev, error: "Please complete your profile (individual/company name) before uploading." }));
+      return;
+    }
+
+    if (!selectedBankAccountId) {
+      setUploadState(prev => ({ ...prev, error: "Please select a bank account before uploading." }));
+      return;
+    }
+
+    const selectedAccount = bankAccounts.find(acc => acc.id === selectedBankAccountId);
+    if (selectedAccount && !selectedAccount.default_spreadsheet_id) {
+      setUploadState(prev => ({ ...prev, error: "Please set a default spreadsheet for this bank account before uploading." }));
+      return;
+    }
+
     setUploadState(prev => ({ ...prev, uploading: true, progress: 0 }));
 
     try {
@@ -107,6 +173,7 @@ export default function InvoiceUpload() {
         formData.append(`file_${index}`, file);
       });
       formData.append("fileCount", uploadState.files.length.toString());
+      formData.append("bank_account_id", selectedBankAccountId);
 
       const response = await fetch("/api/categorization/upload-invoices", {
         method: "POST",
@@ -212,6 +279,46 @@ export default function InvoiceUpload() {
           </div>
         </div>
       </div>
+
+      {/* Profile and Bank Account requirements */}
+      {!profileLoading && !profileReady && (
+        <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-4">
+          <p className="text-sm text-yellow-800 dark:text-yellow-200">
+            Please complete your profile (individual/company name) before uploading.
+            <a href="/dashboard/settings" className="underline ml-1">Go to settings</a>
+          </p>
+        </div>
+      )}
+
+      {!uploadState.uploading && (
+        <div>
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+            Select Bank Account <span className="text-red-500">*</span>
+          </label>
+          {loadingBankAccounts ? (
+            <div className="animate-pulse bg-gray-200 dark:bg-gray-700 h-10 rounded-lg"></div>
+          ) : bankAccounts.length === 0 ? (
+            <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-4">
+              <p className="text-sm text-yellow-800 dark:text-yellow-200">
+                No bank accounts found. Please <a href="/dashboard/settings/bank-accounts" className="underline">create a bank account</a> first.
+              </p>
+            </div>
+          ) : (
+            <select
+              value={selectedBankAccountId}
+              onChange={(e) => setSelectedBankAccountId(e.target.value)}
+              className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            >
+              <option value="">-- Select Bank Account --</option>
+              {bankAccounts.map(account => (
+                <option key={account.id} value={account.id}>
+                  {account.account_name} ({account.bank_name})
+                </option>
+              ))}
+            </select>
+          )}
+        </div>
+      )}
 
       {/* Upload Area */}
       <div

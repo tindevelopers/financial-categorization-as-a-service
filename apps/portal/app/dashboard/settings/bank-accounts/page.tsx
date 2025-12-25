@@ -161,6 +161,20 @@ export default function BankAccountsPage() {
   const activeAccounts = bankAccounts.filter(acc => acc.is_active)
   const inactiveAccounts = bankAccounts.filter(acc => !acc.is_active)
 
+  const handleResetTenant = async () => {
+    if (!confirm('This will delete all uploads, documents, and transactions for your tenant. Continue?')) return
+    if (!confirm('Final confirmation: delete ALL storage (including archived) for this tenant?')) return
+    try {
+      const res = await fetch('/api/categorization/reset', { method: 'POST' })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Reset failed')
+      alert('Reset completed.')
+      await fetchBankAccounts()
+    } catch (error: any) {
+      alert(`Reset failed: ${error.message}`)
+    }
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -287,10 +301,11 @@ export default function BankAccountsPage() {
               </div>
               <div className="col-span-2">
                 <label className="block text-sm font-medium mb-1">
-                  Default Spreadsheet ID
+                  Default Spreadsheet ID *
                 </label>
                 <input
                   type="text"
+                  required
                   value={formData.default_spreadsheet_id}
                   onChange={(e) => setFormData({ ...formData, default_spreadsheet_id: e.target.value })}
                   className="w-full px-3 py-2 border rounded-lg dark:bg-gray-700 dark:border-gray-600"
@@ -373,6 +388,18 @@ export default function BankAccountsPage() {
               </Button>
             </div>
           )}
+
+          {/* Tenant reset */}
+          <div className="bg-white dark:bg-gray-800 rounded-xl shadow p-6">
+            <h3 className="text-lg font-semibold mb-2">Reset Storage & Documents</h3>
+            <p className="text-sm text-gray-600 dark:text-gray-400 mb-3">
+              Deletes all uploads, documents, transactions, and stored files (including archived) for this tenant.
+            </p>
+            <Button onClick={handleResetTenant} color="red" className="gap-2">
+              <TrashIcon className="h-4 w-4" />
+              Reset Tenant Storage
+            </Button>
+          </div>
         </>
       )}
     </div>
