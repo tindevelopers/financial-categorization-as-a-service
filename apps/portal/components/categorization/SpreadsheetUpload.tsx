@@ -2,7 +2,23 @@
 
 import React, { useState, useCallback } from "react";
 import { useDropzone } from "react-dropzone";
-import { ArrowUpTrayIcon, DocumentIcon, CheckCircleIcon, XCircleIcon } from "@heroicons/react/24/outline";
+import Link from "next/link";
+import { ArrowUpTrayIcon, DocumentIcon, CheckCircleIcon, XCircleIcon, ExclamationTriangleIcon, DocumentDuplicateIcon } from "@heroicons/react/24/outline";
+
+interface DuplicateInfo {
+  existingJobId?: string;
+  existingDocumentId?: string;
+  warnings?: string[];
+  matchType?: 'exact' | 'filename_date' | 'content_similarity';
+  existingFilename?: string;
+  uploadDate?: string;
+}
+
+interface DuplicatePreview {
+  similarityScore: number;
+  matchingCount: number;
+  totalTransactions: number;
+}
 
 interface UploadState {
   file: File | null;
@@ -10,6 +26,10 @@ interface UploadState {
   progress: number;
   error: string | null;
   jobId: string | null;
+  isDuplicate: boolean;
+  duplicateInfo: DuplicateInfo | null;
+  duplicatePreview: DuplicatePreview | null;
+  warnings: string[];
 }
 
 export default function SpreadsheetUpload() {
@@ -19,7 +39,12 @@ export default function SpreadsheetUpload() {
     progress: 0,
     error: null,
     jobId: null,
+    isDuplicate: false,
+    duplicateInfo: null,
+    duplicatePreview: null,
+    warnings: [],
   });
+  const [pendingFile, setPendingFile] = useState<File | null>(null);
 
   const onDrop = useCallback(async (acceptedFiles: File[]) => {
     const file = acceptedFiles[0];
@@ -92,6 +117,14 @@ export default function SpreadsheetUpload() {
             } catch (e) {
               reject(new Error('Invalid response from server'));
             }
+          } else if (xhr.status === 409) {
+            // Duplicate file detected - resolve with special flag
+            try {
+              const data = JSON.parse(xhr.responseText);
+              resolve({ ...data, isDuplicateError: true });
+            } catch (e) {
+              reject(new Error('Duplicate file detected'));
+            }
           } else {
             try {
               const error = JSON.parse(xhr.responseText);
@@ -119,6 +152,24 @@ export default function SpreadsheetUpload() {
     // #region agent log
     fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'SpreadsheetUpload.tsx:75',message:'handleUpload response',data:{status:200,ok:true,durationMs:Date.now()-startTime},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'A'})}).catch(()=>{});
     // #endregion
+
+      // Handle duplicate file detection (409 response)
+      if (data.isDuplicateError) {
+        setPendingFile(file);
+        setUploadState(prev => ({
+          ...prev,
+          uploading: false,
+          progress: 0,
+          isDuplicate: true,
+          duplicateInfo: {
+            existingJobId: data.existingJobId,
+            existingDocumentId: data.existingDocumentId,
+            matchType: 'exact',
+          },
+          error: null,
+        }));
+        return;
+      }
       
       // Set to 100% when done
       setUploadState(prev => ({
@@ -126,6 +177,8 @@ export default function SpreadsheetUpload() {
         uploading: false,
         progress: 100,
         jobId: data.jobId,
+        warnings: data.warnings || [],
+        duplicatePreview: data.duplicatePreview || null,
       }));
 
       // Show success message and redirect to uploads page to see status
@@ -159,6 +212,74 @@ export default function SpreadsheetUpload() {
         error: errorMessage,
       }));
     }
+  };
+
+  const handleForceUpload = async () => {
+    if (!pendingFile) return;
+    
+    setUploadState(prev => ({ 
+      ...prev, 
+      uploading: true, 
+      progress: 0, 
+      isDuplicate: false, 
+      duplicateInfo: null,
+      error: null,
+    }));
+
+    try {
+      const formData = new FormData();
+      formData.append('file', pendingFile);
+      formData.append('force', 'true');
+
+      const response = await fetch('/api/categorization/upload', {
+        method: 'POST',
+        body: formData,
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Upload failed');
+      }
+
+      setUploadState(prev => ({
+        ...prev,
+        uploading: false,
+        progress: 100,
+        jobId: data.jobId,
+        warnings: data.warnings || [],
+        duplicatePreview: data.duplicatePreview || null,
+      }));
+
+      setPendingFile(null);
+
+      if (data.jobId) {
+        setTimeout(() => {
+          window.location.href = `/dashboard/uploads?refresh=${Date.now()}`;
+        }, 1500);
+      }
+    } catch (error: any) {
+      setUploadState(prev => ({
+        ...prev,
+        uploading: false,
+        error: error.message || 'Upload failed',
+      }));
+    }
+  };
+
+  const handleCancelDuplicate = () => {
+    setPendingFile(null);
+    setUploadState({
+      file: null,
+      uploading: false,
+      progress: 0,
+      error: null,
+      jobId: null,
+      isDuplicate: false,
+      duplicateInfo: null,
+      duplicatePreview: null,
+      warnings: [],
+    });
   };
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
@@ -246,6 +367,75 @@ export default function SpreadsheetUpload() {
             <p className="text-sm text-red-600 dark:text-red-300 mt-1">
               {uploadState.error}
             </p>
+          </div>
+        </div>
+      )}
+
+      {/* Duplicate File Detected */}
+      {uploadState.isDuplicate && uploadState.duplicateInfo && (
+        <div className="bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800 rounded-lg p-4">
+          <div className="flex items-start gap-3">
+            <DocumentDuplicateIcon className="h-6 w-6 text-orange-500 flex-shrink-0 mt-0.5" />
+            <div className="flex-1">
+              <p className="text-sm font-medium text-orange-800 dark:text-orange-200">
+                Duplicate File Detected
+              </p>
+              <p className="text-sm text-orange-600 dark:text-orange-300 mt-1">
+                This file has already been uploaded. You can view the existing upload or upload it again.
+              </p>
+              
+              {uploadState.duplicateInfo.existingJobId && (
+                <div className="mt-3 flex flex-wrap gap-3">
+                  <Link
+                    href={`/dashboard/uploads`}
+                    className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg bg-orange-100 dark:bg-orange-900/40 text-orange-800 dark:text-orange-200 hover:bg-orange-200 dark:hover:bg-orange-900/60 transition-colors"
+                  >
+                    <DocumentIcon className="h-4 w-4" />
+                    View Existing File
+                  </Link>
+                  <button
+                    onClick={handleForceUpload}
+                    disabled={uploadState.uploading}
+                    className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  >
+                    {uploadState.uploading ? (
+                      <>
+                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                        Uploading...
+                      </>
+                    ) : (
+                      <>
+                        <ArrowUpTrayIcon className="h-4 w-4" />
+                        Upload Anyway
+                      </>
+                    )}
+                  </button>
+                  <button
+                    onClick={handleCancelDuplicate}
+                    className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Upload Warnings (e.g., duplicate transactions) */}
+      {uploadState.warnings.length > 0 && (
+        <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-4 flex items-start gap-3">
+          <ExclamationTriangleIcon className="h-5 w-5 text-yellow-500 flex-shrink-0 mt-0.5" />
+          <div>
+            <p className="text-sm font-medium text-yellow-800 dark:text-yellow-200">
+              Upload completed with warnings
+            </p>
+            <ul className="text-sm text-yellow-600 dark:text-yellow-300 mt-1 list-disc list-inside">
+              {uploadState.warnings.map((warning, i) => (
+                <li key={i}>{warning}</li>
+              ))}
+            </ul>
           </div>
         </div>
       )}

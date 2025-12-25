@@ -11,7 +11,9 @@ import {
   XCircleIcon,
   ArrowPathIcon,
   ExclamationTriangleIcon,
-  Squares2X2Icon
+  Squares2X2Icon,
+  TableCellsIcon,
+  ArrowTopRightOnSquareIcon
 } from '@heroicons/react/24/outline'
 import Link from 'next/link'
 import { createClient } from '@/core/database/client'
@@ -36,6 +38,15 @@ interface Upload {
   error_code?: string
   error_message?: string
   storage_info?: StorageInfo
+  last_synced_to_sheets_at?: string | null
+}
+
+interface ConnectedSheet {
+  id: string
+  source_id: string
+  source_name: string
+  sheet_name?: string
+  last_sync_at?: string
 }
 
 export default function UploadsPage() {
@@ -46,6 +57,9 @@ export default function UploadsPage() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [bulkDeleting, setBulkDeleting] = useState(false)
   const [resettingStorage, setResettingStorage] = useState(false)
+  const [connectedSheets, setConnectedSheets] = useState<ConnectedSheet[]>([])
+  const [syncingJobId, setSyncingJobId] = useState<string | null>(null)
+  const [retryingJobId, setRetryingJobId] = useState<string | null>(null)
   const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null)
 
   const fetchUploads = async () => {
@@ -82,8 +96,21 @@ export default function UploadsPage() {
     }
   }
 
+  const fetchConnectedSheets = async () => {
+    try {
+      const response = await fetch('/api/sync/google-sheets')
+      if (response.ok) {
+        const data = await response.json()
+        setConnectedSheets(data.connections || [])
+      }
+    } catch (error) {
+      console.error('Error fetching connected sheets:', error)
+    }
+  }
+
   useEffect(() => {
     fetchUploads()
+    fetchConnectedSheets()
 
     // Set up polling for jobs that are still processing
     // Start polling immediately, will be adjusted based on active jobs
@@ -365,6 +392,74 @@ export default function UploadsPage() {
     }
   }
 
+  const handleSyncToSheets = async (jobId: string) => {
+    if (connectedSheets.length === 0) {
+      alert('No Google Sheets connected. Please connect a Google Sheet in Settings > Integrations first.')
+      return
+    }
+
+    // Use the first connected sheet (or could show a picker if multiple)
+    const sheet = connectedSheets[0]
+
+    setSyncingJobId(jobId)
+    try {
+      const response = await fetch('/api/sync/google-sheets', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          spreadsheetId: sheet.source_id,
+          direction: 'push',
+          jobId: jobId,
+        }),
+      })
+
+      const result = await response.json()
+
+      if (!response.ok) {
+        throw new Error(result.error || 'Failed to sync to Google Sheets')
+      }
+
+      // Refresh uploads to show sync status
+      await fetchUploads()
+      
+      alert(`Successfully synced to Google Sheets! ${result.result?.rows_pushed || 0} rows pushed.`)
+    } catch (error: any) {
+      console.error('Error syncing to sheets:', error)
+      alert(`Failed to sync: ${error.message}`)
+    } finally {
+      setSyncingJobId(null)
+    }
+  }
+
+  const openGoogleSheet = (sheetId: string) => {
+    window.open(`https://docs.google.com/spreadsheets/d/${sheetId}`, '_blank')
+  }
+
+  const handleRetry = async (jobId: string) => {
+    setRetryingJobId(jobId)
+    try {
+      const response = await fetch(`/api/categorization/jobs/${jobId}/retry`, {
+        method: 'POST',
+      })
+
+      const result = await response.json()
+
+      if (!response.ok) {
+        throw new Error(result.error || 'Failed to retry job')
+      }
+
+      // Refresh uploads to show updated status
+      await fetchUploads()
+    } catch (error: any) {
+      console.error('Error retrying job:', error)
+      alert(`Failed to retry: ${error.message}`)
+    } finally {
+      setRetryingJobId(null)
+    }
+  }
+
   return (
     <div className="space-y-8">
       {/* Header */}
@@ -569,19 +664,94 @@ export default function UploadsPage() {
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-right text-sm">
                       <div className="flex items-center justify-end gap-2">
-                        {upload.status === 'completed' && (
-                          <Link href={`/review/${upload.id}`}>
-                            <Button color="blue">
-                              View
-                            </Button>
-                          </Link>
+                        {/* Ready for Review - show sync and review buttons */}
+                        {upload.status === 'reviewing' && (
+                          <>
+                            <Link href={`/dashboard/review/${upload.id}`}>
+                              <Button color="zinc" className="gap-1">
+                                <DocumentTextIcon className="h-4 w-4" />
+                                Review
+                              </Button>
+                            </Link>
+                            {connectedSheets.length > 0 ? (
+                              <Button
+                                color="green"
+                                onClick={() => handleSyncToSheets(upload.id)}
+                                disabled={syncingJobId === upload.id}
+                                className="gap-1"
+                              >
+                                {syncingJobId === upload.id ? (
+                                  <>
+                                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                                    Syncing...
+                                  </>
+                                ) : (
+                                  <>
+                                    <TableCellsIcon className="h-4 w-4" />
+                                    Sync to Sheets
+                                  </>
+                                )}
+                              </Button>
+                            ) : (
+                              <Link href="/dashboard/settings">
+                                <Button color="zinc" className="gap-1">
+                                  <TableCellsIcon className="h-4 w-4" />
+                                  Connect Sheets
+                                </Button>
+                              </Link>
+                            )}
+                          </>
                         )}
+                        {/* Completed/Synced - show view options */}
+                        {upload.status === 'completed' && (
+                          <>
+                            <Link href={`/dashboard/review/${upload.id}`}>
+                              <Button color="blue" className="gap-1">
+                                <DocumentTextIcon className="h-4 w-4" />
+                                View
+                              </Button>
+                            </Link>
+                            {connectedSheets.length > 0 && (
+                              <Button
+                                color="zinc"
+                                onClick={() => openGoogleSheet(connectedSheets[0].source_id)}
+                                className="gap-1"
+                              >
+                                <ArrowTopRightOnSquareIcon className="h-4 w-4" />
+                                Open Sheet
+                              </Button>
+                            )}
+                          </>
+                        )}
+                        {/* Processing states */}
                         {['received', 'queued', 'processing'].includes(upload.status) && (
                           <span className="inline-flex items-center gap-1 text-blue-600 dark:text-blue-400">
                             <ClockIcon className="h-4 w-4" />
                             {upload.status === 'processing' ? 'Processing...' : 'Waiting...'}
                           </span>
                         )}
+                        {/* Failed - show retry button */}
+                        {upload.status === 'failed' && (
+                          <Button
+                            color="amber"
+                            onClick={() => handleRetry(upload.id)}
+                            disabled={retryingJobId === upload.id}
+                            className="gap-1"
+                          >
+                            {retryingJobId === upload.id ? (
+                              <>
+                                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                                Retrying...
+                              </>
+                            ) : (
+                              <>
+                                <ArrowPathIcon className="h-4 w-4" />
+                                Retry
+                              </>
+                            )}
+                          </Button>
+                        )}
+                        {/* Delete button always available */}
                         <Button
                           color="red"
                           onClick={() => handleDelete(upload.id)}

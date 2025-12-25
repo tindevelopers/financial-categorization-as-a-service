@@ -4,6 +4,7 @@ import { createClient } from "@/lib/database/server";
 import { createAdminClient } from "@tinadmin/core/database/admin-client";
 import { processSpreadsheetFile } from "@/lib/categorization/process-spreadsheet";
 import { createJobErrorResponse, mapErrorToCode } from "@/lib/errors/job-errors";
+import { createGoogleSheetsSyncService } from "@/lib/sync/GoogleSheetsSyncService";
 
 /**
  * POST /api/background/process-spreadsheet
@@ -162,6 +163,60 @@ async function processSpreadsheet(jobId: string, userId: string, supabase: any) 
         completed_at: new Date().toISOString(),
       })
       .eq("id", jobId);
+
+    // Check for auto-sync enabled sheets and sync if configured
+    try {
+      const { data: autoSyncSheets } = await supabase
+        .from("sync_metadata")
+        .select("source_id, source_name")
+        .eq("user_id", userId)
+        .eq("source_type", "google_sheets")
+        .eq("auto_sync_enabled", true)
+        .eq("sync_status", "active");
+
+      if (autoSyncSheets && autoSyncSheets.length > 0) {
+        console.log(`Auto-syncing to ${autoSyncSheets.length} Google Sheet(s)...`);
+        
+        const syncService = createGoogleSheetsSyncService(supabase);
+        
+        for (const sheet of autoSyncSheets) {
+          try {
+            const syncResult = await syncService.pushToSheets(sheet.source_id, userId, {
+              jobId,
+              mode: "append",
+            });
+            
+            console.log(`Auto-sync to ${sheet.source_name || sheet.source_id}: ${syncResult.rowsPushed} rows pushed`);
+            
+            // Update sync metadata
+            await supabase
+              .from("sync_metadata")
+              .update({
+                last_sync_at: new Date().toISOString(),
+                last_sync_direction: "push",
+              })
+              .eq("source_id", sheet.source_id)
+              .eq("user_id", userId);
+          } catch (syncError: any) {
+            console.error(`Failed to auto-sync to ${sheet.source_name || sheet.source_id}:`, syncError);
+            // Don't fail the job if auto-sync fails
+          }
+        }
+
+        // Update job status to show it was synced
+        await adminClient
+          .from("categorization_jobs")
+          .update({
+            status_message: result.skippedCount && result.skippedCount > 0
+              ? `Processing complete. ${result.insertedCount || 0} new transactions added, ${result.skippedCount} duplicates skipped. Auto-synced to Google Sheets.`
+              : "Processing complete. Auto-synced to Google Sheets.",
+          })
+          .eq("id", jobId);
+      }
+    } catch (autoSyncError) {
+      console.error("Auto-sync check failed:", autoSyncError);
+      // Don't fail the job if auto-sync fails
+    }
   } catch (error: any) {
     console.error("Process spreadsheet error:", error);
     
