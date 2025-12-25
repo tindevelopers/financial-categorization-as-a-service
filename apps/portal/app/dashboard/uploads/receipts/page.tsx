@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { createClient } from '@/core/database/client'
+import { createBrowserClient } from '@supabase/ssr'
 import { Heading, Text, Button } from '@/components/catalyst'
 import Link from 'next/link'
 import { ChevronLeftIcon, DocumentIcon, ArrowUpTrayIcon } from '@heroicons/react/24/outline'
@@ -16,7 +16,10 @@ export default function ReceiptsUploadPage() {
 
   useEffect(() => {
     async function checkAuth() {
-      const supabase = createClient()
+      const supabase = createBrowserClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+      )
       const {
         data: { user },
       } = await supabase.auth.getUser()
@@ -34,7 +37,10 @@ export default function ReceiptsUploadPage() {
     setUploading(true)
 
     try {
-      const supabase = createClient()
+      const supabase = createBrowserClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+      )
       const {
         data: { user },
       } = await supabase.auth.getUser()

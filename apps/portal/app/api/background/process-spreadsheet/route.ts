@@ -4,7 +4,8 @@ import { createClient } from "@/lib/database/server";
 import { createAdminClient } from "@tinadmin/core/database/admin-client";
 import { processSpreadsheetFile } from "@/lib/categorization/process-spreadsheet";
 import { createJobErrorResponse, mapErrorToCode } from "@/lib/errors/job-errors";
-import { createGoogleSheetsSyncService } from "@/lib/sync/GoogleSheetsSyncService";
+// TODO: Re-enable when GoogleSheetsSyncService is available in portal app
+// import { createGoogleSheetsSyncService } from "@/lib/sync/GoogleSheetsSyncService";
 
 /**
  * POST /api/background/process-spreadsheet

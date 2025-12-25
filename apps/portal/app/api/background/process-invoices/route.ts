@@ -274,7 +274,7 @@ async function convertInvoiceToTransactions(
         category: null,
         subcategory: null,
         confidence_score: 0.5,
-        bank_account_id: bankAccountId,,
+        bank_account_id: bankAccountId,
         user_confirmed: false,
       });
     }
