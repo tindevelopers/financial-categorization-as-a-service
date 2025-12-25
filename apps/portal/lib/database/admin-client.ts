@@ -25,7 +25,7 @@ export function createAdminClient() {
     throw new Error("NEXT_PUBLIC_SUPABASE_URL is not set");
   }
 
-  return createClient<Database>(
+  return createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL,
     serviceRoleKey,
     {
