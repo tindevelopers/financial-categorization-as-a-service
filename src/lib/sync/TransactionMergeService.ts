@@ -33,6 +33,8 @@ export interface MergeOptions {
   forceMerge?: boolean;
   /** Skip duplicate detection entirely */
   skipDuplicateCheck?: boolean;
+  /** Bank account ID to associate transactions with */
+  bankAccountId?: string | null;
 }
 
 export class TransactionMergeService {
@@ -218,6 +220,7 @@ export class TransactionMergeService {
         source_type: options.sourceType,
         source_identifier: options.sourceIdentifier || null,
         sync_version: 1,
+        bank_account_id: options.bankAccountId || null,
       };
     });
 

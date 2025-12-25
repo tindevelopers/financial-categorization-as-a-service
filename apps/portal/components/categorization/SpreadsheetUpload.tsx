@@ -32,6 +32,15 @@ interface UploadState {
   warnings: string[];
 }
 
+interface BankAccount {
+  id: string;
+  account_name: string;
+  account_type: string;
+  bank_name: string;
+  default_spreadsheet_id: string | null;
+  spreadsheet_tab_name: string | null;
+}
+
 export default function SpreadsheetUpload() {
   const [uploadState, setUploadState] = useState<UploadState>({
     file: null,
@@ -45,6 +54,34 @@ export default function SpreadsheetUpload() {
     warnings: [],
   });
   const [pendingFile, setPendingFile] = useState<File | null>(null);
+  const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([]);
+  const [selectedBankAccountId, setSelectedBankAccountId] = useState<string>("");
+  const [loadingBankAccounts, setLoadingBankAccounts] = useState(true);
+
+  // Fetch bank accounts on mount
+  React.useEffect(() => {
+    fetchBankAccounts();
+  }, []);
+
+  const fetchBankAccounts = async () => {
+    try {
+      const response = await fetch("/api/bank-accounts");
+      const data = await response.json();
+      if (data.success && data.bank_accounts) {
+        setBankAccounts(data.bank_accounts);
+        // Auto-select first account if only one exists
+        if (data.bank_accounts.length === 1) {
+          setSelectedBankAccountId(data.bank_accounts[0].id);
+        }
+      }
+    } catch (error) {
+      console.error("Error fetching bank accounts:", error);
+    } finally {
+      setLoadingBankAccounts(false);
+    }
+  };
+
+  const selectedBankAccount = bankAccounts.find(acc => acc.id === selectedBankAccountId);
 
   const onDrop = useCallback(async (acceptedFiles: File[]) => {
     const file = acceptedFiles[0];
@@ -93,8 +130,29 @@ export default function SpreadsheetUpload() {
   // #endregion
 
     try {
+      // Validate bank account selection
+      if (!selectedBankAccountId) {
+        setUploadState(prev => ({
+          ...prev,
+          uploading: false,
+          error: 'Please select a bank account before uploading',
+        }));
+        return;
+      }
+
       const formData = new FormData();
       formData.append('file', file);
+      formData.append('bank_account_id', selectedBankAccountId);
+      
+      // Add spreadsheet_id and spreadsheet_tab_id if bank account has defaults
+      if (selectedBankAccount) {
+        if (selectedBankAccount.default_spreadsheet_id) {
+          formData.append('spreadsheet_id', selectedBankAccount.default_spreadsheet_id);
+        }
+        if (selectedBankAccount.spreadsheet_tab_name) {
+          formData.append('spreadsheet_tab_id', selectedBankAccount.spreadsheet_tab_name);
+        }
+      }
 
       // Create XMLHttpRequest for progress tracking
       const xhr = new XMLHttpRequest();
@@ -227,9 +285,28 @@ export default function SpreadsheetUpload() {
     }));
 
     try {
+      if (!selectedBankAccountId) {
+        setUploadState(prev => ({
+          ...prev,
+          uploading: false,
+          error: 'Please select a bank account before uploading',
+        }));
+        return;
+      }
+
       const formData = new FormData();
       formData.append('file', pendingFile);
       formData.append('force', 'true');
+      formData.append('bank_account_id', selectedBankAccountId);
+      
+      if (selectedBankAccount) {
+        if (selectedBankAccount.default_spreadsheet_id) {
+          formData.append('spreadsheet_id', selectedBankAccount.default_spreadsheet_id);
+        }
+        if (selectedBankAccount.spreadsheet_tab_name) {
+          formData.append('spreadsheet_tab_id', selectedBankAccount.spreadsheet_tab_name);
+        }
+      }
 
       const response = await fetch('/api/categorization/upload', {
         method: 'POST',
@@ -437,6 +514,47 @@ export default function SpreadsheetUpload() {
               ))}
             </ul>
           </div>
+        </div>
+      )}
+
+      {/* Bank Account Selection */}
+      {!uploadState.uploading && (
+        <div className="mb-6">
+          <label htmlFor="bank-account" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+            Select Bank Account <span className="text-red-500">*</span>
+          </label>
+          {loadingBankAccounts ? (
+            <div className="animate-pulse bg-gray-200 dark:bg-gray-700 h-10 rounded-lg"></div>
+          ) : bankAccounts.length === 0 ? (
+            <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-4">
+              <p className="text-sm text-yellow-800 dark:text-yellow-200">
+                No bank accounts found. Please <Link href="/dashboard/settings/bank-accounts" className="underline">create a bank account</Link> first.
+              </p>
+            </div>
+          ) : (
+            <>
+              <select
+                id="bank-account"
+                value={selectedBankAccountId}
+                onChange={(e) => setSelectedBankAccountId(e.target.value)}
+                className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                required
+              >
+                <option value="">-- Select Bank Account --</option>
+                {bankAccounts.map((account) => (
+                  <option key={account.id} value={account.id}>
+                    {account.account_name} ({account.bank_name}) - {account.account_type}
+                  </option>
+                ))}
+              </select>
+              {selectedBankAccount && selectedBankAccount.default_spreadsheet_id && (
+                <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">
+                  Will sync to spreadsheet: {selectedBankAccount.default_spreadsheet_id}
+                  {selectedBankAccount.spreadsheet_tab_name && ` (Tab: ${selectedBankAccount.spreadsheet_tab_name})`}
+                </p>
+              )}
+            </>
+          )}
         </div>
       )}
 

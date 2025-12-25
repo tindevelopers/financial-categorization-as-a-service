@@ -147,7 +147,7 @@ export async function POST(request: NextRequest) {
           .eq("id", doc.id);
 
         // Convert invoice to transactions
-        const transactions = invoiceToTransactions(invoiceData, jobId);
+        const transactions = await invoiceToTransactions(invoiceData, jobId, supabase);
 
         // Insert transactions
         if (transactions.length > 0) {
@@ -206,35 +206,49 @@ export async function POST(request: NextRequest) {
 }
 
 
-function invoiceToTransactions(invoiceData: InvoiceData, jobId: string): any[] {
+async function invoiceToTransactions(
+  invoiceData: InvoiceData, 
+  jobId: string,
+  supabase: any
+): Promise<any[]> {
+  // Get bank_account_id from job
+  const { data: jobData } = await supabase
+    .from("categorization_jobs")
+    .select("bank_account_id")
+    .eq("id", jobId)
+    .single();
+
+  const bankAccountId = jobData?.bank_account_id || null;
   const transactions: any[] = [];
 
   // If we have line items, create a transaction for each
   if (invoiceData.line_items && invoiceData.line_items.length > 0) {
     for (const item of invoiceData.line_items) {
-      transactions.push({
-        job_id: jobId,
-        original_description: `${invoiceData.vendor_name || "Vendor"} - ${item.description}`,
-        amount: item.total,
-        date: invoiceData.invoice_date || new Date().toISOString().split("T")[0],
-        category: null,
-        subcategory: null,
-        confidence_score: 0.5,
-        user_confirmed: false,
-      });
+        transactions.push({
+          job_id: jobId,
+          original_description: `${invoiceData.vendor_name || "Vendor"} - ${item.description}`,
+          amount: item.total,
+          date: invoiceData.invoice_date || new Date().toISOString().split("T")[0],
+          category: null,
+          subcategory: null,
+          confidence_score: 0.5,
+          user_confirmed: false,
+          bank_account_id: bankAccountId,
+        });
     }
   } else if (invoiceData.total) {
     // Single transaction for entire invoice
-    transactions.push({
-      job_id: jobId,
-      original_description: invoiceData.vendor_name || "Invoice",
-      amount: invoiceData.total,
-      date: invoiceData.invoice_date || new Date().toISOString().split("T")[0],
-      category: null,
-      subcategory: null,
-      confidence_score: 0.5,
-      user_confirmed: false,
-    });
+        transactions.push({
+          job_id: jobId,
+          original_description: invoiceData.vendor_name || "Invoice",
+          amount: invoiceData.total,
+          date: invoiceData.invoice_date || new Date().toISOString().split("T")[0],
+          category: null,
+          subcategory: null,
+          confidence_score: 0.5,
+          user_confirmed: false,
+          bank_account_id: bankAccountId,
+        });
   }
 
   return transactions;

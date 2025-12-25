@@ -1,16 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/database/server";
-import { createAdminClient } from "@tinadmin/core/database/admin-client";
+import { deleteFromSupabase } from "@/lib/storage/supabase-storage";
+import { deleteFromGCS } from "@/lib/storage/gcs-archive";
 
-/**
- * GET /api/categorization/jobs/[jobId]
- * Get job details including status, error codes, and progress
- */
-export async function GET(
+export async function DELETE(
   request: NextRequest,
-  { params }: { params: { jobId: string } }
+  { params }: { params: Promise<{ jobId: string }> }
 ) {
   try {
+    const { jobId } = await params;
     const supabase = await createClient();
     const { data: { user }, error: authError } = await supabase.auth.getUser();
 
@@ -20,30 +18,11 @@ export async function GET(
         { status: 401 }
       );
     }
-
-    const { jobId } = params;
 
     // Get job details
     const { data: job, error: jobError } = await supabase
       .from("categorization_jobs")
-      .select(`
-        id,
-        job_type,
-        status,
-        status_message,
-        processing_mode,
-        original_filename,
-        file_url,
-        cloud_storage_provider,
-        total_items,
-        processed_items,
-        failed_items,
-        error_code,
-        error_message,
-        created_at,
-        started_at,
-        completed_at
-      `)
+      .select("id, user_id, file_url, status")
       .eq("id", jobId)
       .eq("user_id", user.id)
       .single();
@@ -55,172 +34,102 @@ export async function GET(
       );
     }
 
-    return NextResponse.json({
-      success: true,
-      job,
-    });
-  } catch (error: any) {
-    console.error("Get job error:", error);
-    return NextResponse.json(
-      { error: error.message || "Internal server error" },
-      { status: 500 }
-    );
-  }
-}
-
-/**
- * DELETE /api/categorization/jobs/[jobId]
- * Delete a categorization job and all associated data
- */
-export async function DELETE(
-  request: NextRequest,
-  { params }: { params: { jobId: string } }
-) {
-  try {
-    const supabase = await createClient();
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-
-    if (authError || !user) {
-      return NextResponse.json(
-        { error: "Unauthorized" },
-        { status: 401 }
-      );
-    }
-
-    const { jobId } = params;
-
-    // Verify job exists and belongs to user
-    const { data: job, error: jobError } = await supabase
-      .from("categorization_jobs")
-      .select("id, user_id, file_url")
-      .eq("id", jobId)
-      .eq("user_id", user.id)
-      .single();
-
-    if (jobError || !job) {
-      return NextResponse.json(
-        { error: "Job not found" },
-        { status: 404 }
-      );
-    }
-
-    // Get associated financial_documents to find storage paths
+    // Get associated financial_documents
     const { data: documents } = await supabase
       .from("financial_documents")
-      .select("id, supabase_path, storage_tier, gcs_archive_path")
+      .select("id, supabase_path, storage_tier, gcs_archive_path, matched_transaction_id")
       .eq("job_id", jobId);
 
-    // Delete all associated categorized_transactions
-    // Using admin client to ensure deletion works even with RLS
-    try {
-      const adminClient = createAdminClient();
-      const { error: transactionsError } = await adminClient
-        .from("categorized_transactions")
-        .delete()
-        .eq("job_id", jobId);
-
-      if (transactionsError) {
-        console.error("Error deleting transactions:", transactionsError);
-        // Continue with deletion even if transactions fail
-      }
-    } catch (adminError) {
-      console.error("Admin client error deleting transactions:", adminError);
-      // Fallback to regular client
-      const { error: transactionsError } = await supabase
-        .from("categorized_transactions")
-        .delete()
-        .eq("job_id", jobId);
-
-      if (transactionsError) {
-        console.error("Error deleting transactions:", transactionsError);
-      }
-    }
-
-    // Delete files from storage
+    // Unmatch any reconciled transactions/documents
     if (documents && documents.length > 0) {
       for (const doc of documents) {
-        // Delete from Supabase Storage if in hot storage
-        if (doc.storage_tier === "hot" && doc.supabase_path) {
-          const { error: storageError } = await supabase.storage
-            .from("categorization-uploads")
-            .remove([doc.supabase_path]);
+        if (doc.matched_transaction_id) {
+          // Unmatch transaction
+          await supabase
+            .from("categorized_transactions")
+            .update({
+              reconciliation_status: "unreconciled",
+              matched_document_id: null,
+            })
+            .eq("id", doc.matched_transaction_id);
 
-          if (storageError) {
-            console.error("Error deleting file from storage:", storageError);
-            // Continue with deletion even if storage deletion fails
-          }
-        }
-        // Note: Archived files in GCS would need separate handling
-        // For now, we'll just delete the database records
-      }
-
-      // Delete financial_documents records
-      try {
-        const adminClient = createAdminClient();
-        const { error: docsError } = await adminClient
-          .from("financial_documents")
-          .delete()
-          .eq("job_id", jobId);
-
-        if (docsError) {
-          console.error("Error deleting financial_documents:", docsError);
-        }
-      } catch (adminError) {
-        console.error("Admin client error deleting documents:", adminError);
-        // Fallback to regular client
-        const { error: docsError } = await supabase
-          .from("financial_documents")
-          .delete()
-          .eq("job_id", jobId);
-
-        if (docsError) {
-          console.error("Error deleting financial_documents:", docsError);
+          // Unmatch document
+          await supabase
+            .from("financial_documents")
+            .update({
+              matched_transaction_id: null,
+            })
+            .eq("id", doc.id);
         }
       }
     }
 
-    // Delete the categorization_jobs record
-    try {
-      const adminClient = createAdminClient();
-      const { error: deleteError } = await adminClient
-        .from("categorization_jobs")
-        .delete()
-        .eq("id", jobId);
+    // Soft delete transactions (mark as deleted or actually delete)
+    await supabase
+      .from("categorized_transactions")
+      .delete()
+      .eq("job_id", jobId);
 
-      if (deleteError) {
-        console.error("Error deleting job:", deleteError);
-        return NextResponse.json(
-          { error: "Failed to delete job" },
-          { status: 500 }
-        );
-      }
-    } catch (adminError) {
-      console.error("Admin client error deleting job:", adminError);
-      // Fallback to regular client
-      const { error: deleteError } = await supabase
-        .from("categorization_jobs")
-        .delete()
-        .eq("id", jobId);
+    // Soft delete financial_documents
+    if (documents && documents.length > 0) {
+      for (const doc of documents) {
+        // Delete from storage if in hot tier
+        if (doc.storage_tier === "hot" && doc.supabase_path) {
+          await deleteFromSupabase(supabase, doc.supabase_path);
+        }
 
-      if (deleteError) {
-        console.error("Error deleting job:", deleteError);
-        return NextResponse.json(
-          { error: "Failed to delete job" },
-          { status: 500 }
-        );
+        // Delete from archive if archived
+        if (doc.storage_tier === "archive" && doc.gcs_archive_path) {
+          await deleteFromGCS(doc.gcs_archive_path);
+        }
+
+        // Soft delete document record
+        await supabase
+          .from("financial_documents")
+          .update({
+            is_deleted: true,
+            deleted_at: new Date().toISOString(),
+          })
+          .eq("id", doc.id);
       }
+    }
+
+    // Delete file from storage if job has file_url
+    if (job.file_url) {
+      try {
+        const fileName = job.file_url.split("/").pop() || "";
+        const filePath = `${user.id}/${fileName.split("-").slice(1).join("-")}`;
+        await deleteFromSupabase(supabase, filePath);
+      } catch (storageError) {
+        console.error("Error deleting file from storage:", storageError);
+        // Continue with deletion even if storage deletion fails
+      }
+    }
+
+    // Soft delete categorization_job (or hard delete - your choice)
+    // For now, we'll hard delete since transactions are also deleted
+    const { error: deleteError } = await supabase
+      .from("categorization_jobs")
+      .delete()
+      .eq("id", jobId);
+
+    if (deleteError) {
+      console.error("Error deleting job:", deleteError);
+      return NextResponse.json(
+        { error: "Failed to delete job" },
+        { status: 500 }
+      );
     }
 
     return NextResponse.json({
       success: true,
-      message: "Job and all associated data deleted successfully",
+      message: "Upload and associated data deleted successfully",
     });
   } catch (error: any) {
-    console.error("Delete error:", error);
+    console.error("Delete job error:", error);
     return NextResponse.json(
       { error: error.message || "Internal server error" },
       { status: 500 }
     );
   }
 }
-

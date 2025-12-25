@@ -39,6 +39,15 @@ interface Upload {
   error_message?: string
   storage_info?: StorageInfo
   last_synced_to_sheets_at?: string | null
+  bank_account_id?: string | null
+  spreadsheet_id?: string | null
+  spreadsheet_tab_id?: string | null
+  bank_account?: {
+    id: string
+    account_name: string
+    bank_name: string
+    account_type: string
+  } | null
 }
 
 interface ConnectedSheet {
@@ -565,6 +574,12 @@ export default function UploadsPage() {
                     Size
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                    Bank Account
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                    Spreadsheet
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                     Uploaded
                   </th>
                   <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
@@ -658,6 +673,36 @@ export default function UploadsPage() {
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
                       {formatFileSize(upload.storage_info?.total_size_bytes)}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
+                      {upload.bank_account ? (
+                        <div>
+                          <div className="font-medium text-gray-900 dark:text-white">
+                            {upload.bank_account.account_name}
+                          </div>
+                          <div className="text-xs text-gray-500 dark:text-gray-400">
+                            {upload.bank_account.bank_name}
+                          </div>
+                        </div>
+                      ) : (
+                        <span className="text-gray-400">—</span>
+                      )}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
+                      {upload.spreadsheet_id ? (
+                        <div>
+                          <div className="font-medium text-gray-900 dark:text-white">
+                            {upload.spreadsheet_id.substring(0, 20)}...
+                          </div>
+                          {upload.spreadsheet_tab_id && (
+                            <div className="text-xs text-gray-500 dark:text-gray-400">
+                              Tab: {upload.spreadsheet_tab_id}
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <span className="text-gray-400">—</span>
+                      )}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
                       {formatDate(upload.created_at)}

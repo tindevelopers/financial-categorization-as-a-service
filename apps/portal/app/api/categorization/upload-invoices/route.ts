@@ -28,6 +28,25 @@ export async function POST(request: NextRequest) {
 
     const formData = await request.formData();
     const fileCount = parseInt(formData.get("fileCount") as string || "0");
+    const bankAccountId = formData.get("bank_account_id") as string | null;
+
+    // Validate bank_account_id if provided
+    if (bankAccountId) {
+      const { data: bankAccount, error: bankAccountError } = await supabase
+        .from("bank_accounts")
+        .select("id")
+        .eq("id", bankAccountId)
+        .eq("user_id", user.id)
+        .eq("is_active", true)
+        .single();
+
+      if (bankAccountError || !bankAccount) {
+        return NextResponse.json(
+          { error: "Invalid or inactive bank account" },
+          { status: 400 }
+        );
+      }
+    }
 
     if (fileCount === 0) {
       const errorResponse = createJobErrorResponse("INVALID_FILE_TYPE", "No files provided");
@@ -174,6 +193,7 @@ export async function POST(request: NextRequest) {
       storage_tier: "hot",
       supabase_path: fileName,
       ocr_status: "pending",
+      bank_account_id: bankAccountId || null,
     }));
 
     const { error: docError } = await supabase

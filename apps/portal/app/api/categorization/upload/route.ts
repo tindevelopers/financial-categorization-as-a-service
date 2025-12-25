@@ -50,6 +50,9 @@ export async function POST(request: NextRequest) {
 
     const formData = await request.formData();
     const file = formData.get("file") as File;
+    const bankAccountId = formData.get("bank_account_id") as string | null;
+    const spreadsheetId = formData.get("spreadsheet_id") as string | null;
+    const spreadsheetTabId = formData.get("spreadsheet_tab_id") as string | null;
 
     if (!file) {
       const errorResponse = createJobErrorResponse("INVALID_FILE_TYPE", "No file provided");
@@ -93,9 +96,34 @@ export async function POST(request: NextRequest) {
       );
     }
 
-  // #region agent log
-  fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'upload/route.ts:64',message:'Upload request received',data:{fileName:file.name,fileSize:file.size,fileType:file.type,userId:user.id},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'C'})}).catch(()=>{});
-  // #endregion
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'upload/route.ts:64',message:'Upload request received',data:{fileName:file.name,fileSize:file.size,fileType:file.type,userId:user.id},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'C'})}).catch(()=>{});
+    // #endregion
+
+    // Validate bank_account_id if provided
+    let bankAccountData = null;
+    if (bankAccountId) {
+      const { data: bankAccount, error: bankAccountError } = await supabase
+        .from("bank_accounts")
+        .select("id, default_spreadsheet_id, spreadsheet_tab_name, account_name")
+        .eq("id", bankAccountId)
+        .eq("user_id", user.id)
+        .eq("is_active", true)
+        .single();
+
+      if (bankAccountError || !bankAccount) {
+        return NextResponse.json(
+          { error: "Invalid or inactive bank account" },
+          { status: 400 }
+        );
+      }
+
+      bankAccountData = bankAccount;
+    }
+
+    // Determine spreadsheet_id and spreadsheet_tab_id
+    let finalSpreadsheetId = spreadsheetId || bankAccountData?.default_spreadsheet_id || null;
+    let finalSpreadsheetTabId = spreadsheetTabId || bankAccountData?.spreadsheet_tab_name || null;
 
     // Convert file to buffer and calculate hash
     const fileBuffer = Buffer.from(await file.arrayBuffer());
@@ -288,6 +316,9 @@ export async function POST(request: NextRequest) {
           extracted_date_start: parsedFilename.dateStart?.toISOString().split('T')[0] || null,
           extracted_date_end: parsedFilename.dateEnd?.toISOString().split('T')[0] || null,
           is_duplicate: !!filenameDuplicateInfo,
+          bank_account_id: bankAccountId || null,
+          spreadsheet_id: finalSpreadsheetId,
+          spreadsheet_tab_id: finalSpreadsheetTabId,
         })
         .select()
         .single();
@@ -313,6 +344,9 @@ export async function POST(request: NextRequest) {
           extracted_date_start: parsedFilename.dateStart?.toISOString().split('T')[0] || null,
           extracted_date_end: parsedFilename.dateEnd?.toISOString().split('T')[0] || null,
           is_duplicate: !!filenameDuplicateInfo,
+          bank_account_id: bankAccountId || null,
+          spreadsheet_id: finalSpreadsheetId,
+          spreadsheet_tab_id: finalSpreadsheetTabId,
         })
         .select()
         .single();
@@ -358,6 +392,7 @@ export async function POST(request: NextRequest) {
         storage_tier: "hot", // Start in hot storage (Supabase)
         supabase_path: fileName,
         ocr_status: "pending",
+        bank_account_id: bankAccountId || null,
       });
 
     if (docError) {

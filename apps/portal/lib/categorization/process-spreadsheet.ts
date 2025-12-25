@@ -305,6 +305,15 @@ export async function processSpreadsheetFile(
       .eq("id", userId)
       .single();
 
+    // Get bank_account_id from job
+    const { data: jobData } = await supabase
+      .from("categorization_jobs")
+      .select("bank_account_id")
+      .eq("id", jobId)
+      .single();
+
+    const bankAccountId = jobData?.bank_account_id || null;
+
     // Parse spreadsheet
     const workbook = XLSX.read(fileBuffer, { type: "array" });
     const sheetName = workbook.SheetNames[0];
@@ -357,6 +366,7 @@ export async function processSpreadsheetFile(
       jobId: jobId,
       createJob: false,
       skipDuplicateCheck: false,
+      bankAccountId: bankAccountId,
     });
 
     // Update job with item counts
