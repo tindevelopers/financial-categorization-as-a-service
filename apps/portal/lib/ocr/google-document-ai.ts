@@ -1,13 +1,6 @@
 // Optional import - Google Cloud Document AI SDK
 // Only used if @google-cloud/documentai is installed
-let DocumentProcessorServiceClient: any = null;
-try {
-  const docaiModule = require("@google-cloud/documentai");
-  DocumentProcessorServiceClient = docaiModule.DocumentProcessorServiceClient;
-} catch (e) {
-  // SDK not installed - will use fallback methods
-  console.log("[DocumentAI] SDK not available, using fallback methods");
-}
+// Using dynamic import to handle optional dependency
 
 const PROJECT_ID = process.env.GOOGLE_CLOUD_PROJECT_ID;
 const LOCATION = process.env.GOOGLE_CLOUD_LOCATION || "us";
@@ -36,12 +29,19 @@ export async function processInvoiceOCR(
   filename: string
 ): Promise<InvoiceData> {
   if (!PROJECT_ID || !PROCESSOR_ID) {
-    throw new Error("Google Document AI not configured");
+    // Return basic structure if Document AI not configured
+    return {
+      extracted_text: "",
+      confidence_score: 0,
+    };
   }
 
-  const client = new DocumentProcessorServiceClient({
-    keyFilename: process.env.GOOGLE_APPLICATION_CREDENTIALS,
-  });
+  // Try to use Document AI SDK if available
+  try {
+    const { DocumentProcessorServiceClient } = await import("@google-cloud/documentai");
+    const client = new DocumentProcessorServiceClient({
+      keyFilename: process.env.GOOGLE_APPLICATION_CREDENTIALS,
+    });
 
   const processorName = `projects/${PROJECT_ID}/locations/${LOCATION}/processors/${PROCESSOR_ID}`;
 
@@ -69,10 +69,18 @@ export async function processInvoiceOCR(
     throw new Error("No document returned from OCR");
   }
 
-  // Parse invoice data
-  const invoiceData = parseInvoiceData(document);
+    // Parse invoice data
+    const invoiceData = parseInvoiceData(document);
 
-  return invoiceData;
+    return invoiceData;
+  } catch (error: any) {
+    // SDK not available or error - return basic structure
+    console.log("[DocumentAI] SDK not available or error:", error?.message || "Unknown error");
+    return {
+      extracted_text: "",
+      confidence_score: 0,
+    };
+  }
 }
 
 function parseInvoiceData(document: any): InvoiceData {
