@@ -1,6 +1,6 @@
 'use client'
 
-import { Fieldset, Legend, Label, Input, Select, Switch, Text, RadioGroup, Radio } from '@/components/catalyst'
+import { Fieldset, Legend, Label, Input, Select, Switch, Text, RadioGroup, Radio, RadioField, Description } from '@/components/catalyst'
 
 interface TaxSettingsFormProps {
   data: {
@@ -67,30 +67,27 @@ export function TaxSettingsForm({ data, onChange }: TaxSettingsFormProps) {
                   }
                   className="mt-3"
                 >
-                  <Radio value="standard">
-                    <div>
-                      <div className="font-medium">Standard VAT</div>
-                      <Text className="text-sm">
-                        Charge and reclaim VAT on taxable supplies (most common)
-                      </Text>
-                    </div>
-                  </Radio>
-                  <Radio value="flat_rate">
-                    <div>
-                      <div className="font-medium">Flat Rate Scheme</div>
-                      <Text className="text-sm">
-                        Pay a fixed percentage of your turnover (simpler admin)
-                      </Text>
-                    </div>
-                  </Radio>
-                  <Radio value="cash_accounting">
-                    <div>
-                      <div className="font-medium">Cash Accounting</div>
-                      <Text className="text-sm">
-                        Account for VAT when payment is received/made
-                      </Text>
-                    </div>
-                  </Radio>
+                  <RadioField>
+                    <Radio value="standard" />
+                    <Label>Standard VAT</Label>
+                    <Description>
+                      Charge and reclaim VAT on taxable supplies (most common)
+                    </Description>
+                  </RadioField>
+                  <RadioField>
+                    <Radio value="flat_rate" />
+                    <Label>Flat Rate Scheme</Label>
+                    <Description>
+                      Pay a fixed percentage of your turnover (simpler admin)
+                    </Description>
+                  </RadioField>
+                  <RadioField>
+                    <Radio value="cash_accounting" />
+                    <Label>Cash Accounting</Label>
+                    <Description>
+                      Account for VAT when payment is received/made
+                    </Description>
+                  </RadioField>
                 </RadioGroup>
               </div>
 
@@ -152,22 +149,20 @@ export function TaxSettingsForm({ data, onChange }: TaxSettingsFormProps) {
               }
               className="mt-3"
             >
-              <Radio value="cash">
-                <div>
-                  <div className="font-medium">Cash Basis</div>
-                  <Text className="text-sm">
-                    Record income and expenses when money changes hands (simpler for small businesses)
-                  </Text>
-                </div>
-              </Radio>
-              <Radio value="accrual">
-                <div>
-                  <div className="font-medium">Accrual Basis</div>
-                  <Text className="text-sm">
-                    Record income when earned and expenses when incurred (required for larger businesses)
-                  </Text>
-                </div>
-              </Radio>
+              <RadioField>
+                <Radio value="cash" />
+                <Label>Cash Basis</Label>
+                <Description>
+                  Record income and expenses when money changes hands (simpler for small businesses)
+                </Description>
+              </RadioField>
+              <RadioField>
+                <Radio value="accrual" />
+                <Label>Accrual Basis</Label>
+                <Description>
+                  Record income when earned and expenses when incurred (required for larger businesses)
+                </Description>
+              </RadioField>
             </RadioGroup>
           </div>
         </div>
