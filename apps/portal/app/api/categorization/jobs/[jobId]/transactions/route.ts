@@ -18,7 +18,7 @@ export async function OPTIONS() {
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { jobId: string } }
+  { params }: { params: Promise<{ jobId: string }> }
 ) {
   try {
     const supabase = await createClient();
@@ -38,7 +38,7 @@ export async function GET(
       );
     }
 
-    const { jobId } = params;
+    const { jobId } = await params;
 
     // Verify job belongs to user
     const { data: job, error: jobError } = await supabase
