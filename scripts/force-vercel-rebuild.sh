@@ -14,8 +14,8 @@ if ! command -v vercel &> /dev/null; then
     exit 1
 fi
 
-# Navigate to portal directory
-cd "$(dirname "$0")/../apps/portal"
+# Navigate to root directory (monorepo root)
+cd "$(dirname "$0")/.."
 
 echo "📦 Current directory: $(pwd)"
 echo ""
@@ -25,12 +25,21 @@ LATEST_COMMIT=$(git rev-parse HEAD)
 echo "📝 Latest commit: $LATEST_COMMIT"
 echo ""
 
+# Check if pnpm is available
+if ! command -v pnpm &> /dev/null; then
+    echo "⚠️  pnpm not found. Installing pnpm..."
+    npm install -g pnpm
+fi
+
 # Force rebuild by deploying with --force flag
+# Deploy from root with explicit root directory
 echo "🚀 Deploying to Vercel with --force flag..."
 echo "   This will bypass Vercel's build cache"
+echo "   Using pnpm and deploying from monorepo root"
 echo ""
 
-vercel --prod --force
+cd apps/portal
+vercel --prod --force --yes
 
 echo ""
 echo "✅ Deployment initiated!"
