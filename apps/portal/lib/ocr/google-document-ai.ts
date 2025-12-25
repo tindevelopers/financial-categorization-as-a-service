@@ -38,7 +38,7 @@ export async function processInvoiceOCR(
 
   // Try to use Document AI SDK if available
   try {
-    const { DocumentProcessorServiceClient } = await import("@google-cloud/documentai");
+    const { DocumentProcessorServiceClient } = await import("@google-cloud/documentai") as any;
     const client = new DocumentProcessorServiceClient({
       keyFilename: process.env.GOOGLE_APPLICATION_CREDENTIALS,
     });
