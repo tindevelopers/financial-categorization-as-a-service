@@ -294,11 +294,9 @@ export default function ReviewJobsPage() {
   return (
     <div className="p-6 space-y-6">
       {/* #region agent log - Version indicator for deployment verification */}
-      {IS_PRODUCTION && (
-        <div className="mb-2 text-xs text-gray-500 dark:text-gray-400" style={{fontFamily:'monospace'}}>
-          Component Version: {COMPONENT_VERSION} | Env: {BUILD_ENV} | Host: {typeof window !== 'undefined' ? window.location.hostname : 'server'}
-        </div>
-      )}
+      <div className="mb-2 px-3 py-1 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded text-xs text-blue-700 dark:text-blue-300" style={{fontFamily:'monospace'}}>
+        Component Version: {COMPONENT_VERSION} | Env: {BUILD_ENV} | Host: {typeof window !== 'undefined' ? window.location.hostname : 'server'} | Production: {IS_PRODUCTION ? 'Yes' : 'No'}
+      </div>
       {/* #endregion */}
       <div className="flex items-center justify-between">
         <div>
