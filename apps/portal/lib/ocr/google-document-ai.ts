@@ -1,4 +1,13 @@
-import { DocumentProcessorServiceClient } from "@google-cloud/documentai";
+// Optional import - Google Cloud Document AI SDK
+// Only used if @google-cloud/documentai is installed
+let DocumentProcessorServiceClient: any = null;
+try {
+  const docaiModule = require("@google-cloud/documentai");
+  DocumentProcessorServiceClient = docaiModule.DocumentProcessorServiceClient;
+} catch (e) {
+  // SDK not installed - will use fallback methods
+  console.log("[DocumentAI] SDK not available, using fallback methods");
+}
 
 const PROJECT_ID = process.env.GOOGLE_CLOUD_PROJECT_ID;
 const LOCATION = process.env.GOOGLE_CLOUD_LOCATION || "us";
