@@ -16,7 +16,6 @@ import {
   ArrowTopRightOnSquareIcon
 } from '@heroicons/react/24/outline'
 import Link from 'next/link'
-import { createClient } from '@/core/database/client'
 
 interface StorageInfo {
   tier: 'hot' | 'archive' | 'restoring'
