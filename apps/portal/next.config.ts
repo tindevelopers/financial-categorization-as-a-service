@@ -47,10 +47,20 @@ const nextConfig: NextConfig = {
       '@tinadmin/config': path.resolve(__dirname, '../../packages/@tinadmin/config/src'),
     };
     
+    // Make optional Google Cloud dependencies truly optional
+    config.resolve.fallback = {
+      ...config.resolve.fallback,
+      fs: false,
+      '@google-cloud/documentai': false,
+      '@google-cloud/storage': false,
+    };
+    
     if (!isServer) {
       config.resolve.fallback = {
         ...config.resolve.fallback,
         fs: false,
+        '@google-cloud/documentai': false,
+        '@google-cloud/storage': false,
       };
     }
     
