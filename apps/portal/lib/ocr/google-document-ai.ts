@@ -43,31 +43,31 @@ export async function processInvoiceOCR(
       keyFilename: process.env.GOOGLE_APPLICATION_CREDENTIALS,
     });
 
-  const processorName = `projects/${PROJECT_ID}/locations/${LOCATION}/processors/${PROCESSOR_ID}`;
+    const processorName = `projects/${PROJECT_ID}/locations/${LOCATION}/processors/${PROCESSOR_ID}`;
 
-  // Convert blob to buffer
-  const fileBuffer = Buffer.from(await fileData.arrayBuffer());
+    // Convert blob to buffer
+    const fileBuffer = Buffer.from(await fileData.arrayBuffer());
 
-  // Determine MIME type
-  const mimeType = filename.endsWith(".pdf")
-    ? "application/pdf"
-    : filename.match(/\.(jpg|jpeg)$/i)
-    ? "image/jpeg"
-    : "image/png";
+    // Determine MIME type
+    const mimeType = filename.endsWith(".pdf")
+      ? "application/pdf"
+      : filename.match(/\.(jpg|jpeg)$/i)
+      ? "image/jpeg"
+      : "image/png";
 
-  // Call Document AI
-  const [result] = await client.processDocument({
-    name: processorName,
-    rawDocument: {
-      content: fileBuffer,
-      mimeType,
-    },
-  });
+    // Call Document AI
+    const [result] = await client.processDocument({
+      name: processorName,
+      rawDocument: {
+        content: fileBuffer,
+        mimeType,
+      },
+    });
 
-  const document = result.document;
-  if (!document) {
-    throw new Error("No document returned from OCR");
-  }
+    const document = result.document;
+    if (!document) {
+      throw new Error("No document returned from OCR");
+    }
 
     // Parse invoice data
     const invoiceData = parseInvoiceData(document);
