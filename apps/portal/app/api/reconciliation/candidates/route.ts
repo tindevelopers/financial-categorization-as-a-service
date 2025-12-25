@@ -102,9 +102,9 @@ export async function GET(request: NextRequest) {
         })
         .sort((a, b) => {
           // Sort by confidence, then by amount difference
-          const confidenceScore = { high: 3, medium: 2, low: 1 };
-          const aScore = confidenceScore[a.match_confidence];
-          const bScore = confidenceScore[b.match_confidence];
+          const confidenceScore: Record<string, number> = { high: 3, medium: 2, low: 1 };
+          const aScore = confidenceScore[a.match_confidence as string] || 0;
+          const bScore = confidenceScore[b.match_confidence as string] || 0;
           
           if (aScore !== bScore) return bScore - aScore;
           return a.amount_difference - b.amount_difference;
