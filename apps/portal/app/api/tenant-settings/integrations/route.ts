@@ -303,11 +303,13 @@ export async function DELETE(request: Request) {
     }
 
     if (existingSettings?.api_key_vault_id) {
-      await supabase.rpc('app_vault.delete_secret', { 
-        p_id: existingSettings.api_key_vault_id 
-      }).catch(() => {
+      try {
+        await supabase.rpc('app_vault.delete_secret', { 
+          p_id: existingSettings.api_key_vault_id 
+        });
+      } catch {
         // Ignore errors
-      });
+      }
     }
 
     // Delete the settings
