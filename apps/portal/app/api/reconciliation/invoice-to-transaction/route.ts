@@ -105,9 +105,10 @@ export async function POST(request: NextRequest) {
       // Enrich with bank account names
       const enrichedMatches = matches.map((match) => {
         const tx = transactions?.find((t: any) => t.id === match.transaction_id);
+        const bankAccount = Array.isArray(tx?.bank_account) ? tx?.bank_account[0] : tx?.bank_account;
         return {
           ...match,
-          bank_account_name: tx?.bank_account?.account_name || null,
+          bank_account_name: bankAccount?.account_name || null,
         };
       });
 
@@ -176,9 +177,10 @@ export async function POST(request: NextRequest) {
     // Enrich with bank account names
     const enrichedMatches = matches.map((match) => {
       const tx = transactions?.find((t: any) => t.id === match.transaction_id);
+      const bankAccount = Array.isArray(tx?.bank_account) ? tx?.bank_account[0] : tx?.bank_account;
       return {
         ...match,
-        bank_account_name: tx?.bank_account?.account_name || null,
+        bank_account_name: bankAccount?.account_name || null,
       };
     });
 
