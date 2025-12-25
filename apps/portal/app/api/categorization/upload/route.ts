@@ -6,6 +6,11 @@ import { join } from "path";
 import { tmpdir } from "os";
 import { createHash } from "crypto";
 import { createJobErrorResponse, mapErrorToCode, getJobError } from "@/lib/errors/job-errors";
+import { extractTransactions } from "@/lib/categorization/process-spreadsheet";
+import { createDuplicateDetector } from "@/lib/sync/SpreadsheetDuplicateDetector";
+import { parseFilename, normalizeFilename, dateRangesOverlap } from "@/lib/utils/filename-parser";
+import * as XLSX from "xlsx";
+import type { Transaction } from "@/lib/sync/types";
 
 export async function OPTIONS() {
   return new NextResponse(null, {
@@ -100,6 +105,7 @@ export async function POST(request: NextRequest) {
     const forceUpload = formData.get("force") === "true";
 
     // Check for duplicate files (hash-based only) unless force upload is requested
+    let duplicateFileInfo: { existingJobId?: string; existingDocumentId?: string } | null = null;
     if (!forceUpload) {
       const { data: existingDoc } = await supabase
         .from("financial_documents")
@@ -109,7 +115,7 @@ export async function POST(request: NextRequest) {
         .maybeSingle();
 
       if (existingDoc) {
-        // Duplicate detected - return 409 Conflict with existing job info
+        // Duplicate file detected - return 409 Conflict with existing job info
         const errorResponse = createJobErrorResponse("DUPLICATE_FILE");
         return NextResponse.json(
           {
@@ -123,6 +129,99 @@ export async function POST(request: NextRequest) {
           { status: 409 }
         );
       }
+    }
+
+    // Parse filename for date range extraction
+    const parsedFilename = parseFilename(file.name);
+    
+    // Check for filename+date range duplicates
+    let filenameDuplicateInfo: {
+      existingJobId?: string;
+      filename?: string;
+      uploadDate?: string;
+    } | null = null;
+
+    if (parsedFilename.dateStart && parsedFilename.dateEnd && !forceUpload) {
+      // Query for jobs with matching normalized filename and overlapping date ranges
+      const { data: matchingJobs } = await supabase
+        .from("categorization_jobs")
+        .select("id, original_filename, created_at, normalized_filename, extracted_date_start, extracted_date_end")
+        .eq("user_id", user.id)
+        .eq("normalized_filename", parsedFilename.normalized)
+        .not("extracted_date_start", "is", null)
+        .not("extracted_date_end", "is", null);
+
+      if (matchingJobs && matchingJobs.length > 0) {
+        // Check for overlapping date ranges
+        for (const job of matchingJobs) {
+          if (job.extracted_date_start && job.extracted_date_end) {
+            const jobStart = new Date(job.extracted_date_start);
+            const jobEnd = new Date(job.extracted_date_end);
+            
+            if (dateRangesOverlap(
+              parsedFilename.dateStart,
+              parsedFilename.dateEnd,
+              jobStart,
+              jobEnd
+            )) {
+              filenameDuplicateInfo = {
+                existingJobId: job.id,
+                filename: job.original_filename || undefined,
+                uploadDate: job.created_at,
+              };
+              break;
+            }
+          }
+        }
+      }
+    }
+
+    // Parse file to check for duplicate transactions (preview)
+    let duplicatePreview: {
+      similarityScore: number;
+      matchingCount: number;
+      totalTransactions: number;
+      duplicateDetails: Array<{
+        fingerprint: string;
+        matchType: "exact" | "similar";
+        similarity: number;
+      }>;
+    } | null = null;
+
+    try {
+      // Parse spreadsheet to extract transactions
+      const workbook = XLSX.read(fileBuffer, { type: "buffer" });
+      const sheetName = workbook.SheetNames[0];
+      const worksheet = workbook.Sheets[sheetName];
+      const data = XLSX.utils.sheet_to_json(worksheet, { raw: false });
+      const transactions = extractTransactions(data);
+
+      if (transactions.length > 0) {
+        // Convert to sync transaction format
+        const syncTransactions: Transaction[] = transactions.map(tx => ({
+          original_description: tx.description,
+          amount: tx.amount,
+          date: typeof tx.date === "string" ? tx.date : tx.date.toISOString().split("T")[0],
+        }));
+
+        // Check for duplicate transactions using SpreadsheetDuplicateDetector
+        const duplicateDetector = createDuplicateDetector(supabase);
+        const similarity = await duplicateDetector.detectSimilarity(syncTransactions, user.id);
+
+        duplicatePreview = {
+          similarityScore: similarity.similarityScore,
+          matchingCount: similarity.matchingCount,
+          totalTransactions: transactions.length,
+          duplicateDetails: similarity.duplicateTransactions.map(tx => ({
+            fingerprint: tx.transaction_fingerprint || "",
+            matchType: "exact" as const,
+            similarity: 1.0,
+          })),
+        };
+      }
+    } catch (parseError) {
+      // If parsing fails, continue with upload - background processing will handle it
+      console.warn("Failed to preview duplicates during upload:", parseError);
     }
 
     // Upload to Supabase Storage
@@ -185,6 +284,10 @@ export async function POST(request: NextRequest) {
           original_filename: file.name,
           file_url: urlData.publicUrl,
           file_hash: fileHash, // Store hash for quick duplicate detection
+          normalized_filename: parsedFilename.normalized,
+          extracted_date_start: parsedFilename.dateStart?.toISOString().split('T')[0] || null,
+          extracted_date_end: parsedFilename.dateEnd?.toISOString().split('T')[0] || null,
+          is_duplicate: !!filenameDuplicateInfo,
         })
         .select()
         .single();
@@ -206,6 +309,10 @@ export async function POST(request: NextRequest) {
           original_filename: file.name,
           file_url: urlData.publicUrl,
           file_hash: fileHash, // Store hash for quick duplicate detection
+          normalized_filename: parsedFilename.normalized,
+          extracted_date_start: parsedFilename.dateStart?.toISOString().split('T')[0] || null,
+          extracted_date_end: parsedFilename.dateEnd?.toISOString().split('T')[0] || null,
+          is_duplicate: !!filenameDuplicateInfo,
         })
         .select()
         .single();
@@ -298,13 +405,45 @@ export async function POST(request: NextRequest) {
       // Don't fail the upload - cron job will pick it up if needed
     }
 
-    return NextResponse.json({
+    // Build response with duplicate information
+    const response: {
+      success: boolean;
+      jobId: string;
+      status: string;
+      status_message: string;
+      message: string;
+      duplicatePreview?: typeof duplicatePreview;
+      warnings?: string[];
+    } = {
       success: true,
       jobId: jobData.id,
       status: "received",
       status_message: "File uploaded successfully",
       message: "File uploaded successfully",
-    });
+    };
+
+    // Add duplicate preview information if available
+    if (duplicatePreview) {
+      response.duplicatePreview = duplicatePreview;
+      
+      if (duplicatePreview.matchingCount > 0) {
+        response.warnings = [
+          `${duplicatePreview.matchingCount} of ${duplicatePreview.totalTransactions} transactions appear to be duplicates. They will be skipped during processing.`,
+        ];
+      }
+    }
+
+    // Add filename duplicate warning if detected
+    if (filenameDuplicateInfo) {
+      if (!response.warnings) {
+        response.warnings = [];
+      }
+      response.warnings.push(
+        `A file with the same name and date range was already uploaded${filenameDuplicateInfo.uploadDate ? ` on ${new Date(filenameDuplicateInfo.uploadDate).toLocaleDateString()}` : ''}.`
+      );
+    }
+
+    return NextResponse.json(response);
   } catch (error: any) {
     console.error("Upload error:", error);
     const errorCode = mapErrorToCode(error);

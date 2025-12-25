@@ -314,10 +314,59 @@ export class GoogleSheetsSyncService {
 
       const sheetName = options?.sheetName || spreadsheet.data.sheets?.[0]?.properties?.title || 'Sheet1';
 
+      // Check for existing transactions in sheet to avoid duplicates
+      let existingFingerprints = new Set<string>();
+      let rowsSkipped = 0;
+
+      if (options?.mode !== 'replace') {
+        // Read existing sheet data to check for duplicates
+        try {
+          const existingData = await sheets.spreadsheets.values.get({
+            spreadsheetId,
+            range: `${sheetName}!A:G`,
+          });
+
+          const existingRows = existingData.data.values || [];
+          if (existingRows.length > 1) {
+            // Parse existing rows to extract fingerprints
+            const headerRow = existingRows[0] as string[];
+            const columnMapping = this.detectColumnMapping(headerRow);
+
+            for (let i = 1; i < existingRows.length; i++) {
+              const row = existingRows[i] as string[];
+              const tx = this.parseRowToTransaction(row, columnMapping, i + 1);
+              if (tx && tx.transaction_fingerprint) {
+                existingFingerprints.add(tx.transaction_fingerprint);
+              }
+            }
+          }
+        } catch (readError) {
+          console.warn('Could not read existing sheet data for duplicate check:', readError);
+          // Continue with push - will use replace mode as fallback
+        }
+      }
+
+      // Filter out transactions that already exist in sheet
+      const transactionsToPush = transactions.filter(tx => {
+        if (!tx.transaction_fingerprint) {
+          // Generate fingerprint if not present
+          const dateStr = typeof tx.date === 'string' ? tx.date : tx.date?.toISOString().split('T')[0] || '';
+          const fingerprint = generateTransactionFingerprint(
+            tx.original_description,
+            tx.amount,
+            dateStr
+          );
+          return !existingFingerprints.has(fingerprint);
+        }
+        return !existingFingerprints.has(tx.transaction_fingerprint);
+      });
+
+      rowsSkipped = transactions.length - transactionsToPush.length;
+
       // Prepare data for sheet
       const headers = ['Date', 'Description', 'Amount', 'Category', 'Subcategory', 'Notes', 'Status'];
-      const rows = transactions.map(tx => [
-        tx.date,
+      const rows = transactionsToPush.map(tx => [
+        typeof tx.date === 'string' ? tx.date : tx.date?.toISOString().split('T')[0] || '',
         tx.original_description,
         tx.amount,
         tx.category || '',
@@ -326,35 +375,49 @@ export class GoogleSheetsSyncService {
         tx.reconciliation_status || 'unreconciled',
       ]);
 
-      if (options?.mode === 'replace') {
-        // Clear existing data and write new
+      if (options?.mode === 'replace' || existingFingerprints.size === 0) {
+        // Clear existing data and write new (or replace mode)
         await sheets.spreadsheets.values.clear({
           spreadsheetId,
           range: `${sheetName}!A:G`,
         });
+
+        // Get all transactions for replace mode (not just new ones)
+        const allRows = (options?.mode === 'replace' ? transactions : transactionsToPush).map(tx => [
+          typeof tx.date === 'string' ? tx.date : tx.date?.toISOString().split('T')[0] || '',
+          tx.original_description,
+          tx.amount,
+          tx.category || '',
+          tx.subcategory || '',
+          tx.user_notes || '',
+          tx.reconciliation_status || 'unreconciled',
+        ]);
 
         await sheets.spreadsheets.values.update({
           spreadsheetId,
           range: `${sheetName}!A1`,
           valueInputOption: 'USER_ENTERED',
           requestBody: {
-            values: [headers, ...rows],
+            values: [headers, ...allRows],
           },
         });
-      } else {
-        // Append mode
-        await sheets.spreadsheets.values.append({
-          spreadsheetId,
-          range: `${sheetName}!A1`,
-          valueInputOption: 'USER_ENTERED',
-          insertDataOption: 'INSERT_ROWS',
-          requestBody: {
-            values: rows,
-          },
-        });
-      }
 
-      rowsPushed = rows.length;
+        rowsPushed = allRows.length;
+      } else {
+        // Append mode - only append new transactions
+        if (rows.length > 0) {
+          await sheets.spreadsheets.values.append({
+            spreadsheetId,
+            range: `${sheetName}!A1`,
+            valueInputOption: 'USER_ENTERED',
+            insertDataOption: 'INSERT_ROWS',
+            requestBody: {
+              values: rows,
+            },
+          });
+        }
+        rowsPushed = rows.length;
+      }
 
       // Update sync metadata
       const syncMetadata = await this.getOrCreateSyncMetadata(
@@ -391,7 +454,7 @@ export class GoogleSheetsSyncService {
         direction: 'push',
         rowsPushed,
         rowsPulled: 0,
-        rowsSkipped: 0,
+        rowsSkipped,
         rowsUpdated: 0,
         conflictsDetected: 0,
         conflicts: [],

@@ -196,19 +196,30 @@ export class TransactionMergeService {
       return { inserted: 0, errors: 0 };
     }
 
-    const transactionsToInsert = transactions.map(tx => ({
-      job_id: jobId,
-      original_description: tx.original_description,
-      amount: tx.amount,
-      date: this.formatDate(tx.date),
-      category: tx.category || null,
-      subcategory: tx.subcategory || null,
-      confidence_score: 0.5, // Default confidence
-      user_confirmed: false,
-      source_type: options.sourceType,
-      source_identifier: options.sourceIdentifier || null,
-      sync_version: 1,
-    }));
+    const transactionsToInsert = transactions.map(tx => {
+      // Ensure fingerprint is included
+      const dateStr = this.formatDate(tx.date);
+      const fingerprint = tx.transaction_fingerprint || generateTransactionFingerprint(
+        tx.original_description,
+        tx.amount,
+        dateStr
+      );
+
+      return {
+        job_id: jobId,
+        original_description: tx.original_description,
+        amount: tx.amount,
+        date: dateStr,
+        category: tx.category || null,
+        subcategory: tx.subcategory || null,
+        confidence_score: 0.5, // Default confidence
+        user_confirmed: false,
+        transaction_fingerprint: fingerprint,
+        source_type: options.sourceType,
+        source_identifier: options.sourceIdentifier || null,
+        sync_version: 1,
+      };
+    });
 
     // Insert in batches to avoid hitting limits
     const BATCH_SIZE = 100;

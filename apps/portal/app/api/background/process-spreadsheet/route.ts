@@ -153,8 +153,12 @@ async function processSpreadsheet(jobId: string, userId: string, supabase: any) 
       .from("categorization_jobs")
       .update({ 
         status: "reviewing",
-        status_message: "Processing complete. Ready for review.",
-        processed_items: result.transactionCount || 0,
+        status_message: result.skippedCount && result.skippedCount > 0
+          ? `Processing complete. ${result.insertedCount || 0} new transactions added, ${result.skippedCount} duplicates skipped.`
+          : "Processing complete. Ready for review.",
+        processed_items: result.insertedCount || result.transactionCount || 0,
+        total_items: result.transactionCount || 0,
+        failed_items: result.skippedCount || 0,
         completed_at: new Date().toISOString(),
       })
       .eq("id", jobId);
