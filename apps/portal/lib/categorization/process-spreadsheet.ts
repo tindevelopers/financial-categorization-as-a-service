@@ -179,7 +179,7 @@ export async function categorizeTransactions(
     try {
       const { AICategorizationFactory } = await import("@/lib/ai/AICategorizationFactory");
       const provider = AICategorizationFactory.getDefaultProvider();
-      const userMappings = mappings?.map(m => ({
+      const userMappings = mappings?.map((m: any) => ({
         pattern: m.pattern,
         category: m.category,
         subcategory: m.subcategory || undefined,
