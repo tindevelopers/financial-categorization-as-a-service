@@ -50,10 +50,19 @@ export class SpreadsheetDuplicateDetector {
     }
 
     // Generate fingerprints for new transactions
-    const newFingerprints = newTransactions.map(tx => ({
-      transaction: tx,
-      fingerprint: generateTransactionFingerprint(tx),
-    }));
+    const newFingerprints = newTransactions.map(tx => {
+      const dateStr = typeof tx.date === 'string' 
+        ? tx.date 
+        : tx.date?.toISOString().split('T')[0] || '';
+      return {
+        transaction: tx,
+        fingerprint: generateTransactionFingerprint(
+          tx.original_description,
+          tx.amount,
+          dateStr
+        ),
+      };
+    });
 
     // Get existing transactions for this user
     const { data: existingTransactions } = await this.supabase
