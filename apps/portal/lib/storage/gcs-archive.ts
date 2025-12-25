@@ -28,6 +28,7 @@ export async function deleteFromGCS(
 
     // Try to use Google Cloud Storage SDK if available
     try {
+      // @ts-ignore - Optional dependency, may not be installed
       const { Storage } = await import("@google-cloud/storage");
       const storage = new Storage({
         projectId: process.env.GOOGLE_CLOUD_PROJECT_ID,
