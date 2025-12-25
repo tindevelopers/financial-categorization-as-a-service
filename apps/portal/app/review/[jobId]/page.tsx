@@ -7,11 +7,13 @@ export const metadata: Metadata = {
   description: "Review and confirm categorized transactions",
 };
 
-export default function ReviewPage({
+export default async function ReviewPage({
   params,
 }: {
-  params: { jobId: string };
+  params: Promise<{ jobId: string }>;
 }) {
+  const { jobId } = await params;
+  
   return (
     <ConsumerLayout>
       <div className="max-w-6xl mx-auto">
@@ -24,7 +26,7 @@ export default function ReviewPage({
           </p>
         </div>
         
-        <TransactionReview jobId={params.jobId} />
+        <TransactionReview jobId={jobId} />
       </div>
     </ConsumerLayout>
   );

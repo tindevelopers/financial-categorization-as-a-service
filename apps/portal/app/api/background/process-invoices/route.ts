@@ -106,7 +106,7 @@ async function processInvoicesBatch(
       
       // Process batch in parallel
       const results = await Promise.allSettled(
-        batch.map(doc => processSingleInvoice(doc, jobId, userId, supabase))
+        batch.map((doc: any) => processSingleInvoice(doc, jobId, userId, supabase))
       );
 
       // Count successes and failures

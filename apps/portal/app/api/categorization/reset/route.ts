@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/database/server";
-import { createAdminClient } from "@tinadmin/core/database/admin-client";
+import { createAdminClient } from "@/lib/database/admin-client";
 import { deleteFromSupabase } from "@/lib/storage/supabase-storage";
 import { deleteFromGCS } from "@/lib/storage/gcs-archive";
 

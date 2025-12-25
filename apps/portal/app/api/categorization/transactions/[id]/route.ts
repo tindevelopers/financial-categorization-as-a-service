@@ -3,7 +3,7 @@ import { createClient } from "@/lib/database/server";
 
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const supabase = await createClient();
@@ -16,7 +16,7 @@ export async function PATCH(
       );
     }
 
-    const { id } = params;
+    const { id } = await params;
     const { category, subcategory } = await request.json();
 
     // Verify transaction belongs to user's job

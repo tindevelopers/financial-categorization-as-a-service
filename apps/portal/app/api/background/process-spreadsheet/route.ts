@@ -1,7 +1,7 @@
 import { waitUntil } from "@vercel/functions";
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/database/server";
-import { createAdminClient } from "@tinadmin/core/database/admin-client";
+import { createAdminClient } from "@/lib/database/admin-client";
 import { processSpreadsheetFile } from "@/lib/categorization/process-spreadsheet";
 import { createJobErrorResponse, mapErrorToCode } from "@/lib/errors/job-errors";
 // TODO: Re-enable when GoogleSheetsSyncService is available in portal app
@@ -184,6 +184,7 @@ async function processSpreadsheet(jobId: string, userId: string, supabase: any) 
         // Skip sync for now
         return;
         
+        /* Commented out until GoogleSheetsSyncService is available
         for (const sheet of autoSyncSheets) {
           try {
             const syncResult = await syncService.pushToSheets(sheet.source_id, userId, {
@@ -217,6 +218,7 @@ async function processSpreadsheet(jobId: string, userId: string, supabase: any) 
               : "Processing complete. Auto-synced to Google Sheets.",
           })
           .eq("id", jobId);
+        */
       }
     } catch (autoSyncError) {
       console.error("Auto-sync check failed:", autoSyncError);

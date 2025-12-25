@@ -26,13 +26,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (!PROJECT_ID || !PROCESSOR_ID) {
-      return NextResponse.json(
-        { error: "Google Document AI not configured" },
-        { status: 500 }
-      );
-    }
-
     // Get job details
     const { data: job, error: jobError } = await supabase
       .from("categorization_jobs")
@@ -59,10 +52,10 @@ export async function POST(request: NextRequest) {
 
     // Get documents for this job
     const { data: documents, error: docsError } = await supabase
-      .from("documents")
+      .from("financial_documents")
       .select("*")
       .eq("job_id", jobId)
-      .in("processing_status", ["pending", "failed"]); // Also retry failed ones
+      .in("ocr_status", ["pending", "failed"]); // Also retry failed ones
 
     if (docsError || !documents || documents.length === 0) {
       await supabase
@@ -79,12 +72,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Initialize Google Document AI client
-    const client = new DocumentProcessorServiceClient({
-      keyFilename: process.env.GOOGLE_APPLICATION_CREDENTIALS,
-    });
-
-    const processorName = `projects/${PROJECT_ID}/locations/${LOCATION}/processors/${PROCESSOR_ID}`;
     let processedCount = 0;
     let failedCount = 0;
 
@@ -93,13 +80,13 @@ export async function POST(request: NextRequest) {
       try {
         // Update document status
         await supabase
-          .from("documents")
-          .update({ processing_status: "processing" })
+          .from("financial_documents")
+          .update({ ocr_status: "processing" })
           .eq("id", doc.id);
 
         // Download file from storage
         const fileName = doc.original_filename;
-        const filePath = `${user.id}/invoices/${fileName.split("-").slice(1).join("-")}`;
+        const filePath = doc.supabase_path || `${user.id}/invoices/${fileName.split("-").slice(1).join("-")}`;
         
         const { data: fileData, error: downloadError } = await supabase.storage
           .from("categorization-uploads")
@@ -109,40 +96,21 @@ export async function POST(request: NextRequest) {
           throw new Error(`Failed to download file: ${fileName}`);
         }
 
-        // Convert to buffer
-        const fileBuffer = Buffer.from(await fileData.arrayBuffer());
-
-        // Call Google Document AI
-        const [result] = await client.processDocument({
-          name: processorName,
-          rawDocument: {
-            content: fileBuffer,
-            mimeType: doc.original_filename.endsWith(".pdf") 
-              ? "application/pdf" 
-              : "image/jpeg",
-          },
-        });
-
-        const document = result.document;
-        if (!document) {
-          throw new Error("No document returned from OCR");
-        }
-
-        // Parse invoice data from Document AI response
-        const invoiceData = parseInvoiceData(document);
+        // Process OCR using the utility function
+        const invoiceData = await processInvoiceOCR(fileData, fileName);
 
         // Update document with extracted data
         await supabase
-          .from("documents")
+          .from("financial_documents")
           .update({
             vendor_name: invoiceData.vendor_name || null,
-            invoice_date: invoiceData.invoice_date || null,
+            document_date: invoiceData.invoice_date || null,
             invoice_number: invoiceData.invoice_number || null,
             total_amount: invoiceData.total || null,
             currency: invoiceData.currency || "USD",
-            extracted_text: document.text || null,
-            ocr_confidence_score: 0.9, // Document AI is generally very accurate
-            processing_status: "completed",
+            extracted_text: invoiceData.extracted_text || null,
+            ocr_confidence_score: invoiceData.confidence_score || 0.5,
+            ocr_status: "completed",
           })
           .eq("id", doc.id);
 
@@ -169,9 +137,9 @@ export async function POST(request: NextRequest) {
         failedCount++;
 
         await supabase
-          .from("documents")
+          .from("financial_documents")
           .update({
-            processing_status: "failed",
+            ocr_status: "failed",
           })
           .eq("id", doc.id);
       }

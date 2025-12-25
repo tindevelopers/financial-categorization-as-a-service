@@ -3,7 +3,7 @@ import { createClient } from "@/lib/database/server";
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const supabase = await createClient();
@@ -16,7 +16,7 @@ export async function POST(
       );
     }
 
-    const { id } = params;
+    const { id } = await params;
 
     // Verify transaction belongs to user's job
     const { data: transaction, error: txError } = await supabase

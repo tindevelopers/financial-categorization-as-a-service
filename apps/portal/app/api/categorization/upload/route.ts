@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/database/server";
-import { createAdminClient } from "@tinadmin/core/database/admin-client";
+import { createAdminClient } from "@/lib/database/admin-client";
 import { writeFile } from "fs/promises";
 import { join } from "path";
 import { tmpdir } from "os";
