@@ -8,6 +8,7 @@ import {
   CheckCircleIcon,
   ExclamationCircleIcon,
   TrashIcon,
+  ArrowPathIcon,
 } from "@heroicons/react/24/outline"
 
 interface Job {
@@ -35,6 +36,7 @@ export default function ReviewJobsPage() {
   const [error, setError] = useState<string | null>(null)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [bulkDeleting, setBulkDeleting] = useState(false)
+  const [bulkRereviewing, setBulkRereviewing] = useState(false)
 
   useEffect(() => {
     loadJobs()
@@ -127,6 +129,52 @@ export default function ReviewJobsPage() {
     }
   }
 
+  const handleBulkRereview = async () => {
+    if (selectedIds.size === 0) {
+      alert('Please select at least one file to re-review')
+      return
+    }
+
+    const count = selectedIds.size
+    if (!confirm(`Re-review ${count} file${count > 1 ? 's' : ''}? This will reprocess the files and regenerate transactions.`)) {
+      return
+    }
+
+    setBulkRereviewing(true)
+    try {
+      const response = await fetch('/api/categorization/jobs/bulk-rereview', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ jobIds: Array.from(selectedIds) }),
+      })
+
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.error || 'Failed to re-review files')
+      }
+
+      const data = await response.json()
+      
+      // Refresh the jobs list
+      await loadJobs()
+      setSelectedIds(new Set())
+      
+      // Show success message
+      if (data.errorCount > 0) {
+        alert(`${data.message}\n\nErrors:\n${data.errors?.join('\n') || 'Unknown errors'}`)
+      } else {
+        alert(data.message || `Successfully queued ${count} file${count > 1 ? 's' : ''} for re-review`)
+      }
+    } catch (error: any) {
+      console.error('Error bulk re-reviewing jobs:', error)
+      alert(`Failed to re-review files: ${error.message}`)
+    } finally {
+      setBulkRereviewing(false)
+    }
+  }
+
   const getStatusBadge = (status: string) => {
     switch (status) {
       case "completed":
@@ -189,23 +237,42 @@ export default function ReviewJobsPage() {
         </div>
         <div className="flex gap-3">
           {selectedIds.size > 0 && (
-            <button
-              onClick={handleBulkDelete}
-              disabled={bulkDeleting}
-              className="inline-flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {bulkDeleting ? (
-                <>
-                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                  Deleting...
-                </>
-              ) : (
-                <>
-                  <TrashIcon className="h-5 w-5" />
-                  Delete Selected ({selectedIds.size})
-                </>
-              )}
-            </button>
+            <>
+              <button
+                onClick={handleBulkRereview}
+                disabled={bulkRereviewing || bulkDeleting}
+                className="inline-flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {bulkRereviewing ? (
+                  <>
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                    Re-reviewing...
+                  </>
+                ) : (
+                  <>
+                    <ArrowPathIcon className="h-5 w-5" />
+                    Re-review Selected ({selectedIds.size})
+                  </>
+                )}
+              </button>
+              <button
+                onClick={handleBulkDelete}
+                disabled={bulkDeleting || bulkRereviewing}
+                className="inline-flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {bulkDeleting ? (
+                  <>
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                    Deleting...
+                  </>
+                ) : (
+                  <>
+                    <TrashIcon className="h-5 w-5" />
+                    Delete Selected ({selectedIds.size})
+                  </>
+                )}
+              </button>
+            </>
           )}
           <Link
             href="/dashboard/uploads/bank-statements"
