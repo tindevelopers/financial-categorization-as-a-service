@@ -1,6 +1,6 @@
 'use client'
 
-import { Fieldset, Legend, Label, Input, Select, Switch, Text, RadioGroup, Radio, RadioField, Description } from '@/components/catalyst'
+import { Fieldset, Legend, Field, Label, Input, Select, Switch, Text, RadioGroup, Radio, RadioField, Description } from '@/components/catalyst'
 
 interface TaxSettingsFormProps {
   data: {
@@ -17,34 +17,33 @@ interface TaxSettingsFormProps {
 export function TaxSettingsForm({ data, onChange }: TaxSettingsFormProps) {
   return (
     <div className="space-y-6">
-      <div>
+      <Fieldset>
         <Legend>Tax & VAT Settings</Legend>
         <Text className="mt-2">
           Configure your VAT registration and accounting preferences
         </Text>
-      </div>
-
-      <Fieldset>
         <div className="space-y-6">
           {/* VAT Registered */}
-          <div className="flex items-center justify-between">
-            <div>
-              <Label>VAT Registered?</Label>
-              <Text className="mt-1 text-sm">
-                Are you registered for VAT with HMRC?
-              </Text>
+          <Field>
+            <div className="flex items-center justify-between">
+              <div>
+                <Label>VAT Registered?</Label>
+                <Text className="mt-1 text-sm">
+                  Are you registered for VAT with HMRC?
+                </Text>
+              </div>
+              <Switch
+                checked={data.vatRegistered}
+                onChange={(checked: boolean) => onChange({ vatRegistered: checked })}
+              />
             </div>
-            <Switch
-              checked={data.vatRegistered}
-              onChange={(checked: boolean) => onChange({ vatRegistered: checked })}
-            />
-          </div>
+          </Field>
 
           {/* VAT Details (only if registered) */}
           {data.vatRegistered && (
             <>
               {/* VAT Number */}
-              <div>
+              <Field>
                 <Label>VAT Registration Number</Label>
                 <Input
                   name="vatNumber"
@@ -55,10 +54,10 @@ export function TaxSettingsForm({ data, onChange }: TaxSettingsFormProps) {
                   placeholder="GB123456789"
                   className="mt-2"
                 />
-              </div>
+              </Field>
 
               {/* VAT Scheme */}
-              <div>
+              <Field>
                 <Label>VAT Scheme</Label>
                 <RadioGroup
                   value={data.vatScheme}
@@ -89,11 +88,11 @@ export function TaxSettingsForm({ data, onChange }: TaxSettingsFormProps) {
                     </Description>
                   </RadioField>
                 </RadioGroup>
-              </div>
+              </Field>
 
               {/* Flat Rate Percentage (only if flat rate selected) */}
               {data.vatScheme === 'flat_rate' && (
-                <div>
+                <Field>
                   <Label>Flat Rate Percentage</Label>
                   <div className="mt-2 flex items-center gap-2">
                     <Input
@@ -114,7 +113,7 @@ export function TaxSettingsForm({ data, onChange }: TaxSettingsFormProps) {
                   <Text className="mt-1 text-sm">
                     Your flat rate percentage depends on your business sector
                   </Text>
-                </div>
+                </Field>
               )}
             </>
           )}
@@ -123,7 +122,7 @@ export function TaxSettingsForm({ data, onChange }: TaxSettingsFormProps) {
           <div className="border-t border-gray-200 dark:border-gray-700" />
 
           {/* Financial Year End */}
-          <div>
+          <Field>
             <Label>Financial Year End</Label>
             <Input
               name="financialYearEnd"
@@ -137,10 +136,10 @@ export function TaxSettingsForm({ data, onChange }: TaxSettingsFormProps) {
             <Text className="mt-1 text-sm">
               For sole traders, this is typically 5th April (tax year end)
             </Text>
-          </div>
+          </Field>
 
           {/* Accounting Basis */}
-          <div>
+          <Field>
             <Label>Accounting Method</Label>
             <RadioGroup
               value={data.accountingBasis}
@@ -164,7 +163,7 @@ export function TaxSettingsForm({ data, onChange }: TaxSettingsFormProps) {
                 </Description>
               </RadioField>
             </RadioGroup>
-          </div>
+          </Field>
         </div>
       </Fieldset>
     </div>

@@ -53,9 +53,11 @@ export default function SpreadsheetsPage() {
         if (data.error_code === 'NOT_CONNECTED') {
           setError('Google Sheets integration not connected. Please connect your Google account in Settings.')
         } else if (data.error_code === 'NOT_CONFIGURED') {
-          setError('Google Sheets API not configured. Please contact support.')
+          setError('Google Sheets API not configured. Service account credentials are required. Please configure GOOGLE_SERVICE_ACCOUNT_EMAIL and GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY environment variables.')
+        } else if (response.status === 401) {
+          setError('Unauthorized. Please sign in and try again.')
         } else {
-          setError(data.error || 'Failed to fetch spreadsheets')
+          setError(data.error || `Failed to fetch spreadsheets (${response.status})`)
         }
         setSpreadsheets([])
         return
@@ -133,13 +135,21 @@ export default function SpreadsheetsPage() {
       {error && (
         <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4 flex items-start gap-3">
           <ExclamationTriangleIcon className="h-5 w-5 text-red-500 flex-shrink-0 mt-0.5" />
-          <div>
+          <div className="flex-1">
             <p className="text-sm font-medium text-red-800 dark:text-red-200">
               Error
             </p>
             <p className="text-sm text-red-600 dark:text-red-300 mt-1">
               {error}
             </p>
+            {error.includes('not connected') && (
+              <a
+                href="/dashboard/settings"
+                className="mt-2 inline-block text-sm text-red-700 dark:text-red-400 underline"
+              >
+                Go to Settings to connect Google Sheets
+              </a>
+            )}
           </div>
         </div>
       )}
