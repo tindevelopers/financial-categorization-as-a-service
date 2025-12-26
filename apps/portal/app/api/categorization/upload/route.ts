@@ -26,27 +26,7 @@ export async function OPTIONS() {
 
 export async function POST(request: NextRequest) {
   try {
-    // #region agent log
-    const envCheck = {
-      hasSupabaseUrl: !!process.env.NEXT_PUBLIC_SUPABASE_URL,
-      supabaseUrlLength: process.env.NEXT_PUBLIC_SUPABASE_URL?.length || 0,
-      supabaseUrlPreview: process.env.NEXT_PUBLIC_SUPABASE_URL?.substring(0, 50) || 'MISSING',
-      hasSupabaseAnonKey: !!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
-      anonKeyLength: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.length || 0,
-      isLocalhost: process.env.NEXT_PUBLIC_SUPABASE_URL?.includes('localhost') || process.env.NEXT_PUBLIC_SUPABASE_URL?.includes('127.0.0.1'),
-    };
-    fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'upload/route.ts:27',message:'Environment variables check',data:envCheck,timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'A'})}).catch(()=>{});
-    // #endregion
-    
     const supabase = await createClient();
-    
-    // #region agent log
-    const clientCheck = {
-      supabaseUrl: (supabase as any).supabaseUrl || 'UNKNOWN',
-      isLocalhost: ((supabase as any).supabaseUrl || '').includes('localhost') || ((supabase as any).supabaseUrl || '').includes('127.0.0.1'),
-    };
-    fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'upload/route.ts:35',message:'Supabase client created',data:clientCheck,timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'B'})}).catch(()=>{});
-    // #endregion
     
     const { data: { user }, error: authError } = await supabase.auth.getUser();
 
@@ -118,16 +98,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'upload/route.ts:64',message:'Upload request received',data:{fileName:file.name,fileSize:file.size,fileType:file.type,userId:user.id},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'C'})}).catch(()=>{});
-    // #endregion
-
     // Enforce profile/company name
     // Get the most recent company profile (order by created_at DESC, limit 1)
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'upload/route.ts:126',message:'Querying company profile',data:{userId:user.id},timestamp:Date.now(),sessionId:'debug-session',runId:'profile-fix',hypothesisId:'A'})}).catch(()=>{});
-    // #endregion
-    
     const { data: profiles, error: profileError } = await supabase
       .from("company_profiles")
       .select("id, company_name, created_at")
@@ -135,16 +107,9 @@ export async function POST(request: NextRequest) {
       .order("created_at", { ascending: false })
       .limit(1);
 
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'upload/route.ts:133',message:'Company profile query result',data:{hasError:!!profileError,errorMessage:profileError?.message || null,profilesCount:profiles?.length || 0,profileId:profiles?.[0]?.id || null,companyName:profiles?.[0]?.company_name || null,companyNameType:typeof profiles?.[0]?.company_name,isEmptyString:profiles?.[0]?.company_name === '',isNull:profiles?.[0]?.company_name === null,isUndefined:profiles?.[0]?.company_name === undefined},timestamp:Date.now(),sessionId:'debug-session',runId:'profile-fix',hypothesisId:'A'})}).catch(()=>{});
-    // #endregion
-
     const profile = profiles && profiles.length > 0 ? profiles[0] : null;
 
     if (!profile || !profile.company_name || profile.company_name.trim() === '') {
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'upload/route.ts:140',message:'Profile validation failed',data:{hasProfile:!!profile,companyName:profile?.company_name || null,companyNameTrimmed:profile?.company_name?.trim() || null,isEmptyAfterTrim:profile?.company_name?.trim() === ''},timestamp:Date.now(),sessionId:'debug-session',runId:'profile-fix',hypothesisId:'B'})}).catch(()=>{});
-      // #endregion
       return NextResponse.json(
         { error: "PROFILE_INCOMPLETE", error_code: "PROFILE_INCOMPLETE" },
         { status: 400 }
