@@ -59,9 +59,6 @@ export default function SpreadsheetUpload() {
   
   // Wrapper to ensure we always set a string value and log if something goes wrong
   const setSelectedBankAccountIdSafe = (value: any) => {
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'SpreadsheetUpload.tsx:59',message:'setSelectedBankAccountIdSafe called',data:{value,valueType:typeof value,isString:typeof value === 'string',isObject:typeof value === 'object',stringValue:String(value)},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'G'})}).catch(()=>{});
-    // #endregion
     
     if (typeof value === 'string') {
       setSelectedBankAccountId(value);
@@ -112,27 +109,15 @@ export default function SpreadsheetUpload() {
   }, []);
 
   const fetchBankAccounts = async () => {
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'SpreadsheetUpload.tsx:69',message:'fetchBankAccounts start',data:{timestamp:Date.now()},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'F'})}).catch(()=>{});
-    // #endregion
     try {
       const response = await fetch("/api/bank-accounts");
       
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'SpreadsheetUpload.tsx:72',message:'fetchBankAccounts response received',data:{status:response.status,statusText:response.statusText,ok:response.ok,contentType:response.headers.get('content-type')},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'F'})}).catch(()=>{});
-      // #endregion
       
       const data = await response.json();
       
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'SpreadsheetUpload.tsx:75',message:'fetchBankAccounts data parsed',data:{hasSuccess:data.success,hasBankAccounts:!!data.bank_accounts,bankAccountsCount:data.bank_accounts?.length || 0,hasError:!!data.error,error:data.error || null,bankAccountIds:data.bank_accounts?.map((ba:any)=>ba.id) || []},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'F'})}).catch(()=>{});
-      // #endregion
       
       if (data.success && data.bank_accounts) {
         setBankAccounts(data.bank_accounts);
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'SpreadsheetUpload.tsx:79',message:'fetchBankAccounts - setting bank accounts',data:{bankAccountsCount:data.bank_accounts.length,willAutoSelect:data.bank_accounts.length === 1,autoSelectedId:data.bank_accounts.length === 1 ? data.bank_accounts[0].id : null},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'F'})}).catch(()=>{});
-        // #endregion
         // Auto-select first account if only one exists
         if (data.bank_accounts.length === 1 && data.bank_accounts[0].id) {
           // Ensure we set a string value - validate it's actually a string
@@ -145,20 +130,11 @@ export default function SpreadsheetUpload() {
           }
         }
       } else {
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'SpreadsheetUpload.tsx:85',message:'fetchBankAccounts - invalid response',data:{hasSuccess:data.success,hasBankAccounts:!!data.bank_accounts,error:data.error || null},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'F'})}).catch(()=>{});
-        // #endregion
       }
     } catch (error: any) {
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'SpreadsheetUpload.tsx:90',message:'fetchBankAccounts - exception',data:{errorMessage:error?.message || 'unknown',errorType:error?.constructor?.name || 'unknown',errorStack:error?.stack?.substring(0,200) || null},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'F'})}).catch(()=>{});
-      // #endregion
       console.error("Error fetching bank accounts:", error);
     } finally {
       setLoadingBankAccounts(false);
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'SpreadsheetUpload.tsx:95',message:'fetchBankAccounts - finally',data:{loadingBankAccounts:false},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'F'})}).catch(()=>{});
-      // #endregion
     }
   };
 
@@ -228,9 +204,6 @@ export default function SpreadsheetUpload() {
     const currentProfileLoading = profileLoadingRef.current;
     const currentSelectedBankAccount = currentBankAccounts.find(acc => acc.id === currentBankAccountId);
     
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'SpreadsheetUpload.tsx:171',message:'handleUpload entry',data:{currentBankAccountId,currentBankAccountIdType:typeof currentBankAccountId,isString:typeof currentBankAccountId === 'string',isObject:typeof currentBankAccountId === 'object',bankAccountsCount:currentBankAccounts.length},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'H'})}).catch(()=>{});
-    // #endregion
     
     // Gating checks
     if (!currentProfileReady && !currentProfileLoading) {
@@ -245,9 +218,6 @@ export default function SpreadsheetUpload() {
     } else if (currentBankAccountId && typeof currentBankAccountId === 'object') {
       // If it's an object, try to extract an id property, otherwise log error
       console.error('Bank account validation failed: currentBankAccountId is an object:', currentBankAccountId);
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'SpreadsheetUpload.tsx:186',message:'Bank account is object - validation failed',data:{currentBankAccountId,currentBankAccountIdType:typeof currentBankAccountId,hasId:currentBankAccountId && 'id' in (currentBankAccountId as any)},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'H'})}).catch(()=>{});
-      // #endregion
       setUploadState(prev => ({ ...prev, error: "Please select a bank account before uploading." }));
       return;
     } else {
@@ -256,9 +226,6 @@ export default function SpreadsheetUpload() {
     
     if (!bankAccountId || bankAccountId.trim() === '' || bankAccountId === '[object Object]') {
       console.error('Bank account validation failed:', { currentBankAccountId, bankAccountId, bankAccountsCount: currentBankAccounts.length, type: typeof currentBankAccountId, isObjectString: bankAccountId === '[object Object]' });
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'SpreadsheetUpload.tsx:194',message:'Bank account validation failed - empty or object string',data:{currentBankAccountId,bankAccountId,isObjectString:bankAccountId === '[object Object]',bankAccountsCount:currentBankAccounts.length},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'H'})}).catch(()=>{});
-      // #endregion
       setUploadState(prev => ({ ...prev, error: "Please select a bank account before uploading." }));
       return;
     }
@@ -270,9 +237,6 @@ export default function SpreadsheetUpload() {
     setUploadState(prev => ({ ...prev, uploading: true, progress: 0 }));
   const startTime = Date.now();
 
-  // #region agent log
-  fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'SpreadsheetUpload.tsx:67',message:'handleUpload start',data:{fileName:file.name,fileSize:file.size,fileType:file.type},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'A'})}).catch(()=>{});
-  // #endregion
 
     try {
       // Note: bankAccountId was already validated above using ref values
@@ -348,9 +312,6 @@ export default function SpreadsheetUpload() {
 
       const data = await uploadPromise;
 
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'SpreadsheetUpload.tsx:75',message:'handleUpload response',data:{status:200,ok:true,durationMs:Date.now()-startTime},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'A'})}).catch(()=>{});
-    // #endregion
 
       // Handle duplicate file detection (409 response)
       if (data.isDuplicateError) {
@@ -389,9 +350,6 @@ export default function SpreadsheetUpload() {
         }, 1500);
       }
   } catch (error: any) {
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'SpreadsheetUpload.tsx:96',message:'handleUpload error',data:{errorMessage:error?.message || 'unknown',durationMs:Date.now()-startTime},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'C'})}).catch(()=>{});
-    // #endregion
       // Try to extract error message from response
       let errorMessage = error.message || 'An error occurred during upload';
       try {

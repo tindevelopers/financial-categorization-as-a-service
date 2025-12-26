@@ -129,9 +129,6 @@ export async function POST(request: NextRequest) {
     }
 
     // Validate bank account and spreadsheet requirement
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'upload/route.ts:131',message:'Bank account validation query start',data:{bankAccountId,userId:user.id,supabaseUrl:process.env.NEXT_PUBLIC_SUPABASE_URL?.substring(0,50) || 'MISSING'},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'D'})}).catch(()=>{});
-    // #endregion
     
     const { data: bankAccount, error: bankAccountError } = await supabase
       .from("bank_accounts")
@@ -140,14 +137,8 @@ export async function POST(request: NextRequest) {
       .eq("user_id", user.id)
       .single();
 
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'upload/route.ts:138',message:'Bank account validation query result',data:{hasBankAccount:!!bankAccount,bankAccountId:bankAccount?.id || null,hasError:!!bankAccountError,errorMessage:bankAccountError?.message || null,errorCode:bankAccountError?.code || null,errorDetails:bankAccountError?.details || null,errorHint:bankAccountError?.hint || null},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'D'})}).catch(()=>{});
-    // #endregion
 
     if (bankAccountError || !bankAccount || !bankAccount.is_active) {
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'upload/route.ts:142',message:'Bank account validation failed',data:{bankAccountError:bankAccountError ? {message:bankAccountError.message,code:bankAccountError.code,details:bankAccountError.details,hint:bankAccountError.hint} : null,hasBankAccount:!!bankAccount,isActive:bankAccount?.is_active || false},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'C'})}).catch(()=>{});
-      // #endregion
       return NextResponse.json(
         { error: "Invalid or inactive bank account", error_code: "BANK_ACCOUNT_INVALID" },
         { status: 400 }
@@ -301,9 +292,6 @@ export async function POST(request: NextRequest) {
     // Upload to Supabase Storage
     const fileName = `${user.id}/${Date.now()}-${file.name}`;
     
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'upload/route.ts:70',message:'File storage location',data:{fileName,storageBucket:'categorization-uploads',userId:user.id,fileSize:file.size},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'B'})}).catch(()=>{});
-    // #endregion
     
     const { data: uploadData, error: uploadError } = await supabase.storage
       .from("categorization-uploads")
@@ -313,9 +301,6 @@ export async function POST(request: NextRequest) {
       });
 
     if (uploadError) {
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'upload/route.ts:79',message:'Storage upload error',data:{error:uploadError.message,fileName},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'B'})}).catch(()=>{});
-      // #endregion
       console.error("Storage upload error:", uploadError);
       const errorCode = mapErrorToCode(uploadError);
       const errorResponse = createJobErrorResponse(errorCode, uploadError.message);
@@ -334,9 +319,6 @@ export async function POST(request: NextRequest) {
       .from("categorization-uploads")
       .getPublicUrl(fileName);
     
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'upload/route.ts:88',message:'File uploaded successfully',data:{fileName,publicUrl:urlData.publicUrl},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'B'})}).catch(()=>{});
-    // #endregion
 
     // Create categorization job
     // Use admin client to bypass RLS, but we've already validated the user above

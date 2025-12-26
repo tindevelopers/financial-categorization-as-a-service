@@ -44,7 +44,6 @@ export default function ReviewJobsPage() {
   const [bulkDeleting, setBulkDeleting] = useState(false)
   const [bulkRereviewing, setBulkRereviewing] = useState(false)
 
-  // #region agent log
   useEffect(() => {
     const logData = {
       componentVersion: COMPONENT_VERSION,
@@ -63,19 +62,14 @@ export default function ReviewJobsPage() {
     console.log('[ReviewPage] Component mounted:', logData);
     // Also send to debug server if available (localhost only)
     if (!IS_PRODUCTION) {
-      fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'review/page.tsx:50',message:'Component mounted',data:logData,timestamp:Date.now(),sessionId:'debug-session',runId:'initial',hypothesisId:'B'})}).catch(()=>{});
     }
   }, []);
-  // #endregion
 
   useEffect(() => {
     loadJobs()
   }, [])
 
   const loadJobs = async () => {
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'review/page.tsx:43',message:'loadJobs called',data:{timestamp:Date.now()},timestamp:Date.now(),sessionId:'debug-session',runId:'initial',hypothesisId:'B'})}).catch(()=>{});
-    // #endregion
     try {
       const response = await fetch("/api/categorization/jobs", {
         method: 'GET',
@@ -97,14 +91,8 @@ export default function ReviewJobsPage() {
       
       const data = await response.json()
       const jobsList = data.jobs || []
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'review/page.tsx:65',message:'Jobs loaded',data:{jobsCount:jobsList.length,firstJobId:jobsList[0]?.id,hasCheckboxes:true},timestamp:Date.now(),sessionId:'debug-session',runId:'initial',hypothesisId:'B'})}).catch(()=>{});
-      // #endregion
       setJobs(jobsList)
     } catch (err: any) {
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'review/page.tsx:68',message:'loadJobs error',data:{error:err.message},timestamp:Date.now(),sessionId:'debug-session',runId:'initial',hypothesisId:'B'})}).catch(()=>{});
-      // #endregion
       setError(err.message)
     } finally {
       setLoading(false)
@@ -120,7 +108,6 @@ export default function ReviewJobsPage() {
   }
 
   const handleToggleSelect = (jobId: string) => {
-    // #region agent log
     const logData = {
       jobId,
       currentSelected: selectedIds.has(jobId),
@@ -130,9 +117,7 @@ export default function ReviewJobsPage() {
     };
     console.log('[ReviewPage] Checkbox clicked:', logData);
     if (!IS_PRODUCTION) {
-      fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'review/page.tsx:95',message:'Checkbox clicked',data:logData,timestamp:Date.now(),sessionId:'debug-session',runId:'initial',hypothesisId:'C'})}).catch(()=>{});
     }
-    // #endregion
     setSelectedIds(prev => {
       const next = new Set(prev)
       if (next.has(jobId)) {
@@ -140,7 +125,6 @@ export default function ReviewJobsPage() {
       } else {
         next.add(jobId)
       }
-      // #region agent log
       const updateLogData = {
         newSelectedCount: next.size,
         willShowButtons: next.size > 0,
@@ -149,9 +133,7 @@ export default function ReviewJobsPage() {
       };
       console.log('[ReviewPage] Selection updated:', updateLogData);
       if (!IS_PRODUCTION) {
-        fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'review/page.tsx:110',message:'Selection updated',data:updateLogData,timestamp:Date.now(),sessionId:'debug-session',runId:'initial',hypothesisId:'C'})}).catch(()=>{});
       }
-      // #endregion
       return next
     })
   }
@@ -316,7 +298,6 @@ export default function ReviewJobsPage() {
             };
             console.log('[ReviewPage] Rendering bulk actions:', logData);
             if (!IS_PRODUCTION) {
-              fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'review/page.tsx:275',message:'Rendering bulk actions',data:logData,timestamp:Date.now(),sessionId:'debug-session',runId:'initial',hypothesisId:'A'})}).catch(()=>{});
             }
             return null;
           })()}
@@ -401,7 +382,6 @@ export default function ReviewJobsPage() {
                     };
                     console.log('[ReviewPage] Rendering select all checkbox:', logData);
                     if (!IS_PRODUCTION) {
-                      fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'review/page.tsx:355',message:'Rendering select all checkbox',data:logData,timestamp:Date.now(),sessionId:'debug-session',runId:'initial',hypothesisId:'A'})}).catch(()=>{});
                     }
                     return null;
                   })()}
@@ -501,7 +481,6 @@ export default function ReviewJobsPage() {
                         };
                         console.log('[ReviewPage] Rendering row checkbox:', logData);
                         if (!IS_PRODUCTION) {
-                          fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'review/page.tsx:490',message:'Rendering row checkbox',data:logData,timestamp:Date.now(),sessionId:'debug-session',runId:'initial',hypothesisId:'A'})}).catch(()=>{});
                         }
                       }
                       return null;

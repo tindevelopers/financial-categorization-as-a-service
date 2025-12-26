@@ -21,9 +21,6 @@ export class VercelAICategorizationService implements AICategorizationService {
   }
 
   async categorizeBatch(transactions: Transaction[]): Promise<CategoryResult[]> {
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'VercelAICategorizationService.ts:21',message:'categorizeBatch entry',data:{transactionCount:transactions.length},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'A'})}).catch(()=>{});
-    // #endregion
     try {
       // Build prompt with user mappings and transaction context
       const prompt = this.buildPrompt(transactions);
@@ -46,9 +43,6 @@ export class VercelAICategorizationService implements AICategorizationService {
 
       const categorizations = (object as any).categorizations || [];
 
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'VercelAICategorizationService.ts:65',message:'AI categorization success',data:{categorizationCount:categorizations.length,hasNullSubcategory:categorizations.some((c:any)=>c.subcategory===null)},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'A'})}).catch(()=>{});
-      // #endregion
 
       return categorizations.map((cat: any, index: number) => ({
         category: cat.category || "Uncategorized",
@@ -57,9 +51,6 @@ export class VercelAICategorizationService implements AICategorizationService {
         reasoning: cat.reasoning,
       }));
     } catch (error: any) {
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'VercelAICategorizationService.ts:73',message:'AI categorization error',data:{errorMessage:error.message,errorType:error.name,hasSubcategoryError:error.message?.includes('subcategory')},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'A'})}).catch(()=>{});
-      // #endregion
       console.error("Vercel AI categorization error:", error);
       // Fallback to basic categorization
       return transactions.map(() => ({

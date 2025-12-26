@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/database/server";
+import { createAdminClient } from "@/lib/database/admin-client";
 import { google } from "googleapis";
 
 export async function POST(
@@ -34,8 +35,10 @@ export async function POST(
       );
     }
 
-    // Get transactions
-    const { data: transactions, error: transactionsError } = await supabase
+    // Get transactions using admin client to bypass RLS
+    // Security is enforced by the job ownership check above
+    const adminClient = createAdminClient();
+    const { data: transactions, error: transactionsError } = await adminClient
       .from("categorized_transactions")
       .select("*")
       .eq("job_id", jobId)
