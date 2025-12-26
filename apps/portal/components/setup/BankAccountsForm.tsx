@@ -45,14 +45,11 @@ export function BankAccountsForm({ data, onChange }: BankAccountsFormProps) {
 
   return (
     <div className="space-y-6">
-      <div>
+      <Fieldset>
         <Legend>Bank Accounts (Optional)</Legend>
         <Text className="mt-2">
           Add your business bank accounts for easier reconciliation
         </Text>
-      </div>
-
-      <Fieldset>
         {/* Existing Bank Accounts */}
         {data.bankAccounts.length > 0 && (
           <div className="space-y-3 mb-6">
