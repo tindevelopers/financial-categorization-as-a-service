@@ -161,14 +161,34 @@ function isDateLike(value: any): boolean {
 /**
  * Categorize transactions using AI or rule-based fallback
  */
+// Helper to conditionally log (only if debug server is available)
+const debugLog = async (location: string, message: string, data: any) => {
+  // Only log if explicitly enabled and in development
+  if (process.env.ENABLE_DEBUG_LOGGING === 'true') {
+    try {
+      await fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ location, message, data, timestamp: Date.now(), sessionId: 'debug-session', runId: 'ai-fix' }),
+        signal: AbortSignal.timeout(100) // 100ms timeout to avoid hanging
+      }).catch(() => {}); // Silently fail if server unavailable
+    } catch {
+      // Ignore errors
+    }
+  }
+};
+
 export async function categorizeTransactions(
   transactions: Transaction[],
   userId: string,
   supabase: any
 ): Promise<CategorizedTransaction[]> {
-  // #region agent log
-  fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'process-spreadsheet.ts:164',message:'categorizeTransactions entry',data:{transactionCount:transactions.length,userId,useAI:process.env.USE_AI_CATEGORIZATION === 'true',hasUseAIEnv:!!process.env.USE_AI_CATEGORIZATION},timestamp:Date.now(),sessionId:'debug-session',runId:'ai-fix',hypothesisId:'A'})}).catch(()=>{});
-  // #endregion
+  await debugLog('process-spreadsheet.ts:164', 'categorizeTransactions entry', {
+    transactionCount: transactions.length,
+    userId,
+    useAI: process.env.USE_AI_CATEGORIZATION === 'true',
+    hasUseAIEnv: !!process.env.USE_AI_CATEGORIZATION
+  });
   
   // Get user's category mappings
   const { data: mappings } = await supabase
@@ -176,25 +196,21 @@ export async function categorizeTransactions(
     .select("*")
     .eq("user_id", userId);
 
-  // #region agent log
-  fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'process-spreadsheet.ts:172',message:'User mappings fetched',data:{mappingsCount:mappings?.length || 0},timestamp:Date.now(),sessionId:'debug-session',runId:'ai-fix',hypothesisId:'A'})}).catch(()=>{});
-  // #endregion
+  await debugLog('process-spreadsheet.ts:172', 'User mappings fetched', {
+    mappingsCount: mappings?.length || 0
+  });
 
   // Use AI categorization service if available
   const useAI = process.env.USE_AI_CATEGORIZATION === "true";
   
   if (useAI) {
     try {
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'process-spreadsheet.ts:179',message:'AI categorization enabled, importing factory',data:{},timestamp:Date.now(),sessionId:'debug-session',runId:'ai-fix',hypothesisId:'B'})}).catch(()=>{});
-      // #endregion
+      await debugLog('process-spreadsheet.ts:179', 'AI categorization enabled, importing factory', {});
       
       const { AICategorizationFactory } = await import("@/lib/ai/AICategorizationFactory");
       const provider = AICategorizationFactory.getDefaultProvider();
       
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'process-spreadsheet.ts:185',message:'AI factory imported',data:{provider},timestamp:Date.now(),sessionId:'debug-session',runId:'ai-fix',hypothesisId:'B'})}).catch(()=>{});
-      // #endregion
+      await debugLog('process-spreadsheet.ts:185', 'AI factory imported', { provider });
       
       const userMappings = mappings?.map((m: any) => ({
         pattern: m.pattern,
@@ -204,9 +220,7 @@ export async function categorizeTransactions(
       
       const aiService = AICategorizationFactory.create(provider, userMappings);
       
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'process-spreadsheet.ts:194',message:'AI service created',data:{hasService:!!aiService},timestamp:Date.now(),sessionId:'debug-session',runId:'ai-fix',hypothesisId:'B'})}).catch(()=>{});
-      // #endregion
+      await debugLog('process-spreadsheet.ts:194', 'AI service created', { hasService: !!aiService });
       
       // Convert transactions to AI service format
       const aiTransactions = transactions.map(tx => ({
@@ -222,15 +236,18 @@ export async function categorizeTransactions(
       for (let i = 0; i < aiTransactions.length; i += BATCH_SIZE) {
         const batch = aiTransactions.slice(i, i + BATCH_SIZE);
         
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'process-spreadsheet.ts:207',message:'Calling AI categorizeBatch',data:{batchIndex:i,batchSize:batch.length,totalBatches:Math.ceil(aiTransactions.length/BATCH_SIZE)},timestamp:Date.now(),sessionId:'debug-session',runId:'ai-fix',hypothesisId:'C'})}).catch(()=>{});
-        // #endregion
+        await debugLog('process-spreadsheet.ts:207', 'Calling AI categorizeBatch', {
+          batchIndex: i,
+          batchSize: batch.length,
+          totalBatches: Math.ceil(aiTransactions.length / BATCH_SIZE)
+        });
         
         const batchResults = await aiService.categorizeBatch(batch);
         
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'process-spreadsheet.ts:211',message:'AI categorizeBatch completed',data:{resultsCount:batchResults.length,hasResults:batchResults.length > 0},timestamp:Date.now(),sessionId:'debug-session',runId:'ai-fix',hypothesisId:'C'})}).catch(()=>{});
-        // #endregion
+        await debugLog('process-spreadsheet.ts:211', 'AI categorizeBatch completed', {
+          resultsCount: batchResults.length,
+          hasResults: batchResults.length > 0
+        });
         
         // Merge results back with original transactions
         for (let j = 0; j < batch.length; j++) {
@@ -245,15 +262,17 @@ export async function categorizeTransactions(
         }
       }
       
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'process-spreadsheet.ts:226',message:'AI categorization completed successfully',data:{totalResults:results.length},timestamp:Date.now(),sessionId:'debug-session',runId:'ai-fix',hypothesisId:'C'})}).catch(()=>{});
-      // #endregion
+      await debugLog('process-spreadsheet.ts:226', 'AI categorization completed successfully', {
+        totalResults: results.length
+      });
       
       return results;
     } catch (error: any) {
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'process-spreadsheet.ts:230',message:'AI categorization failed, falling back',data:{errorMessage:error.message,errorName:error.name,errorStack:error.stack?.substring(0,500) || null},timestamp:Date.now(),sessionId:'debug-session',runId:'ai-fix',hypothesisId:'D'})}).catch(()=>{});
-      // #endregion
+      await debugLog('process-spreadsheet.ts:230', 'AI categorization failed, falling back', {
+        errorMessage: error.message,
+        errorName: error.name,
+        errorStack: error.stack?.substring(0, 500) || null
+      });
       console.error("AI categorization failed, falling back to rule-based:", error);
       // Fall through to rule-based categorization
     }
@@ -334,9 +353,11 @@ export async function processSpreadsheetFile(
   userId: string,
   supabase: any
 ): Promise<ProcessResult> {
-  // #region agent log
-  fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'process-spreadsheet.ts:294',message:'processSpreadsheetFile entry',data:{jobId,userId,fileSize:fileBuffer.byteLength},timestamp:Date.now(),sessionId:'debug-session',runId:'ai-fix',hypothesisId:'E'})}).catch(()=>{});
-  // #endregion
+  await debugLog('process-spreadsheet.ts:294', 'processSpreadsheetFile entry', {
+    jobId,
+    userId,
+    fileSize: fileBuffer.byteLength
+  });
   
   try {
     // Get tenant_id for the user
@@ -355,9 +376,10 @@ export async function processSpreadsheetFile(
 
     const bankAccountId = jobData?.bank_account_id || null;
 
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'process-spreadsheet.ts:315',message:'Job data fetched',data:{hasJobData:!!jobData,bankAccountId},timestamp:Date.now(),sessionId:'debug-session',runId:'ai-fix',hypothesisId:'E'})}).catch(()=>{});
-    // #endregion
+    await debugLog('process-spreadsheet.ts:315', 'Job data fetched', {
+      hasJobData: !!jobData,
+      bankAccountId
+    });
 
     // Parse spreadsheet
     const workbook = XLSX.read(fileBuffer, { type: "array" });
@@ -365,16 +387,17 @@ export async function processSpreadsheetFile(
     const worksheet = workbook.Sheets[sheetName];
     const data = XLSX.utils.sheet_to_json(worksheet, { raw: false });
 
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'process-spreadsheet.ts:323',message:'Spreadsheet parsed',data:{sheetName,rowCount:data.length},timestamp:Date.now(),sessionId:'debug-session',runId:'ai-fix',hypothesisId:'E'})}).catch(()=>{});
-    // #endregion
+    await debugLog('process-spreadsheet.ts:323', 'Spreadsheet parsed', {
+      sheetName,
+      rowCount: data.length
+    });
 
     // Extract transactions
     const transactions = extractTransactions(data);
 
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'process-spreadsheet.ts:327',message:'Transactions extracted',data:{transactionCount:transactions.length},timestamp:Date.now(),sessionId:'debug-session',runId:'ai-fix',hypothesisId:'E'})}).catch(()=>{});
-    // #endregion
+    await debugLog('process-spreadsheet.ts:327', 'Transactions extracted', {
+      transactionCount: transactions.length
+    });
 
     if (transactions.length === 0) {
       return {
@@ -396,9 +419,9 @@ export async function processSpreadsheetFile(
     const mergeService = createMergeService(supabase, userId, userData?.tenant_id || null);
     
     // Categorize transactions first
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'process-spreadsheet.ts:346',message:'Starting categorization',data:{transactionCount:transactions.length},timestamp:Date.now(),sessionId:'debug-session',runId:'ai-fix',hypothesisId:'F'})}).catch(()=>{});
-    // #endregion
+    await debugLog('process-spreadsheet.ts:346', 'Starting categorization', {
+      transactionCount: transactions.length
+    });
     
     const categorizedTransactions = await categorizeTransactions(
       transactions,
@@ -406,9 +429,9 @@ export async function processSpreadsheetFile(
       supabase
     );
 
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'process-spreadsheet.ts:353',message:'Categorization completed',data:{categorizedCount:categorizedTransactions.length},timestamp:Date.now(),sessionId:'debug-session',runId:'ai-fix',hypothesisId:'F'})}).catch(()=>{});
-    // #endregion
+    await debugLog('process-spreadsheet.ts:353', 'Categorization completed', {
+      categorizedCount: categorizedTransactions.length
+    });
 
     // Map categorized transactions back to sync format
     const categorizedSyncTransactions: SyncTransaction[] = syncTransactions.map((tx, index) => {
@@ -421,9 +444,9 @@ export async function processSpreadsheetFile(
     });
 
     // Process with merge service (handles duplicate detection)
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'process-spreadsheet.ts:365',message:'Starting merge service',data:{syncTransactionCount:categorizedSyncTransactions.length},timestamp:Date.now(),sessionId:'debug-session',runId:'ai-fix',hypothesisId:'G'})}).catch(()=>{});
-    // #endregion
+    await debugLog('process-spreadsheet.ts:365', 'Starting merge service', {
+      syncTransactionCount: categorizedSyncTransactions.length
+    });
     
     const mergeResult = await mergeService.processUploadWithMerge(categorizedSyncTransactions, {
       sourceType: "upload",
@@ -434,9 +457,10 @@ export async function processSpreadsheetFile(
       bankAccountId: bankAccountId,
     });
 
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'process-spreadsheet.ts:375',message:'Merge service completed',data:{inserted:mergeResult.inserted,skipped:mergeResult.skipped},timestamp:Date.now(),sessionId:'debug-session',runId:'ai-fix',hypothesisId:'G'})}).catch(()=>{});
-    // #endregion
+    await debugLog('process-spreadsheet.ts:375', 'Merge service completed', {
+      inserted: mergeResult.inserted,
+      skipped: mergeResult.skipped
+    });
 
     // Update job with item counts
     await supabase
@@ -474,9 +498,11 @@ export async function processSpreadsheetFile(
       duplicateDetails: duplicateDetails.length > 0 ? duplicateDetails : undefined,
     };
   } catch (error: any) {
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'process-spreadsheet.ts:407',message:'processSpreadsheetFile error',data:{errorMessage:error.message,errorName:error.name,errorStack:error.stack?.substring(0,1000) || null},timestamp:Date.now(),sessionId:'debug-session',runId:'ai-fix',hypothesisId:'H'})}).catch(()=>{});
-    // #endregion
+    await debugLog('process-spreadsheet.ts:407', 'processSpreadsheetFile error', {
+      errorMessage: error.message,
+      errorName: error.name,
+      errorStack: error.stack?.substring(0, 1000) || null
+    });
     console.error("Process spreadsheet error:", error);
     return {
       success: false,
