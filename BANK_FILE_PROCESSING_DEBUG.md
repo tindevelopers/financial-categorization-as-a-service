@@ -4,15 +4,28 @@
 
 ### Required for AI Categorization
 
-To enable AI categorization for bank statement processing, ensure the following environment variables are set in Vercel:
+To enable AI categorization for bank statement processing, ensure the following environment variables are set:
 
 ```
 USE_AI_CATEGORIZATION=true
 AI_CATEGORIZATION_PROVIDER=vercel_ai_gateway
-OPENAI_API_KEY=<your-openai-api-key>
+AI_GATEWAY_API_KEY=<your-vercel-ai-gateway-api-key>
 ```
 
-**Note:** If `USE_AI_CATEGORIZATION` is not set to `"true"` (exact string match), the system will fall back to rule-based categorization.
+### How to Get Your AI_GATEWAY_API_KEY
+
+1. Go to [Vercel Dashboard](https://vercel.com/dashboard)
+2. Click on the "AI Gateway" tab in the sidebar
+3. Select "API Keys" from the sidebar
+4. Click "Create Key" to generate a new API key
+5. Copy the key and add it to your environment variables
+
+**Important Notes:**
+- If `USE_AI_CATEGORIZATION` is not set to `"true"` (exact string match), the system will fall back to rule-based categorization
+- `AI_GATEWAY_API_KEY` is **required** for AI categorization to work locally
+- When deployed on Vercel, OIDC authentication may be used automatically (no API key needed)
+- The service uses OpenAI's `gpt-4o-mini` model via the Vercel AI Gateway for cost-efficient categorization
+- Without a valid `AI_GATEWAY_API_KEY`, all transactions will be marked as "Uncategorized"
 
 ### How to Verify in Vercel
 

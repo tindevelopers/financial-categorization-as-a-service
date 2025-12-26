@@ -8,8 +8,9 @@ export class VercelAICategorizationService implements AICategorizationService {
   private userMappings?: Array<{ pattern: string; category: string; subcategory?: string }>;
 
   constructor(userMappings?: Array<{ pattern: string; category: string; subcategory?: string }>) {
-    // Use Vercel AI Gateway for better reliability and monitoring
-    // The gateway automatically routes to OpenAI models
+    // Use Vercel AI Gateway for unified access to multiple AI providers
+    // Requires AI_GATEWAY_API_KEY environment variable (or OIDC when deployed on Vercel)
+    // See: https://vercel.com/docs/ai-gateway
     this.model = gateway("openai/gpt-4o-mini"); // Using mini for cost efficiency, can upgrade to gpt-4o if needed
     this.userMappings = userMappings;
   }

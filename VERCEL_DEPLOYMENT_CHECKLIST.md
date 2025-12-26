@@ -55,8 +55,15 @@ DROPBOX_REDIRECT_URI=https://your-domain.com/api/storage/dropbox/callback
 ```
 USE_AI_CATEGORIZATION=true
 AI_CATEGORIZATION_PROVIDER=vercel_ai_gateway
-OPENAI_API_KEY=<your-openai-api-key>
+AI_GATEWAY_API_KEY=<your-vercel-ai-gateway-api-key>
 ```
+**To get your AI_GATEWAY_API_KEY:**
+1. Go to [Vercel Dashboard](https://vercel.com/dashboard)
+2. Click "AI Gateway" tab
+3. Select "API Keys" → "Create Key"
+4. Copy the generated key
+
+**Note:** When deployed on Vercel, OIDC authentication may work automatically without an API key.
 
 #### Encryption (Required for OAuth token storage)
 ```
