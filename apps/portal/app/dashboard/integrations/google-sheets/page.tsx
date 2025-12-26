@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, Suspense } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import { Heading, Text, Button, Badge } from '@/components/catalyst'
 import { 
@@ -10,7 +10,7 @@ import {
   LinkIcon,
 } from '@heroicons/react/24/outline'
 
-export default function GoogleSheetsIntegrationPage() {
+function GoogleSheetsIntegrationContent() {
   const searchParams = useSearchParams()
   const router = useRouter()
   const [connected, setConnected] = useState(false)
@@ -301,6 +301,27 @@ export default function GoogleSheetsIntegrationPage() {
         </ul>
       </div>
     </div>
+  )
+}
+
+export default function GoogleSheetsIntegrationPage() {
+  return (
+    <Suspense fallback={
+      <div className="space-y-6">
+        <div>
+          <Heading>Google Sheets Integration</Heading>
+          <Text className="mt-2">
+            Connect your Google account to access and export to Google Sheets
+          </Text>
+        </div>
+        <div className="text-center py-12">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto"></div>
+          <Text className="mt-4">Loading...</Text>
+        </div>
+      </div>
+    }>
+      <GoogleSheetsIntegrationContent />
+    </Suspense>
   )
 }
 
