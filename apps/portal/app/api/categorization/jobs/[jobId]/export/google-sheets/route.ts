@@ -73,30 +73,57 @@ export async function POST(
       }
     }
 
+    // Check if Google service account credentials are configured
+    if (!process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL || !process.env.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY) {
+      console.error("Google Sheets export: Missing service account credentials");
+      return NextResponse.json(
+        { error: "Google Sheets export is not configured. Please configure GOOGLE_SERVICE_ACCOUNT_EMAIL and GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY environment variables." },
+        { status: 500 }
+      );
+    }
+
     // Initialize Google Sheets API
-    const auth = new google.auth.GoogleAuth({
-      credentials: {
-        client_email: process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL,
-        private_key: process.env.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY?.replace(/\\n/g, "\n"),
-      },
-      scopes: ["https://www.googleapis.com/auth/spreadsheets"],
-    });
+    let auth;
+    try {
+      auth = new google.auth.GoogleAuth({
+        credentials: {
+          client_email: process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL,
+          private_key: process.env.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY?.replace(/\\n/g, "\n"),
+        },
+        scopes: ["https://www.googleapis.com/auth/spreadsheets"],
+      });
+    } catch (authError: any) {
+      console.error("Google Sheets export: Auth initialization error:", authError);
+      return NextResponse.json(
+        { error: `Failed to initialize Google Auth: ${authError.message}` },
+        { status: 500 }
+      );
+    }
 
     const sheets = google.sheets({ version: "v4", auth });
 
     // Create a new spreadsheet
-    const spreadsheet = await sheets.spreadsheets.create({
-      requestBody: {
-        properties: {
-          title: `Financial Transactions - ${job.original_filename || "Export"} - ${new Date().toLocaleDateString()}`,
+    let spreadsheet;
+    try {
+      spreadsheet = await sheets.spreadsheets.create({
+        requestBody: {
+          properties: {
+            title: `Financial Transactions - ${job.original_filename || "Export"} - ${new Date().toLocaleDateString()}`,
+          },
         },
-      },
-    });
+      });
+    } catch (createError: any) {
+      console.error("Google Sheets export: Failed to create spreadsheet:", createError);
+      return NextResponse.json(
+        { error: `Failed to create spreadsheet: ${createError.message}` },
+        { status: 500 }
+      );
+    }
 
     const spreadsheetId = spreadsheet.data.spreadsheetId;
     if (!spreadsheetId) {
       return NextResponse.json(
-        { error: "Failed to create spreadsheet" },
+        { error: "Failed to create spreadsheet: No spreadsheet ID returned" },
         { status: 500 }
       );
     }
@@ -123,13 +150,26 @@ export async function POST(
           ? `${matchedDoc.vendor_name || matchedDoc.original_filename || "Document"} (${matchedDoc.document_date || "N/A"})`
           : "";
 
+        // Safely handle date parsing
+        let dateStr = "";
+        try {
+          dateStr = tx.date ? new Date(tx.date).toLocaleDateString() : "";
+        } catch {
+          dateStr = tx.date || "";
+        }
+
+        // Safely handle confidence score
+        const confidenceScore = tx.confidence_score != null 
+          ? (typeof tx.confidence_score === 'number' ? tx.confidence_score : parseFloat(tx.confidence_score) || 0)
+          : 0;
+
         return [
-          new Date(tx.date).toLocaleDateString(),
-          tx.original_description,
-          tx.amount.toString(),
+          dateStr,
+          tx.original_description || "",
+          tx.amount != null ? tx.amount.toString() : "0",
           tx.category || "Uncategorized",
           tx.subcategory || "",
-          (tx.confidence_score * 100).toFixed(0) + "%",
+          (confidenceScore * 100).toFixed(0) + "%",
           tx.user_confirmed ? "Yes" : "No",
           reconciliationStatus.charAt(0).toUpperCase() + reconciliationStatus.slice(1),
           matchedDocInfo,
@@ -140,61 +180,74 @@ export async function POST(
     ];
 
     // Write data to sheet
-    await sheets.spreadsheets.values.update({
-      spreadsheetId,
-      range: "Sheet1!A1",
-      valueInputOption: "RAW",
-      requestBody: {
-        values,
-      },
-    });
+    try {
+      await sheets.spreadsheets.values.update({
+        spreadsheetId,
+        range: "Sheet1!A1",
+        valueInputOption: "RAW",
+        requestBody: {
+          values,
+        },
+      });
+    } catch (updateError: any) {
+      console.error("Google Sheets export: Failed to update values:", updateError);
+      return NextResponse.json(
+        { error: `Failed to write data to spreadsheet: ${updateError.message}` },
+        { status: 500 }
+      );
+    }
 
     // Format header row
-    await sheets.spreadsheets.batchUpdate({
-      spreadsheetId,
-      requestBody: {
-        requests: [
-          {
-            repeatCell: {
-              range: {
-                sheetId: 0,
-                startRowIndex: 0,
-                endRowIndex: 1,
-              },
-              cell: {
-                userEnteredFormat: {
-                  backgroundColor: {
-                    red: 0.2,
-                    green: 0.4,
-                    blue: 0.8,
-                  },
-                  textFormat: {
-                    foregroundColor: {
-                      red: 1,
-                      green: 1,
-                      blue: 1,
+    try {
+      await sheets.spreadsheets.batchUpdate({
+        spreadsheetId,
+        requestBody: {
+          requests: [
+            {
+              repeatCell: {
+                range: {
+                  sheetId: 0,
+                  startRowIndex: 0,
+                  endRowIndex: 1,
+                },
+                cell: {
+                  userEnteredFormat: {
+                    backgroundColor: {
+                      red: 0.2,
+                      green: 0.4,
+                      blue: 0.8,
                     },
-                    bold: true,
+                    textFormat: {
+                      foregroundColor: {
+                        red: 1,
+                        green: 1,
+                        blue: 1,
+                      },
+                      bold: true,
+                    },
                   },
                 },
-              },
-              fields: "userEnteredFormat(backgroundColor,textFormat)",
-            },
-          },
-          // Auto-resize columns
-          {
-            autoResizeDimensions: {
-              dimensions: {
-                sheetId: 0,
-                dimension: "COLUMNS",
-                startIndex: 0,
-                endIndex: 11, // Updated for new columns
+                fields: "userEnteredFormat(backgroundColor,textFormat)",
               },
             },
-          },
-        ],
-      },
-    });
+            // Auto-resize columns
+            {
+              autoResizeDimensions: {
+                dimensions: {
+                  sheetId: 0,
+                  dimension: "COLUMNS",
+                  startIndex: 0,
+                  endIndex: 11, // Updated for new columns
+                },
+              },
+            },
+          ],
+        },
+      });
+    } catch (formatError: any) {
+      console.error("Google Sheets export: Failed to format sheet (non-critical):", formatError);
+      // Don't fail the export if formatting fails - data was already written
+    }
 
     // Make spreadsheet shareable (optional - you might want to keep it private)
     // For now, we'll return the URL and let the user share it manually if needed
@@ -209,8 +262,17 @@ export async function POST(
     });
   } catch (error: any) {
     console.error("Google Sheets export error:", error);
+    console.error("Error stack:", error.stack);
+    console.error("Error details:", {
+      message: error.message,
+      code: error.code,
+      response: error.response?.data,
+    });
     return NextResponse.json(
-      { error: error.message || "Failed to export to Google Sheets" },
+      { 
+        error: error.message || "Failed to export to Google Sheets",
+        details: process.env.NODE_ENV === 'development' ? error.stack : undefined
+      },
       { status: 500 }
     );
   }
