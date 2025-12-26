@@ -29,28 +29,108 @@ export interface ProcessResult {
 }
 
 /**
+ * Find a value in a row by matching column names case-insensitively
+ * @param row - The row object with column headers as keys
+ * @param patterns - Array of patterns to match (case-insensitive, supports partial matching)
+ * @returns The value if found, undefined otherwise
+ */
+function findColumnValue(row: any, patterns: string[]): any {
+  const rowKeys = Object.keys(row);
+  
+  for (const pattern of patterns) {
+    const patternLower = pattern.toLowerCase();
+    for (const key of rowKeys) {
+      const keyLower = key.toLowerCase();
+      // Exact match or pattern is contained in key
+      if (keyLower === patternLower || keyLower.includes(patternLower)) {
+        if (row[key] !== undefined && row[key] !== null && row[key] !== "") {
+          return row[key];
+        }
+      }
+    }
+  }
+  
+  return undefined;
+}
+
+/**
  * Extract transactions from spreadsheet data
+ * Supports various bank statement formats with case-insensitive column matching
  */
 export function extractTransactions(data: any[]): Transaction[] {
   const transactions: Transaction[] = [];
 
-  for (const row of data) {
-    // Try to find date, description, and amount columns
-    // Common column names to check
-    const dateKeys = ["date", "transaction_date", "posted_date", "date_posted"];
-    const descKeys = ["description", "memo", "details", "transaction", "merchant", "payee"];
-    const amountKeys = ["amount", "debit", "credit", "transaction_amount"];
+  // Extended column name patterns for various bank formats
+  // These are checked case-insensitively and with partial matching
+  const datePatterns = [
+    "date",
+    "transaction_date",
+    "trans_date",
+    "posted_date",
+    "post_date",
+    "date_posted",
+    "value_date",
+    "entry_date",
+    "effective_date",
+    "txn_date",
+    "trans date",
+    "posted date",
+    "value date",
+    "entry date",
+  ];
+  
+  const descPatterns = [
+    "description",
+    "memo",
+    "details",
+    "transaction",
+    "merchant",
+    "payee",
+    "narrative",
+    "reference",
+    "particulars",
+    "remarks",
+    "name",
+    "party",
+    "counterparty",
+    "trans details",
+    "transaction details",
+    "payment details",
+  ];
+  
+  const amountPatterns = [
+    "amount",
+    "debit",
+    "credit",
+    "transaction_amount",
+    "trans_amount",
+    "paid_out",
+    "paid_in",
+    "money_out",
+    "money_in",
+    "debit_amount",
+    "credit_amount",
+    "withdrawal",
+    "deposit",
+    "value",
+    "sum",
+    "paid out",
+    "paid in",
+    "money out",
+    "money in",
+    "debit amount",
+    "credit amount",
+  ];
 
+  for (const row of data) {
     let date: Date | string | null = null;
     let description: string | null = null;
     let amount: number | null = null;
 
-    // Find date
-    for (const key of dateKeys) {
-      if (row[key]) {
-        date = parseDate(row[key]);
-        break;
-      }
+    // Find date using extended patterns
+    const dateValue = findColumnValue(row, datePatterns);
+    if (dateValue) {
+      date = parseDate(dateValue);
     }
     if (!date) {
       // Try first column if it looks like a date
@@ -60,30 +140,62 @@ export function extractTransactions(data: any[]): Transaction[] {
       }
     }
 
-    // Find description
-    for (const key of descKeys) {
-      if (row[key] && typeof row[key] === "string") {
-        description = row[key].trim();
-        break;
-      }
+    // Find description using extended patterns
+    const descValue = findColumnValue(row, descPatterns);
+    if (descValue && typeof descValue === "string") {
+      description = descValue.trim();
     }
     if (!description) {
-      // Try second column
+      // Try second column as fallback
       const keys = Object.keys(row);
       if (keys.length > 1) {
-        description = String(row[keys[1]] || "").trim();
+        const secondVal = row[keys[1]];
+        if (secondVal && typeof secondVal === "string") {
+          description = secondVal.trim();
+        }
       }
     }
 
-    // Find amount
-    for (const key of amountKeys) {
-      if (row[key] !== undefined && row[key] !== null && row[key] !== "") {
-        amount = parseAmount(row[key]);
-        if (amount !== null) break;
+    // Find amount using extended patterns
+    // Try debit/credit columns separately first (common in bank statements)
+    const rowKeys = Object.keys(row);
+    let debitAmount: number | null = null;
+    let creditAmount: number | null = null;
+    
+    // Look for separate debit/credit columns
+    for (const key of rowKeys) {
+      const keyLower = key.toLowerCase();
+      if (keyLower.includes("debit") || keyLower.includes("paid out") || 
+          keyLower.includes("money out") || keyLower.includes("withdrawal")) {
+        const val = parseAmount(row[key]);
+        if (val !== null && val !== 0) {
+          debitAmount = Math.abs(val); // Debits are typically negative (outflows)
+        }
+      }
+      if (keyLower.includes("credit") || keyLower.includes("paid in") || 
+          keyLower.includes("money in") || keyLower.includes("deposit")) {
+        const val = parseAmount(row[key]);
+        if (val !== null && val !== 0) {
+          creditAmount = Math.abs(val); // Credits are typically positive (inflows)
+        }
       }
     }
+    
+    // If we found debit or credit, use them (debit as negative, credit as positive)
+    if (debitAmount !== null && debitAmount !== 0) {
+      amount = -debitAmount; // Outflow is negative
+    } else if (creditAmount !== null && creditAmount !== 0) {
+      amount = creditAmount; // Inflow is positive
+    } else {
+      // Try generic amount column
+      const amountValue = findColumnValue(row, amountPatterns);
+      if (amountValue !== undefined) {
+        amount = parseAmount(amountValue);
+      }
+    }
+    
     if (amount === null) {
-      // Try last column
+      // Try last column as fallback
       const keys = Object.keys(row);
       if (keys.length > 0) {
         amount = parseAmount(row[keys[keys.length - 1]]);

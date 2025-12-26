@@ -141,17 +141,20 @@ async function processSpreadsheet(jobId: string, userId: string, supabase: any) 
       const urlParts = job.file_url.split('/object/public/categorization-uploads/');
       if (urlParts.length === 2) {
         // Extract path from public URL (everything after the bucket name)
-        filePath = urlParts[1].split('?')[0]; // Remove query params if any
+        // Decode URL-encoded characters (spaces as %20, special chars, etc.)
+        filePath = decodeURIComponent(urlParts[1].split('?')[0]);
       } else {
         // Fallback: try to extract from URL or use stored path
         // If file_url is already a path (not a full URL), use it directly
         if (job.file_url.includes('http')) {
           // Try to extract from URL path
           const pathMatch = job.file_url.match(/categorization-uploads\/(.+)/);
-          filePath = pathMatch ? pathMatch[1].split('?')[0] : job.file_url.split('/').slice(-2).join('/');
+          const rawPath = pathMatch ? pathMatch[1].split('?')[0] : job.file_url.split('/').slice(-2).join('/');
+          // Decode URL-encoded characters
+          filePath = decodeURIComponent(rawPath);
         } else {
-          // Already a path
-          filePath = job.file_url;
+          // Already a path - decode in case it contains URL-encoded chars
+          filePath = decodeURIComponent(job.file_url);
         }
       }
     } else {
