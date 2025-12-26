@@ -74,12 +74,71 @@ export async function POST(
     }
 
     // Check if Google service account credentials are configured
+    // If not configured, fallback to CSV export
     if (!process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL || !process.env.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY) {
-      console.error("Google Sheets export: Missing service account credentials");
-      return NextResponse.json(
-        { error: "Google Sheets export is not configured. Please configure GOOGLE_SERVICE_ACCOUNT_EMAIL and GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY environment variables." },
-        { status: 500 }
-      );
+      console.warn("Google Sheets export: Missing service account credentials, falling back to CSV");
+      
+      // Generate CSV as fallback
+      const csvHeaders = [
+        "Date",
+        "Description",
+        "Amount",
+        "Category",
+        "Subcategory",
+        "Confidence",
+        "Confirmed",
+        "Reconciliation Status",
+        "Matched Document",
+        "Source Type",
+        "Notes",
+      ];
+      
+      const csvRows = [
+        csvHeaders.join(","),
+        ...transactions.map((tx: any) => {
+          const matchedDoc = tx.matched_document_id ? matchedDocumentsMap[tx.matched_document_id] : null;
+          const reconciliationStatus = tx.reconciliation_status || "unreconciled";
+          const matchedDocInfo = matchedDoc
+            ? `${matchedDoc.vendor_name || matchedDoc.original_filename || "Document"} (${matchedDoc.document_date || "N/A"})`
+            : "";
+
+          let dateStr = "";
+          try {
+            dateStr = tx.date ? new Date(tx.date).toLocaleDateString() : "";
+          } catch {
+            dateStr = tx.date || "";
+          }
+
+          const confidenceScore = tx.confidence_score != null 
+            ? (typeof tx.confidence_score === 'number' ? tx.confidence_score : parseFloat(tx.confidence_score) || 0)
+            : 0;
+
+          const row = [
+            `"${dateStr}"`,
+            `"${(tx.original_description || "").replace(/"/g, '""')}"`,
+            tx.amount != null ? tx.amount.toString() : "0",
+            `"${(tx.category || "Uncategorized").replace(/"/g, '""')}"`,
+            `"${(tx.subcategory || "").replace(/"/g, '""')}"`,
+            (confidenceScore * 100).toFixed(0) + "%",
+            tx.user_confirmed ? "Yes" : "No",
+            `"${reconciliationStatus.charAt(0).toUpperCase() + reconciliationStatus.slice(1)}"`,
+            `"${matchedDocInfo.replace(/"/g, '""')}"`,
+            `"${(tx.source_type || "upload").replace(/"/g, '""')}"`,
+            `"${(tx.user_notes || "").replace(/"/g, '""')}"`,
+          ];
+          return row.join(",");
+        }),
+      ];
+      
+      const csvContent = csvRows.join("\n");
+      
+      return new NextResponse(csvContent, {
+        status: 200,
+        headers: {
+          "Content-Type": "text/csv",
+          "Content-Disposition": `attachment; filename="transactions-${jobId}.csv"`,
+        },
+      });
     }
 
     // Initialize Google Sheets API
