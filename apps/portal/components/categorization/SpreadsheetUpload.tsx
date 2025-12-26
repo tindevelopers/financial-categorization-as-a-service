@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useRef, useEffect } from "react";
 import { useDropzone } from "react-dropzone";
 import Link from "next/link";
 import { ArrowUpTrayIcon, DocumentIcon, CheckCircleIcon, XCircleIcon, ExclamationTriangleIcon, DocumentDuplicateIcon } from "@heroicons/react/24/outline";
@@ -81,6 +81,29 @@ export default function SpreadsheetUpload() {
   const [loadingBankAccounts, setLoadingBankAccounts] = useState(true);
   const [profileReady, setProfileReady] = useState(false);
   const [profileLoading, setProfileLoading] = useState(true);
+
+  // Refs to always have current values for callbacks (avoids stale closure issues)
+  const selectedBankAccountIdRef = useRef(selectedBankAccountId);
+  const bankAccountsRef = useRef(bankAccounts);
+  const profileReadyRef = useRef(profileReady);
+  const profileLoadingRef = useRef(profileLoading);
+  
+  // Keep refs in sync with state
+  useEffect(() => {
+    selectedBankAccountIdRef.current = selectedBankAccountId;
+  }, [selectedBankAccountId]);
+  
+  useEffect(() => {
+    bankAccountsRef.current = bankAccounts;
+  }, [bankAccounts]);
+  
+  useEffect(() => {
+    profileReadyRef.current = profileReady;
+  }, [profileReady]);
+  
+  useEffect(() => {
+    profileLoadingRef.current = profileLoading;
+  }, [profileLoading]);
 
   // Fetch bank accounts on mount
   React.useEffect(() => {
@@ -195,44 +218,51 @@ export default function SpreadsheetUpload() {
 
     // Upload file
     await handleUpload(file);
-  }, []);
+  }, [selectedBankAccountId, bankAccounts, profileReady, profileLoading]);
 
   const handleUpload = async (file: File) => {
+    // Use refs to get current values (avoids stale closure issues)
+    const currentBankAccountId = selectedBankAccountIdRef.current;
+    const currentBankAccounts = bankAccountsRef.current;
+    const currentProfileReady = profileReadyRef.current;
+    const currentProfileLoading = profileLoadingRef.current;
+    const currentSelectedBankAccount = currentBankAccounts.find(acc => acc.id === currentBankAccountId);
+    
     // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'SpreadsheetUpload.tsx:171',message:'handleUpload entry',data:{selectedBankAccountId,selectedBankAccountIdType:typeof selectedBankAccountId,isString:typeof selectedBankAccountId === 'string',isObject:typeof selectedBankAccountId === 'object',bankAccountsCount:bankAccounts.length},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'G'})}).catch(()=>{});
+    fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'SpreadsheetUpload.tsx:171',message:'handleUpload entry',data:{currentBankAccountId,currentBankAccountIdType:typeof currentBankAccountId,isString:typeof currentBankAccountId === 'string',isObject:typeof currentBankAccountId === 'object',bankAccountsCount:currentBankAccounts.length},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'H'})}).catch(()=>{});
     // #endregion
     
     // Gating checks
-    if (!profileReady && !profileLoading) {
+    if (!currentProfileReady && !currentProfileLoading) {
       setUploadState(prev => ({ ...prev, error: "Please complete your profile (individual/company name) before uploading." }));
       return;
     }
     // Validate bank account selection - check both empty string and falsy values
-    // Ensure selectedBankAccountId is a string and not an object
+    // Ensure currentBankAccountId is a string and not an object
     let bankAccountId: string = '';
-    if (typeof selectedBankAccountId === 'string') {
-      bankAccountId = selectedBankAccountId;
-    } else if (selectedBankAccountId && typeof selectedBankAccountId === 'object') {
+    if (typeof currentBankAccountId === 'string') {
+      bankAccountId = currentBankAccountId;
+    } else if (currentBankAccountId && typeof currentBankAccountId === 'object') {
       // If it's an object, try to extract an id property, otherwise log error
-      console.error('Bank account validation failed: selectedBankAccountId is an object:', selectedBankAccountId);
+      console.error('Bank account validation failed: currentBankAccountId is an object:', currentBankAccountId);
       // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'SpreadsheetUpload.tsx:186',message:'Bank account is object - validation failed',data:{selectedBankAccountId,selectedBankAccountIdType:typeof selectedBankAccountId,hasId:selectedBankAccountId && 'id' in selectedBankAccountId},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'G'})}).catch(()=>{});
+      fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'SpreadsheetUpload.tsx:186',message:'Bank account is object - validation failed',data:{currentBankAccountId,currentBankAccountIdType:typeof currentBankAccountId,hasId:currentBankAccountId && 'id' in (currentBankAccountId as any)},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'H'})}).catch(()=>{});
       // #endregion
       setUploadState(prev => ({ ...prev, error: "Please select a bank account before uploading." }));
       return;
     } else {
-      bankAccountId = String(selectedBankAccountId || '');
+      bankAccountId = String(currentBankAccountId || '');
     }
     
     if (!bankAccountId || bankAccountId.trim() === '' || bankAccountId === '[object Object]') {
-      console.error('Bank account validation failed:', { selectedBankAccountId, bankAccountId, bankAccountsCount: bankAccounts.length, type: typeof selectedBankAccountId, isObjectString: bankAccountId === '[object Object]' });
+      console.error('Bank account validation failed:', { currentBankAccountId, bankAccountId, bankAccountsCount: currentBankAccounts.length, type: typeof currentBankAccountId, isObjectString: bankAccountId === '[object Object]' });
       // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'SpreadsheetUpload.tsx:194',message:'Bank account validation failed - empty or object string',data:{selectedBankAccountId,bankAccountId,isObjectString:bankAccountId === '[object Object]',bankAccountsCount:bankAccounts.length},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'G'})}).catch(()=>{});
+      fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'SpreadsheetUpload.tsx:194',message:'Bank account validation failed - empty or object string',data:{currentBankAccountId,bankAccountId,isObjectString:bankAccountId === '[object Object]',bankAccountsCount:currentBankAccounts.length},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'H'})}).catch(()=>{});
       // #endregion
       setUploadState(prev => ({ ...prev, error: "Please select a bank account before uploading." }));
       return;
     }
-    if (selectedBankAccount && !selectedBankAccount.default_spreadsheet_id) {
+    if (currentSelectedBankAccount && !currentSelectedBankAccount.default_spreadsheet_id) {
       setUploadState(prev => ({ ...prev, error: "Please set a default spreadsheet for this bank account before uploading." }));
       return;
     }
@@ -245,33 +275,8 @@ export default function SpreadsheetUpload() {
   // #endregion
 
     try {
-      // Validate bank account selection again (double-check)
-      // Ensure selectedBankAccountId is a string and not an object
-      let bankAccountId: string = '';
-      if (typeof selectedBankAccountId === 'string') {
-        bankAccountId = selectedBankAccountId;
-      } else if (selectedBankAccountId && typeof selectedBankAccountId === 'object') {
-        // If it's an object, try to extract an id property, otherwise log error
-        console.error('Bank account validation failed in try block: selectedBankAccountId is an object:', selectedBankAccountId);
-        setUploadState(prev => ({
-          ...prev,
-          uploading: false,
-          error: 'Please select a bank account before uploading',
-        }));
-        return;
-      } else {
-        bankAccountId = String(selectedBankAccountId || '');
-      }
-      
-      if (!bankAccountId || bankAccountId.trim() === '' || bankAccountId === '[object Object]') {
-        console.error('Bank account validation failed in try block:', { selectedBankAccountId, bankAccountId, type: typeof selectedBankAccountId, isObjectString: bankAccountId === '[object Object]' });
-        setUploadState(prev => ({
-          ...prev,
-          uploading: false,
-          error: 'Please select a bank account before uploading',
-        }));
-        return;
-      }
+      // Note: bankAccountId was already validated above using ref values
+      // No need to re-validate here since we're in the same function call
 
       console.log('Uploading with bank account:', bankAccountId);
       const formData = new FormData();
@@ -280,7 +285,7 @@ export default function SpreadsheetUpload() {
       
       // Add spreadsheet_id and spreadsheet_tab_id if bank account has defaults
       // Re-find selected bank account using the validated bankAccountId
-      const validatedSelectedBankAccount = bankAccounts.find(acc => acc.id === bankAccountId);
+      const validatedSelectedBankAccount = currentBankAccounts.find(acc => acc.id === bankAccountId);
       if (validatedSelectedBankAccount) {
         if (validatedSelectedBankAccount.default_spreadsheet_id) {
           formData.append('spreadsheet_id', validatedSelectedBankAccount.default_spreadsheet_id);
@@ -410,17 +415,24 @@ export default function SpreadsheetUpload() {
 
   const handleForceUpload = async () => {
     if (!pendingFile) return;
-    if (!profileReady && !profileLoading) {
+    
+    // Use refs to get current values (avoids stale closure issues)
+    const currentBankAccountId = selectedBankAccountIdRef.current;
+    const currentBankAccounts = bankAccountsRef.current;
+    const currentProfileReady = profileReadyRef.current;
+    const currentProfileLoading = profileLoadingRef.current;
+    
+    if (!currentProfileReady && !currentProfileLoading) {
       setUploadState(prev => ({ ...prev, error: "Please complete your profile (individual/company name) before uploading." }));
       return;
     }
-    // Ensure selectedBankAccountId is a string
-    const bankAccountId = typeof selectedBankAccountId === 'string' ? selectedBankAccountId : String(selectedBankAccountId || '');
+    // Ensure currentBankAccountId is a string
+    const bankAccountId = typeof currentBankAccountId === 'string' ? currentBankAccountId : String(currentBankAccountId || '');
     if (!bankAccountId || bankAccountId.trim() === '') {
       setUploadState(prev => ({ ...prev, error: "Please select a bank account before uploading." }));
       return;
     }
-    const validatedSelectedBankAccount = bankAccounts.find(acc => acc.id === bankAccountId);
+    const validatedSelectedBankAccount = currentBankAccounts.find(acc => acc.id === bankAccountId);
     if (validatedSelectedBankAccount && !validatedSelectedBankAccount.default_spreadsheet_id) {
       setUploadState(prev => ({ ...prev, error: "Please set a default spreadsheet for this bank account before uploading." }));
       return;
@@ -436,15 +448,6 @@ export default function SpreadsheetUpload() {
     }));
 
     try {
-      if (!bankAccountId || bankAccountId.trim() === '') {
-        setUploadState(prev => ({
-          ...prev,
-          uploading: false,
-          error: 'Please select a bank account before uploading',
-        }));
-        return;
-      }
-
       const formData = new FormData();
       formData.append('file', pendingFile);
       formData.append('force', 'true');
