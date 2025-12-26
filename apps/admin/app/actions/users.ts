@@ -443,3 +443,365 @@ export async function getAllTenantsForUser(): Promise<Array<{ id: string; name: 
   }
 }
 
+export interface CreateIndividualUserData {
+  email: string;
+  full_name: string;
+  password: string;
+  plan?: string;
+  status?: string;
+}
+
+/**
+ * Create an individual user with their own tenant
+ */
+export async function createIndividualUser(
+  data: CreateIndividualUserData
+): Promise<{ success: boolean; user?: User; tenant?: any; error?: string }> {
+  await requirePermission("users.write");
+  
+  try {
+    const adminClient = createAdminClient();
+    const supabase = await createClient();
+    const { data: { user: currentUser } } = await supabase.auth.getUser();
+    
+    if (!currentUser) {
+      throw new Error("Not authenticated");
+    }
+
+    // Validate email
+    if (!data.email || !data.email.includes("@")) {
+      throw new Error("Valid email is required");
+    }
+
+    // Validate password
+    if (!data.password || data.password.length < 8) {
+      throw new Error("Password must be at least 8 characters");
+    }
+
+    // Generate unique domain for individual tenant
+    const { generateIndividualTenantDomain } = await import("./tenants");
+    const tenantDomain = generateIndividualTenantDomain();
+
+    // Get Individual Admin role
+    const { data: roleData, error: roleError } = await adminClient
+      .from("roles")
+      .select("id")
+      .eq("name", "Individual Admin")
+      .single();
+
+    if (roleError || !roleData) {
+      console.error("[createIndividualUser] Error fetching Individual Admin role:", roleError);
+      throw new Error("Individual Admin role not found. Please ensure the migration has been run.");
+    }
+
+    // Create tenant first
+    console.log("[createIndividualUser] Creating tenant:", { domain: tenantDomain });
+    const { data: tenant, error: tenantError } = await (adminClient.from("tenants") as any)
+      .insert({
+        name: `${data.full_name}'s Account`,
+        domain: tenantDomain,
+        tenant_type: "individual",
+        plan: data.plan || "starter",
+        region: "us-east-1",
+        status: data.status || "active",
+        features: [],
+      })
+      .select()
+      .single();
+
+    if (tenantError || !tenant) {
+      console.error("[createIndividualUser] Error creating tenant:", tenantError);
+      throw new Error(`Failed to create tenant: ${tenantError?.message || "Unknown error"}`);
+    }
+
+    console.log("[createIndividualUser] Tenant created:", tenant.id);
+
+    // Create user in Supabase Auth
+    console.log("[createIndividualUser] Creating auth user:", { email: data.email });
+    const { data: authData, error: authError } = await adminClient.auth.admin.createUser({
+      email: data.email,
+      password: data.password,
+      email_confirm: true,
+    });
+
+    if (authError || !authData.user) {
+      console.error("[createIndividualUser] Auth error:", authError);
+      // Cleanup tenant if auth creation fails
+      try {
+        await adminClient.from("tenants").delete().eq("id", tenant.id);
+      } catch (cleanupError) {
+        console.error("[createIndividualUser] Failed to cleanup tenant:", cleanupError);
+      }
+      
+      if (authError?.message?.includes("already registered") || authError?.message?.includes("already exists")) {
+        throw new Error(`User with email "${data.email}" already exists`);
+      }
+      throw authError || new Error(`Failed to create user in Auth: ${authError?.message || "Unknown error"}`);
+    }
+
+    console.log("[createIndividualUser] Auth user created:", authData.user.id);
+
+    // Create user record
+    const { data: user, error: userError } = await (adminClient.from("users") as any)
+      .insert({
+        id: authData.user.id,
+        email: data.email,
+        full_name: data.full_name,
+        tenant_id: tenant.id,
+        role_id: roleData.id,
+        plan: data.plan || "starter",
+        status: data.status || "active",
+      })
+      .select(`
+        *,
+        roles:role_id (
+          id,
+          name,
+          description,
+          coverage,
+          permissions
+        ),
+        tenants:tenant_id (
+          id,
+          name,
+          domain,
+          status
+        )
+      `)
+      .single();
+
+    if (userError || !user) {
+      console.error("[createIndividualUser] Error creating user:", userError);
+      // Cleanup auth user and tenant
+      try {
+        await adminClient.auth.admin.deleteUser(authData.user.id);
+        await adminClient.from("tenants").delete().eq("id", tenant.id);
+      } catch (cleanupError) {
+        console.error("[createIndividualUser] Failed to cleanup:", cleanupError);
+      }
+      throw new Error(`Failed to create user: ${userError?.message || "Unknown error"}`);
+    }
+
+    console.log("[createIndividualUser] Individual user created successfully");
+    return { success: true, user: user as User, tenant };
+  } catch (error) {
+    console.error("[createIndividualUser] Unexpected error:", error);
+    const errorMessage = error instanceof Error 
+      ? error.message 
+      : typeof error === 'string' 
+        ? error 
+        : "Failed to create individual user";
+    
+    return {
+      success: false,
+      error: errorMessage,
+    };
+  }
+}
+
+export interface CreateCompanyUserData {
+  companyName: string;
+  companyType: "sole_trader" | "partnership" | "limited_company";
+  companyNumber?: string;
+  domain: string;
+  adminEmail: string;
+  adminFullName: string;
+  adminPassword: string;
+  plan?: string;
+  region?: string;
+  status?: "active" | "pending";
+}
+
+/**
+ * Create a company user (tenant + admin user + company profile)
+ */
+export async function createCompanyUser(
+  data: CreateCompanyUserData
+): Promise<{ success: boolean; user?: User; tenant?: any; companyProfile?: any; error?: string }> {
+  await requirePermission("users.write");
+  
+  try {
+    const adminClient = createAdminClient();
+    const supabase = await createClient();
+    const { data: { user: currentUser } } = await supabase.auth.getUser();
+    
+    if (!currentUser) {
+      throw new Error("Not authenticated");
+    }
+
+    // Validate email
+    if (!data.adminEmail || !data.adminEmail.includes("@")) {
+      throw new Error("Valid email is required");
+    }
+
+    // Validate password
+    if (!data.adminPassword || data.adminPassword.length < 8) {
+      throw new Error("Password must be at least 8 characters");
+    }
+
+    // Validate company number for limited companies
+    if (data.companyType === "limited_company" && !data.companyNumber) {
+      throw new Error("Company number is required for limited companies");
+    }
+
+    // Check if domain already exists
+    const existingTenant = await adminClient
+      .from("tenants")
+      .select("id")
+      .eq("domain", data.domain)
+      .maybeSingle();
+
+    if (existingTenant.data) {
+      throw new Error(`A tenant with domain "${data.domain}" already exists`);
+    }
+
+    // Get Organization Admin role
+    const { data: roleData, error: roleError } = await adminClient
+      .from("roles")
+      .select("id")
+      .eq("name", "Organization Admin")
+      .single();
+
+    if (roleError || !roleData) {
+      console.error("[createCompanyUser] Error fetching Organization Admin role:", roleError);
+      throw new Error("Organization Admin role not found");
+    }
+
+    // Create tenant
+    console.log("[createCompanyUser] Creating tenant:", { domain: data.domain });
+    const { data: tenant, error: tenantError } = await (adminClient.from("tenants") as any)
+      .insert({
+        name: data.companyName,
+        domain: data.domain,
+        tenant_type: "company",
+        plan: data.plan || "starter",
+        region: data.region || "us-east-1",
+        status: data.status || "active",
+        features: [],
+      })
+      .select()
+      .single();
+
+    if (tenantError || !tenant) {
+      console.error("[createCompanyUser] Error creating tenant:", tenantError);
+      throw new Error(`Failed to create tenant: ${tenantError?.message || "Unknown error"}`);
+    }
+
+    console.log("[createCompanyUser] Tenant created:", tenant.id);
+
+    // Create user in Supabase Auth
+    console.log("[createCompanyUser] Creating auth user:", { email: data.adminEmail });
+    const { data: authData, error: authError } = await adminClient.auth.admin.createUser({
+      email: data.adminEmail,
+      password: data.adminPassword,
+      email_confirm: true,
+    });
+
+    if (authError || !authData.user) {
+      console.error("[createCompanyUser] Auth error:", authError);
+      // Cleanup tenant if auth creation fails
+      try {
+        await adminClient.from("tenants").delete().eq("id", tenant.id);
+      } catch (cleanupError) {
+        console.error("[createCompanyUser] Failed to cleanup tenant:", cleanupError);
+      }
+      
+      if (authError?.message?.includes("already registered") || authError?.message?.includes("already exists")) {
+        throw new Error(`User with email "${data.adminEmail}" already exists`);
+      }
+      throw authError || new Error(`Failed to create user in Auth: ${authError?.message || "Unknown error"}`);
+    }
+
+    console.log("[createCompanyUser] Auth user created:", authData.user.id);
+
+    // Create user record
+    const { data: user, error: userError } = await (adminClient.from("users") as any)
+      .insert({
+        id: authData.user.id,
+        email: data.adminEmail,
+        full_name: data.adminFullName,
+        tenant_id: tenant.id,
+        role_id: roleData.id,
+        plan: data.plan || "starter",
+        status: data.status || "active",
+      })
+      .select(`
+        *,
+        roles:role_id (
+          id,
+          name,
+          description,
+          coverage,
+          permissions
+        ),
+        tenants:tenant_id (
+          id,
+          name,
+          domain,
+          status
+        )
+      `)
+      .single();
+
+    if (userError || !user) {
+      console.error("[createCompanyUser] Error creating user:", userError);
+      // Cleanup auth user and tenant
+      try {
+        await adminClient.auth.admin.deleteUser(authData.user.id);
+        await adminClient.from("tenants").delete().eq("id", tenant.id);
+      } catch (cleanupError) {
+        console.error("[createCompanyUser] Failed to cleanup:", cleanupError);
+      }
+      throw new Error(`Failed to create user: ${userError?.message || "Unknown error"}`);
+    }
+
+    console.log("[createCompanyUser] User created:", user.id);
+
+    // Create company profile
+    console.log("[createCompanyUser] Creating company profile");
+    const { data: companyProfile, error: profileError } = await (adminClient.from("company_profiles") as any)
+      .insert({
+        user_id: authData.user.id,
+        tenant_id: tenant.id,
+        company_name: data.companyName,
+        company_type: data.companyType,
+        company_number: data.companyNumber || null,
+        vat_registered: false,
+        accounting_basis: "cash",
+        default_currency: "GBP",
+        setup_completed: false,
+        setup_step: 1,
+      })
+      .select()
+      .single();
+
+    if (profileError || !companyProfile) {
+      console.error("[createCompanyUser] Error creating company profile:", profileError);
+      // Cleanup user and tenant if profile creation fails
+      try {
+        await adminClient.auth.admin.deleteUser(authData.user.id);
+        await adminClient.from("users").delete().eq("id", authData.user.id);
+        await adminClient.from("tenants").delete().eq("id", tenant.id);
+      } catch (cleanupError) {
+        console.error("[createCompanyUser] Failed to cleanup:", cleanupError);
+      }
+      throw new Error(`Failed to create company profile: ${profileError?.message || "Unknown error"}`);
+    }
+
+    console.log("[createCompanyUser] Company user created successfully");
+    return { success: true, user: user as User, tenant, companyProfile };
+  } catch (error) {
+    console.error("[createCompanyUser] Unexpected error:", error);
+    const errorMessage = error instanceof Error 
+      ? error.message 
+      : typeof error === 'string' 
+        ? error 
+        : "Failed to create company user";
+    
+    return {
+      success: false,
+      error: errorMessage,
+    };
+  }
+}
+

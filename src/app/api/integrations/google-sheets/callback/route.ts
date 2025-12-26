@@ -3,20 +3,28 @@ import { NextResponse } from 'next/server'
 import { decrypt } from '@/lib/encryption'
 
 /**
+ * Get the base URL from the request
+ * This ensures we use the actual domain the user is accessing (e.g., tenant subdomain)
+ */
+function getBaseUrlFromRequest(request: Request): string {
+  const url = new URL(request.url)
+  return `${url.protocol}//${url.host}`
+}
+
+/**
  * Get Google OAuth credentials based on source
  */
 async function getGoogleCredentials(
   supabase: any, 
   userId: string, 
-  source: 'tenant' | 'platform'
+  source: 'tenant' | 'platform',
+  requestBaseUrl: string
 ): Promise<{
   clientId: string | null;
   clientSecret: string | null;
   redirectUri: string;
 }> {
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 
-    (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000')
-  const defaultRedirectUri = `${baseUrl}/api/integrations/google-sheets/callback`
+  const defaultRedirectUri = `${requestBaseUrl}/api/integrations/google-sheets/callback`
 
   if (source === 'tenant') {
     // Get user's tenant ID
@@ -69,7 +77,9 @@ export async function GET(request: Request) {
   const state = searchParams.get('state')
   const error = searchParams.get('error')
 
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000')
+  // Use the actual request URL to determine where to redirect back to
+  const baseUrl = getBaseUrlFromRequest(request)
+  console.log('[Google Sheets OAuth Callback] Base URL from request:', baseUrl)
 
   if (error) {
     console.error('OAuth error:', error)
@@ -113,7 +123,7 @@ export async function GET(request: Request) {
     }
 
     // Get the appropriate credentials
-    const credentials = await getGoogleCredentials(supabase, userId, credentialSource)
+    const credentials = await getGoogleCredentials(supabase, userId, credentialSource, baseUrl)
 
     if (!credentials.clientId || !credentials.clientSecret) {
       return NextResponse.redirect(`${baseUrl}/dashboard/settings?error=configuration_error`)

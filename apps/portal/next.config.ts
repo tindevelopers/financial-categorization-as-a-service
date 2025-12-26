@@ -47,10 +47,20 @@ const nextConfig: NextConfig = {
       '@tinadmin/config': path.resolve(__dirname, '../../packages/@tinadmin/config/src'),
     };
     
+    // Make optional Google Cloud dependencies truly optional
+    config.resolve.fallback = {
+      ...config.resolve.fallback,
+      fs: false,
+      '@google-cloud/documentai': false,
+      '@google-cloud/storage': false,
+    };
+    
     if (!isServer) {
       config.resolve.fallback = {
         ...config.resolve.fallback,
         fs: false,
+        '@google-cloud/documentai': false,
+        '@google-cloud/storage': false,
       };
     }
     
@@ -66,6 +76,24 @@ const nextConfig: NextConfig = {
           {
             key: "Cache-Control",
             value: "public, max-age=31536000, immutable",
+          },
+        ],
+      },
+      // Disable caching for review page to ensure latest changes are deployed
+      {
+        source: "/dashboard/review",
+        headers: [
+          {
+            key: "Cache-Control",
+            value: "no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0",
+          },
+          {
+            key: "Pragma",
+            value: "no-cache",
+          },
+          {
+            key: "Expires",
+            value: "0",
           },
         ],
       },

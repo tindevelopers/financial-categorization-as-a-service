@@ -17,6 +17,7 @@ import {
   TrashIcon,
   ClipboardDocumentIcon,
   EnvelopeIcon,
+  BanknotesIcon,
 } from '@heroicons/react/24/outline'
 
 type EntityType = 'individual' | 'company'
@@ -130,13 +131,45 @@ export default function SettingsPage() {
   const [copiedLink, setCopiedLink] = useState<string | null>(null)
 
   useEffect(() => {
-    loadSettings()
+    // Check for OAuth callback parameters and refresh session if needed
+    const urlParams = new URLSearchParams(window.location.search)
+    const success = urlParams.get('success')
+    const error = urlParams.get('error')
+    
+    if (success || error) {
+      // Refresh the session after OAuth redirect
+      // This ensures cookies are properly set before making API calls
+      const refreshSession = async () => {
+        try {
+          const { createBrowserClient } = await import('@supabase/ssr')
+          const supabase = createBrowserClient(
+            process.env.NEXT_PUBLIC_SUPABASE_URL!,
+            process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+          )
+          await supabase.auth.refreshSession()
+          
+          // Clear the URL parameters after refreshing
+          window.history.replaceState({}, '', window.location.pathname)
+        } catch (error) {
+          console.error('Failed to refresh session:', error)
+        }
+      }
+      
+      refreshSession().then(() => {
+        // Load settings after session refresh
+        loadSettings()
+      })
+    } else {
+      loadSettings()
+    }
   }, [])
 
   const loadSettings = async () => {
     try {
       // Load entity type and tenant settings
-      const settingsResponse = await fetch('/api/tenant-settings/integrations')
+      const settingsResponse = await fetch('/api/tenant-settings/integrations', {
+        credentials: 'include',
+      })
       if (settingsResponse.ok) {
         const data = await settingsResponse.json()
         setEntityType(data.entityType || 'individual')
@@ -159,21 +192,27 @@ export default function SettingsPage() {
       }
 
       // Load Google Sheets connection status
-      const gsResponse = await fetch('/api/integrations/google-sheets/status')
+      const gsResponse = await fetch('/api/integrations/google-sheets/status', {
+        credentials: 'include',
+      })
       if (gsResponse.ok) {
         const gsData = await gsResponse.json()
         setIntegrations(prev => ({ ...prev, googleSheets: gsData }))
       }
 
       // Load Airtable connection status
-      const airtableResponse = await fetch('/api/integrations/airtable/status')
+      const airtableResponse = await fetch('/api/integrations/airtable/status', {
+        credentials: 'include',
+      })
       if (airtableResponse.ok) {
         const airtableData = await airtableResponse.json()
         setIntegrations(prev => ({ ...prev, airtable: airtableData }))
       }
 
       // Load sheet preferences
-      const prefsResponse = await fetch('/api/integrations/google-sheets/preferences')
+      const prefsResponse = await fetch('/api/integrations/google-sheets/preferences', {
+        credentials: 'include',
+      })
       if (prefsResponse.ok) {
         const prefsData = await prefsResponse.json()
         if (prefsData.preferences) {
@@ -183,7 +222,9 @@ export default function SettingsPage() {
       }
 
       // Load team data (for companies)
-      const teamResponse = await fetch('/api/team/invitations')
+      const teamResponse = await fetch('/api/team/invitations', {
+        credentials: 'include',
+      })
       if (teamResponse.ok) {
         const teamData = await teamResponse.json()
         setTeamInvitations(teamData.invitations || [])
@@ -344,11 +385,21 @@ Click OK to continue to Google OAuth.`;
         window.location.href = data.authUrl
       } else {
         const error = await response.json()
-        alert(error.message || 'Failed to start Google Sheets connection')
+        // #region agent log - Show detailed error for debugging
+        const errorDetails = `API Error (${response.status}):
+${JSON.stringify(error, null, 2)}
+
+This could mean:
+- Not authenticated (401)
+- Google credentials not configured (503)
+- Server error (500)`;
+        alert(errorDetails);
+        console.error('[DEBUG] Auth URL API error:', response.status, error);
+        // #endregion
       }
     } catch (error) {
       console.error('Failed to connect Google Sheets:', error)
-      alert('Failed to connect Google Sheets. Please try again.')
+      alert('Failed to connect Google Sheets. Network error: ' + (error as Error).message)
     } finally {
       setConnecting(false)
     }
@@ -628,23 +679,33 @@ Click OK to continue to Google OAuth.`;
                   </div>
                 </div>
                 <div className="flex-shrink-0">
-                  {integrations.googleSheets.connected ? (
-                    <Button
-                      color="red"
-                      onClick={handleDisconnectGoogleSheets}
-                      disabled={disconnecting}
-                    >
-                      {disconnecting ? 'Disconnecting...' : 'Disconnect'}
-                    </Button>
-                  ) : (
-                    <Button
-                      color="blue"
-                      onClick={handleConnectGoogleSheets}
-                      disabled={connecting || loading}
-                    >
-                      {connecting ? 'Connecting...' : 'Connect Google Account'}
-                    </Button>
-                  )}
+                    <div className="flex gap-2">
+                      {integrations.googleSheets.connected ? (
+                        <>
+                          <Button
+                            color="white"
+                            onClick={() => window.location.href = '/dashboard/integrations/google-sheets'}
+                          >
+                            Manage
+                          </Button>
+                          <Button
+                            color="red"
+                            onClick={handleDisconnectGoogleSheets}
+                            disabled={disconnecting}
+                          >
+                            {disconnecting ? 'Disconnecting...' : 'Disconnect'}
+                          </Button>
+                        </>
+                      ) : (
+                        <Button
+                          color="blue"
+                          onClick={() => window.location.href = '/dashboard/integrations/google-sheets'}
+                          disabled={loading}
+                        >
+                          Connect Google Account
+                        </Button>
+                      )}
+                    </div>
                 </div>
               </div>
 
@@ -838,6 +899,14 @@ Click OK to continue to Google OAuth.`;
                         Choose which spreadsheet to export your transactions to
                       </p>
                     </div>
+                    <Button
+                      color="zinc"
+                      onClick={() => window.location.href = '/dashboard/settings/spreadsheets'}
+                      className="gap-2"
+                    >
+                      <DocumentIcon className="h-4 w-4" />
+                      Browse All Spreadsheets
+                    </Button>
                   </div>
 
                   {sheetPreferences ? (
@@ -1276,16 +1345,33 @@ Click OK to continue to Google OAuth.`;
             More Settings
           </h2>
         </div>
-        <div className="p-6 text-center py-12">
-          <div className="bg-gray-100 dark:bg-gray-800 rounded-full p-4 inline-flex mb-4">
-            <Cog6ToothIcon className="h-8 w-8 text-gray-400 dark:text-gray-500" />
+        <div className="p-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <a
+              href="/dashboard/settings/bank-accounts"
+              className="p-4 border border-gray-200 dark:border-zinc-700 rounded-lg hover:bg-gray-50 dark:hover:bg-zinc-800 transition-colors"
+            >
+              <div className="flex items-center gap-3">
+                <BanknotesIcon className="h-6 w-6 text-gray-400" />
+                <div>
+                  <h3 className="font-medium text-gray-900 dark:text-white">Bank Accounts</h3>
+                  <p className="text-sm text-gray-500">Manage bank accounts and spreadsheet links</p>
+                </div>
+              </div>
+            </a>
+            <a
+              href="/dashboard/settings/spreadsheets"
+              className="p-4 border border-gray-200 dark:border-zinc-700 rounded-lg hover:bg-gray-50 dark:hover:bg-zinc-800 transition-colors"
+            >
+              <div className="flex items-center gap-3">
+                <DocumentIcon className="h-6 w-6 text-gray-400" />
+                <div>
+                  <h3 className="font-medium text-gray-900 dark:text-white">Available Spreadsheets</h3>
+                  <p className="text-sm text-gray-500">View all Google Sheets you have access to</p>
+                </div>
+              </div>
+            </a>
           </div>
-          <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">
-            More Settings Coming Soon
-          </h3>
-          <p className="text-gray-600 dark:text-gray-400 max-w-md mx-auto">
-            Account preferences, notification settings, and more integrations will be available soon.
-          </p>
         </div>
       </div>
     </div>

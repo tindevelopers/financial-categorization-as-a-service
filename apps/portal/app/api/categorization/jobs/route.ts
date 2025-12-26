@@ -51,10 +51,30 @@ export async function GET(request: NextRequest) {
     const limit = Math.min(parseInt(searchParams.get("limit") || "50"), 100);
     const offset = parseInt(searchParams.get("offset") || "0");
 
-    // Build query with all columns including updated_at
+    // Build query with all columns including bank account info
     let query = supabase
       .from("categorization_jobs")
-      .select("id,job_type,status,processing_mode,original_filename,file_url,cloud_storage_provider,total_items,processed_items,failed_items,error_message,created_at,updated_at,started_at,completed_at")
+      .select(`
+        id,
+        job_type,
+        status,
+        processing_mode,
+        original_filename,
+        file_url,
+        cloud_storage_provider,
+        total_items,
+        processed_items,
+        failed_items,
+        error_message,
+        created_at,
+        updated_at,
+        started_at,
+        completed_at,
+        bank_account_id,
+        spreadsheet_id,
+        spreadsheet_tab_id,
+        bank_account:bank_accounts(id, account_name, bank_name, account_type)
+      `)
       .eq("user_id", user.id)
       .order("created_at", { ascending: false });
 

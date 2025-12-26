@@ -4,7 +4,7 @@ import { google } from "googleapis";
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { jobId: string } }
+  { params }: { params: Promise<{ jobId: string }> }
 ) {
   try {
     const supabase = await createClient();
@@ -17,7 +17,7 @@ export async function POST(
       );
     }
 
-    const { jobId } = params;
+    const { jobId } = await params;
 
     // Verify job belongs to user
     const { data: job, error: jobError } = await supabase

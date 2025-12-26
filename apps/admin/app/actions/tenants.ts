@@ -1,5 +1,6 @@
 "use server";
 
+import { randomUUID } from "crypto";
 import { createClient } from "@/core/database/server";
 import { createAdminClient } from "@/core/database/admin-client";
 import type { Database } from "@/core/database";
@@ -246,6 +247,7 @@ export async function createTenant(data: CreateTenantData): Promise<Tenant> {
       .insert({
         name: data.name,
         domain: data.domain,
+        tenant_type: "company", // Default to company for regular tenant creation
         plan: data.plan || "free",
         region: data.region || "us-east-1",
         status: data.status || "active",
@@ -297,5 +299,14 @@ export async function createTenant(data: CreateTenantData): Promise<Tenant> {
     
     throw new Error("Failed to create tenant: Unknown error occurred");
   }
+}
+
+/**
+ * Generate a unique tenant domain for individual users
+ * Format: individual-{uuid}
+ */
+export function generateIndividualTenantDomain(): string {
+  const uuid = randomUUID();
+  return `individual-${uuid}`;
 }
 

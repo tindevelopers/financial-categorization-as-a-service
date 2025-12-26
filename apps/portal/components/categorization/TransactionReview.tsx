@@ -61,12 +61,14 @@ export default function TransactionReview({ jobId }: TransactionReviewProps) {
       const data = await response.json();
       const newTransactions = data.transactions || [];
       
-      // Only update if we have transactions or if we're still loading
-      if (newTransactions.length > 0 || loading) {
-        setTransactions(newTransactions);
-        setLoading(false);
+      // Always update transactions and stop loading on successful response
+      setTransactions(newTransactions);
+      setLoading(false);
+      
+      // If no transactions, log for debugging
+      if (newTransactions.length === 0) {
+        console.log('No transactions found for job:', jobId);
       }
-      // If no transactions yet but job exists, keep loading state
     } catch (err: any) {
       console.error("Error loading transactions:", err);
       setError(err.message);

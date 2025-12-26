@@ -20,6 +20,7 @@ interface IntegrationSettingsInput {
   airtable_table_name?: string;
   use_custom_credentials?: boolean;
   is_enabled?: boolean;
+  default_sharing_permission?: 'reader' | 'writer';
   settings?: Record<string, any>;
 }
 
@@ -151,6 +152,17 @@ export async function POST(request: Request) {
 
     if (body.airtable_table_name !== undefined) {
       settingsData.airtable_table_name = body.airtable_table_name || null;
+    }
+
+    // Handle default sharing permission (Google Sheets)
+    if (body.default_sharing_permission !== undefined) {
+      if (body.default_sharing_permission === 'reader' || body.default_sharing_permission === 'writer') {
+        settingsData.default_sharing_permission = body.default_sharing_permission;
+      } else {
+        return NextResponse.json({ 
+          error: 'Invalid default_sharing_permission. Must be "reader" or "writer".' 
+        }, { status: 400 });
+      }
     }
 
     // Upsert the settings

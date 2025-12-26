@@ -1,37 +1,45 @@
-import { createClient } from '@/lib/database/server'
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from "next/server";
+import { createClient } from "@/lib/database/server";
 
-export async function POST() {
+export async function POST(request: NextRequest) {
   try {
-    const supabase = await createClient()
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
+    const supabase = await createClient();
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
 
     if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    // Delete user's Google Sheets integration
-    // Note: Using type assertion because user_integrations table may not be in generated types yet
-    const { error } = await (supabase as any)
-      .from('user_integrations')
-      .delete()
-      .eq('user_id', user.id)
-      .eq('provider', 'google_sheets')
-
-    if (error) {
-      console.error('Failed to disconnect Google Sheets:', error)
       return NextResponse.json(
-        { error: 'Failed to disconnect' },
-        { status: 500 }
-      )
+        { error: "Unauthorized" },
+        { status: 401 }
+      );
     }
 
-    return NextResponse.json({ success: true })
-  } catch (error) {
-    console.error('Error disconnecting Google Sheets:', error)
+    // Disconnect from both tables for compatibility
+    const { error: error1 } = await supabase
+      .from("cloud_storage_connections")
+      .update({ is_active: false })
+      .eq("user_id", user.id)
+      .eq("provider", "google_sheets");
+
+    const { error: error2 } = await supabase
+      .from("user_integrations")
+      .delete()
+      .eq("user_id", user.id)
+      .eq("provider", "google_sheets");
+
+    if (error1 && error2) {
+      console.error("Error disconnecting:", error1, error2);
+      return NextResponse.json(
+        { error: "Failed to disconnect" },
+        { status: 500 }
+      );
+    }
+
+    return NextResponse.json({ success: true });
+  } catch (error: any) {
+    console.error("Disconnect error:", error);
     return NextResponse.json(
-      { error: 'Failed to disconnect' },
+      { error: error.message || "Internal server error" },
       { status: 500 }
-    )
+    );
   }
 }

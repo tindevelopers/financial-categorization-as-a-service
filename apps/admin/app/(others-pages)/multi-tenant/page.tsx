@@ -7,9 +7,16 @@ import {
   ChartBarIcon,
   CreditCardIcon
 } from "@heroicons/react/24/outline";
+import CompanyUserModal from "@/components/admin/CompanyUserModal";
 
 export default function MultiTenantPage() {
   const [activeTab, setActiveTab] = useState("overview");
+  const [showCompanyModal, setShowCompanyModal] = useState(false);
+
+  const handleSuccess = () => {
+    // Refresh the page or refetch data
+    window.location.reload();
+  };
 
   const tenants = [
     {
@@ -63,9 +70,12 @@ export default function MultiTenantPage() {
             Manage and monitor all tenant organizations in your system
           </p>
         </div>
-        <button className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center gap-2">
+        <button 
+          onClick={() => setShowCompanyModal(true)}
+          className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center gap-2"
+        >
           <BuildingOfficeIcon className="w-5 h-5" />
-          Add New Tenant
+          Add Company Tenant
         </button>
       </div>
 
@@ -427,6 +437,12 @@ export default function MultiTenantPage() {
           </div>
         )}
       </div>
+
+      <CompanyUserModal
+        isOpen={showCompanyModal}
+        onClose={() => setShowCompanyModal(false)}
+        onSuccess={handleSuccess}
+      />
     </div>
   );
 }

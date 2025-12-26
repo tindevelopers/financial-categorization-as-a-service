@@ -1,4 +1,6 @@
 import * as XLSX from "xlsx";
+import { TransactionMergeService, createMergeService } from "@/lib/sync/TransactionMergeService";
+import type { Transaction as SyncTransaction } from "@/lib/sync/types";
 
 export interface Transaction {
   date: Date | string;
@@ -10,6 +12,20 @@ export interface CategorizedTransaction extends Transaction {
   category?: string;
   subcategory?: string;
   confidenceScore?: number;
+}
+
+export interface ProcessResult {
+  success: boolean;
+  transactionCount?: number;
+  insertedCount?: number;
+  skippedCount?: number;
+  duplicateDetails?: Array<{
+    fingerprint: string;
+    existingTransactionId?: string;
+    matchType: "exact" | "similar";
+    similarity: number;
+  }>;
+  error?: string;
 }
 
 /**
@@ -163,7 +179,7 @@ export async function categorizeTransactions(
     try {
       const { AICategorizationFactory } = await import("@/lib/ai/AICategorizationFactory");
       const provider = AICategorizationFactory.getDefaultProvider();
-      const userMappings = mappings?.map(m => ({
+      const userMappings = mappings?.map((m: any) => ({
         pattern: m.pattern,
         category: m.category,
         subcategory: m.subcategory || undefined,
@@ -273,18 +289,31 @@ export async function categorizeTransactions(
 
 /**
  * Process a spreadsheet file and return categorized transactions
+ * Uses TransactionMergeService for duplicate detection
  */
 export async function processSpreadsheetFile(
   fileBuffer: ArrayBuffer,
   jobId: string,
   userId: string,
   supabase: any
-): Promise<{
-  success: boolean;
-  transactionCount?: number;
-  error?: string;
-}> {
+): Promise<ProcessResult> {
   try {
+    // Get tenant_id for the user
+    const { data: userData } = await supabase
+      .from("users")
+      .select("tenant_id")
+      .eq("id", userId)
+      .single();
+
+    // Get bank_account_id from job
+    const { data: jobData } = await supabase
+      .from("categorization_jobs")
+      .select("bank_account_id")
+      .eq("id", jobId)
+      .single();
+
+    const bankAccountId = jobData?.bank_account_id || null;
+
     // Parse spreadsheet
     const workbook = XLSX.read(fileBuffer, { type: "array" });
     const sheetName = workbook.SheetNames[0];
@@ -301,46 +330,79 @@ export async function processSpreadsheetFile(
       };
     }
 
-    // Update job with total items
-    await supabase
-      .from("categorization_jobs")
-      .update({ total_items: transactions.length })
-      .eq("id", jobId);
+    // Convert to sync transaction format
+    const syncTransactions: SyncTransaction[] = transactions.map(tx => ({
+      original_description: tx.description,
+      amount: tx.amount,
+      date: typeof tx.date === "string" ? tx.date : tx.date.toISOString().split("T")[0],
+      category: undefined,
+      subcategory: undefined,
+    }));
 
-    // Categorize transactions
+    // Use TransactionMergeService for duplicate detection and insertion
+    const mergeService = createMergeService(supabase, userId, userData?.tenant_id || null);
+    
+    // Categorize transactions first
     const categorizedTransactions = await categorizeTransactions(
       transactions,
       userId,
       supabase
     );
 
-    // Insert categorized transactions
-    const transactionsToInsert = categorizedTransactions.map(tx => ({
-      job_id: jobId,
-      original_description: tx.description,
-      amount: tx.amount,
-      date: tx.date,
-      category: tx.category || null,
-      subcategory: tx.subcategory || null,
-      confidence_score: tx.confidenceScore || 0.5,
-      user_confirmed: false,
-    }));
-
-    const { error: insertError } = await supabase
-      .from("categorized_transactions")
-      .insert(transactionsToInsert);
-
-    if (insertError) {
-      console.error("Insert error:", insertError);
+    // Map categorized transactions back to sync format
+    const categorizedSyncTransactions: SyncTransaction[] = syncTransactions.map((tx, index) => {
+      const categorized = categorizedTransactions[index];
       return {
-        success: false,
-        error: "Failed to save transactions",
+        ...tx,
+        category: categorized.category,
+        subcategory: categorized.subcategory,
       };
+    });
+
+    // Process with merge service (handles duplicate detection)
+    const mergeResult = await mergeService.processUploadWithMerge(categorizedSyncTransactions, {
+      sourceType: "upload",
+      sourceIdentifier: `job_${jobId}`,
+      jobId: jobId,
+      createJob: false,
+      skipDuplicateCheck: false,
+      bankAccountId: bankAccountId,
+    });
+
+    // Update job with item counts
+    await supabase
+      .from("categorization_jobs")
+      .update({
+        total_items: transactions.length,
+        processed_items: mergeResult.inserted,
+        failed_items: mergeResult.skipped > 0 ? mergeResult.skipped : 0,
+      })
+      .eq("id", jobId);
+
+    // Build duplicate details for response
+    const duplicateDetails: Array<{
+      fingerprint: string;
+      existingTransactionId?: string;
+      matchType: "exact" | "similar";
+      similarity: number;
+    }> = [];
+
+    // Get duplicate details from merge result
+    if (mergeResult.skipped > 0) {
+      // We can't get exact duplicate details from merge result, but we can indicate duplicates were found
+      duplicateDetails.push({
+        fingerprint: "multiple",
+        matchType: "exact",
+        similarity: mergeResult.similarityScore || 0,
+      });
     }
 
     return {
       success: true,
       transactionCount: transactions.length,
+      insertedCount: mergeResult.inserted,
+      skippedCount: mergeResult.skipped,
+      duplicateDetails: duplicateDetails.length > 0 ? duplicateDetails : undefined,
     };
   } catch (error: any) {
     console.error("Process spreadsheet error:", error);

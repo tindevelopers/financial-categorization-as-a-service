@@ -28,6 +28,51 @@ export async function POST(request: NextRequest) {
 
     const formData = await request.formData();
     const fileCount = parseInt(formData.get("fileCount") as string || "0");
+    const bankAccountId = formData.get("bank_account_id") as string | null;
+
+    // Enforce profile/company name
+    const { data: profile } = await supabase
+      .from("company_profiles")
+      .select("id, company_name")
+      .eq("user_id", user.id)
+      .maybeSingle();
+
+    if (!profile || !profile.company_name) {
+      return NextResponse.json(
+        { error: "PROFILE_INCOMPLETE", error_code: "PROFILE_INCOMPLETE" },
+        { status: 400 }
+      );
+    }
+
+    // Require bank account
+    if (!bankAccountId) {
+      return NextResponse.json(
+        { error: "BANK_ACCOUNT_REQUIRED", error_code: "BANK_ACCOUNT_REQUIRED" },
+        { status: 400 }
+      );
+    }
+
+    // Validate bank account and spreadsheet requirement
+    const { data: bankAccount, error: bankAccountError } = await supabase
+      .from("bank_accounts")
+      .select("id, default_spreadsheet_id, spreadsheet_tab_name, is_active")
+      .eq("id", bankAccountId)
+      .eq("user_id", user.id)
+      .single();
+
+    if (bankAccountError || !bankAccount || !bankAccount.is_active) {
+      return NextResponse.json(
+        { error: "Invalid or inactive bank account", error_code: "BANK_ACCOUNT_INVALID" },
+        { status: 400 }
+      );
+    }
+
+    if (!bankAccount.default_spreadsheet_id) {
+      return NextResponse.json(
+        { error: "SPREADSHEET_REQUIRED", error_code: "SPREADSHEET_REQUIRED" },
+        { status: 400 }
+      );
+    }
 
     if (fileCount === 0) {
       const errorResponse = createJobErrorResponse("INVALID_FILE_TYPE", "No files provided");
@@ -174,6 +219,7 @@ export async function POST(request: NextRequest) {
       storage_tier: "hot",
       supabase_path: fileName,
       ocr_status: "pending",
+      bank_account_id: bankAccountId || null,
     }));
 
     const { error: docError } = await supabase

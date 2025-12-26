@@ -1,9 +1,11 @@
 import { waitUntil } from "@vercel/functions";
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/database/server";
-import { createAdminClient } from "@tinadmin/core/database/admin-client";
+import { createAdminClient } from "@/lib/database/admin-client";
 import { processSpreadsheetFile } from "@/lib/categorization/process-spreadsheet";
 import { createJobErrorResponse, mapErrorToCode } from "@/lib/errors/job-errors";
+// TODO: Re-enable when GoogleSheetsSyncService is available in portal app
+// import { createGoogleSheetsSyncService } from "@/lib/sync/GoogleSheetsSyncService";
 
 /**
  * POST /api/background/process-spreadsheet
@@ -153,11 +155,75 @@ async function processSpreadsheet(jobId: string, userId: string, supabase: any) 
       .from("categorization_jobs")
       .update({ 
         status: "reviewing",
-        status_message: "Processing complete. Ready for review.",
-        processed_items: result.transactionCount || 0,
+        status_message: result.skippedCount && result.skippedCount > 0
+          ? `Processing complete. ${result.insertedCount || 0} new transactions added, ${result.skippedCount} duplicates skipped.`
+          : "Processing complete. Ready for review.",
+        processed_items: result.insertedCount || result.transactionCount || 0,
+        total_items: result.transactionCount || 0,
+        failed_items: result.skippedCount || 0,
         completed_at: new Date().toISOString(),
       })
       .eq("id", jobId);
+
+    // Check for auto-sync enabled sheets and sync if configured
+    try {
+      const { data: autoSyncSheets } = await supabase
+        .from("sync_metadata")
+        .select("source_id, source_name")
+        .eq("user_id", userId)
+        .eq("source_type", "google_sheets")
+        .eq("auto_sync_enabled", true)
+        .eq("sync_status", "active");
+
+      if (autoSyncSheets && autoSyncSheets.length > 0) {
+        console.log(`Auto-syncing to ${autoSyncSheets.length} Google Sheet(s)...`);
+        
+        // TODO: Re-enable when GoogleSheetsSyncService is available in portal app
+        // const syncService = createGoogleSheetsSyncService(supabase);
+        console.log(`Auto-sync temporarily disabled: GoogleSheetsSyncService not available (${autoSyncSheets.length} sheet(s) would be synced)`);
+        // Skip sync for now
+        return;
+        
+        /* Commented out until GoogleSheetsSyncService is available
+        for (const sheet of autoSyncSheets) {
+          try {
+            const syncResult = await syncService.pushToSheets(sheet.source_id, userId, {
+              jobId,
+              mode: "append",
+            });
+            
+            console.log(`Auto-sync to ${sheet.source_name || sheet.source_id}: ${syncResult.rowsPushed} rows pushed`);
+            
+            // Update sync metadata
+            await supabase
+              .from("sync_metadata")
+              .update({
+                last_sync_at: new Date().toISOString(),
+                last_sync_direction: "push",
+              })
+              .eq("source_id", sheet.source_id)
+              .eq("user_id", userId);
+          } catch (syncError: any) {
+            console.error(`Failed to auto-sync to ${sheet.source_name || sheet.source_id}:`, syncError);
+            // Don't fail the job if auto-sync fails
+          }
+        }
+
+        // Update job status to show it was synced
+        await adminClient
+          .from("categorization_jobs")
+          .update({
+            status_message: result.skippedCount && result.skippedCount > 0
+              ? `Processing complete. ${result.insertedCount || 0} new transactions added, ${result.skippedCount} duplicates skipped. Auto-synced to Google Sheets.`
+              : "Processing complete. Auto-synced to Google Sheets.",
+          })
+          .eq("id", jobId);
+        */
+      }
+    } catch (autoSyncError) {
+      console.error("Auto-sync check failed:", autoSyncError);
+      // Don't fail the job if auto-sync fails
+    }
   } catch (error: any) {
     console.error("Process spreadsheet error:", error);
     

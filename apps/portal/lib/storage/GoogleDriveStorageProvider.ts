@@ -75,7 +75,7 @@ export class GoogleDriveStorageProvider implements CloudStorageProvider {
         path: file.id!, // Google Drive uses IDs, not paths
         size: parseInt(file.size || "0"),
         modified: file.modifiedTime || "",
-        mimeType: file.mimeType,
+        mimeType: file.mimeType || undefined,
       }));
     } catch (error: any) {
       throw new Error(`Google Drive list failed: ${error.message}`);

@@ -1,3 +1,6 @@
+"use client";
+
+import { useState } from "react";
 import Button from "@/components/ui/button/Button";
 import {
   Table,
@@ -11,15 +14,13 @@ import {
   UserPlusIcon,
   MagnifyingGlassIcon,
   ArrowDownTrayIcon,
+  UserIcon,
+  BuildingOfficeIcon,
 } from "@heroicons/react/24/outline";
-import type { Metadata } from "next";
 import Image from "next/image";
 import React from "react";
-
-export const metadata: Metadata = {
-  title: "User Management | TailAdmin",
-  description: "Comprehensive user directory with roles, plans, and activity tracking",
-};
+import IndividualUserModal from "@/components/admin/IndividualUserModal";
+import CompanyUserModal from "@/components/admin/CompanyUserModal";
 
 const userDirectory = [
   {
@@ -98,6 +99,14 @@ const StatusBadge = ({ status }: { status: string }) => {
 };
 
 export default function UserManagementPage() {
+  const [showIndividualModal, setShowIndividualModal] = useState(false);
+  const [showCompanyModal, setShowCompanyModal] = useState(false);
+
+  const handleSuccess = () => {
+    // Refresh the page or refetch data
+    window.location.reload();
+  };
+
   return (
     <div className="space-y-8">
       <section className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-indigo-600 via-purple-600 to-pink-600 p-8 text-white">
@@ -171,9 +180,42 @@ export default function UserManagementPage() {
               <ArrowDownTrayIcon className="h-4 w-4" />
               Export CSV
             </Button>
-            <Button size="sm">
-              <UserPlusIcon className="h-4 w-4" />
-              Add User
+            <div className="relative group">
+              <Button size="sm">
+                <UserPlusIcon className="h-4 w-4" />
+                Add User
+              </Button>
+              <div className="absolute right-0 top-full mt-2 w-48 rounded-lg border border-gray-200 bg-white shadow-lg dark:border-gray-700 dark:bg-gray-800 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-10">
+                <button
+                  onClick={() => setShowIndividualModal(true)}
+                  className="w-full flex items-center gap-2 px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-700 rounded-t-lg"
+                >
+                  <UserIcon className="h-4 w-4" />
+                  Individual User
+                </button>
+                <button
+                  onClick={() => setShowCompanyModal(true)}
+                  className="w-full flex items-center gap-2 px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-700 rounded-b-lg"
+                >
+                  <BuildingOfficeIcon className="h-4 w-4" />
+                  Company User
+                </button>
+              </div>
+            </div>
+            <Button 
+              size="sm" 
+              variant="outline"
+              onClick={() => setShowIndividualModal(true)}
+            >
+              <UserIcon className="h-4 w-4" />
+              Add Individual
+            </Button>
+            <Button 
+              size="sm"
+              onClick={() => setShowCompanyModal(true)}
+            >
+              <BuildingOfficeIcon className="h-4 w-4" />
+              Add Company
             </Button>
           </div>
         </div>
@@ -239,6 +281,18 @@ export default function UserManagementPage() {
           </Table>
         </div>
       </section>
+
+      <IndividualUserModal
+        isOpen={showIndividualModal}
+        onClose={() => setShowIndividualModal(false)}
+        onSuccess={handleSuccess}
+      />
+
+      <CompanyUserModal
+        isOpen={showCompanyModal}
+        onClose={() => setShowCompanyModal(false)}
+        onSuccess={handleSuccess}
+      />
     </div>
   );
 }

@@ -293,19 +293,23 @@ export async function DELETE(request: Request) {
 
     // Delete vault secrets if they exist
     if (existingSettings?.client_secret_vault_id) {
-      await supabase.rpc('app_vault.delete_secret', { 
-        p_id: existingSettings.client_secret_vault_id 
-      }).catch(() => {
+      try {
+        await supabase.rpc('app_vault.delete_secret', { 
+          p_id: existingSettings.client_secret_vault_id 
+        });
+      } catch {
         // Ignore errors - vault might not be available
-      });
+      }
     }
 
     if (existingSettings?.api_key_vault_id) {
-      await supabase.rpc('app_vault.delete_secret', { 
-        p_id: existingSettings.api_key_vault_id 
-      }).catch(() => {
+      try {
+        await supabase.rpc('app_vault.delete_secret', { 
+          p_id: existingSettings.api_key_vault_id 
+        });
+      } catch {
         // Ignore errors
-      });
+      }
     }
 
     // Delete the settings

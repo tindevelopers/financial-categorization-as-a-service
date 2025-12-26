@@ -106,7 +106,7 @@ async function processInvoicesBatch(
       
       // Process batch in parallel
       const results = await Promise.allSettled(
-        batch.map(doc => processSingleInvoice(doc, jobId, userId, supabase))
+        batch.map((doc: any) => processSingleInvoice(doc, jobId, userId, supabase))
       );
 
       // Count successes and failures
@@ -252,6 +252,15 @@ async function convertInvoiceToTransactions(
   userId: string,
   supabase: any
 ): Promise<void> {
+  // Get bank_account_id from job
+  const { data: jobData } = await supabase
+    .from("categorization_jobs")
+    .select("bank_account_id")
+    .eq("id", jobId)
+    .single();
+
+  const bankAccountId = jobData?.bank_account_id || null;
+
   const transactions: any[] = [];
 
   // Create transactions from invoice data
@@ -265,20 +274,22 @@ async function convertInvoiceToTransactions(
         category: null,
         subcategory: null,
         confidence_score: 0.5,
+        bank_account_id: bankAccountId,
         user_confirmed: false,
       });
     }
   } else if (invoiceData.total) {
-    transactions.push({
-      job_id: jobId,
-      original_description: invoiceData.vendor_name || "Invoice",
-      amount: invoiceData.total,
-      date: invoiceData.invoice_date || new Date().toISOString().split("T")[0],
-      category: null,
-      subcategory: null,
-      confidence_score: 0.5,
-      user_confirmed: false,
-    });
+      transactions.push({
+        job_id: jobId,
+        original_description: invoiceData.vendor_name || "Invoice",
+        amount: invoiceData.total,
+        date: invoiceData.invoice_date || new Date().toISOString().split("T")[0],
+        category: null,
+        subcategory: null,
+        confidence_score: 0.5,
+        user_confirmed: false,
+        bank_account_id: bankAccountId,
+      });
   }
 
   if (transactions.length === 0) {
