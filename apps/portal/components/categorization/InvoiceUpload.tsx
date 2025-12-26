@@ -92,16 +92,28 @@ export default function InvoiceUpload() {
 
   const fetchProfileStatus = async () => {
     try {
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'InvoiceUpload.tsx:93',message:'Frontend profile check start',data:{},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+      // #endregion
       const response = await fetch("/api/company");
       if (response.ok) {
         const data = await response.json();
         const companies = data.companies || [];
         const hasName = companies.some((c: any) => c.company_name);
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'InvoiceUpload.tsx:99',message:'Frontend profile check result',data:{companyCount:companies.length,companies:companies.map((c:any)=>({id:c.id,company_name:c.company_name,company_nameType:typeof c.company_name})),hasName:hasName,profileReady:hasName},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+        // #endregion
         setProfileReady(hasName);
       } else {
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'InvoiceUpload.tsx:103',message:'Frontend profile check failed',data:{status:response.status},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+        // #endregion
         setProfileReady(false);
       }
-    } catch {
+    } catch (error) {
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'InvoiceUpload.tsx:106',message:'Frontend profile check error',data:{error:String(error)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+      // #endregion
       setProfileReady(false);
     } finally {
       setProfileLoading(false);
@@ -175,13 +187,22 @@ export default function InvoiceUpload() {
       formData.append("fileCount", uploadState.files.length.toString());
       formData.append("bank_account_id", selectedBankAccountId);
 
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'InvoiceUpload.tsx:178',message:'Upload request start',data:{fileCount:uploadState.files.length,selectedBankAccountId:selectedBankAccountId,profileReady:profileReady},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+      // #endregion
       const response = await fetch("/api/categorization/upload-invoices", {
         method: "POST",
         body: formData,
       });
 
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'InvoiceUpload.tsx:183',message:'Upload response received',data:{ok:response.ok,status:response.status},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+      // #endregion
       if (!response.ok) {
         const errorData = await response.json();
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'InvoiceUpload.tsx:186',message:'Upload error response',data:{errorData:errorData,error:errorData.error,errorCode:errorData.error_code},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+        // #endregion
         const error = new Error(errorData.error || errorData.message || "Upload failed");
         (error as any).data = errorData;
         throw error;

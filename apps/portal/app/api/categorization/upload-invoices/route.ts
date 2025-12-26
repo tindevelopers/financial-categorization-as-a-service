@@ -31,13 +31,35 @@ export async function POST(request: NextRequest) {
     const bankAccountId = formData.get("bank_account_id") as string | null;
 
     // Enforce profile/company name
-    const { data: profile } = await supabase
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'upload-invoices/route.ts:33',message:'Profile check start',data:{userId:user.id},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+    // #endregion
+    const { data: profile, error: profileError } = await supabase
       .from("company_profiles")
       .select("id, company_name")
       .eq("user_id", user.id)
       .maybeSingle();
+    
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'upload-invoices/route.ts:40',message:'Profile query result',data:{profile:profile,profileError:profileError,companyName:profile?.company_name,companyNameType:typeof profile?.company_name,companyNameLength:profile?.company_name?.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A,B'})}).catch(()=>{});
+    // #endregion
+    
+    // Check profile count without maybeSingle to test hypothesis A
+    // #region agent log
+    const { data: allProfiles, error: allProfilesError } = await supabase
+      .from("company_profiles")
+      .select("id, company_name")
+      .eq("user_id", user.id);
+    fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'upload-invoices/route.ts:47',message:'All profiles query result',data:{profileCount:allProfiles?.length,allProfiles:allProfiles,allProfilesError:allProfilesError,hasName:allProfiles?.some(p=>p.company_name)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+    // #endregion
 
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'upload-invoices/route.ts:50',message:'Profile completeness check',data:{profileExists:!!profile,companyNameExists:!!profile?.company_name,companyNameTruthy:!!(profile?.company_name),willFail:!profile || !profile.company_name},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A,B'})}).catch(()=>{});
+    // #endregion
     if (!profile || !profile.company_name) {
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'upload-invoices/route.ts:53',message:'PROFILE_INCOMPLETE error returned',data:{profile:profile,companyName:profile?.company_name},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A,B'})}).catch(()=>{});
+      // #endregion
       return NextResponse.json(
         { error: "PROFILE_INCOMPLETE", error_code: "PROFILE_INCOMPLETE" },
         { status: 400 }
