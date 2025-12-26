@@ -148,7 +148,9 @@ export default function SpreadsheetUpload() {
       setUploadState(prev => ({ ...prev, error: "Please complete your profile (individual/company name) before uploading." }));
       return;
     }
-    if (!selectedBankAccountId) {
+    // Validate bank account selection - check both empty string and falsy values
+    if (!selectedBankAccountId || selectedBankAccountId.trim() === '') {
+      console.error('Bank account validation failed:', { selectedBankAccountId, bankAccountsCount: bankAccounts.length });
       setUploadState(prev => ({ ...prev, error: "Please select a bank account before uploading." }));
       return;
     }
@@ -165,8 +167,9 @@ export default function SpreadsheetUpload() {
   // #endregion
 
     try {
-      // Validate bank account selection
-      if (!selectedBankAccountId) {
+      // Validate bank account selection again (double-check)
+      if (!selectedBankAccountId || selectedBankAccountId.trim() === '') {
+        console.error('Bank account validation failed in try block:', { selectedBankAccountId });
         setUploadState(prev => ({
           ...prev,
           uploading: false,
@@ -175,6 +178,7 @@ export default function SpreadsheetUpload() {
         return;
       }
 
+      console.log('Uploading with bank account:', selectedBankAccountId);
       const formData = new FormData();
       formData.append('file', file);
       formData.append('bank_account_id', selectedBankAccountId);
@@ -344,7 +348,10 @@ export default function SpreadsheetUpload() {
       const formData = new FormData();
       formData.append('file', pendingFile);
       formData.append('force', 'true');
-      formData.append('bank_account_id', selectedBankAccountId);
+      // Only append bank_account_id if it's not empty
+      if (selectedBankAccountId && selectedBankAccountId.trim() !== '') {
+        formData.append('bank_account_id', selectedBankAccountId);
+      }
       
       if (selectedBankAccount) {
         if (selectedBankAccount.default_spreadsheet_id) {
@@ -590,8 +597,13 @@ export default function SpreadsheetUpload() {
             <>
               <select
                 id="bank-account"
+                name="bank-account"
                 value={selectedBankAccountId}
-                onChange={(e) => setSelectedBankAccountId(e.target.value)}
+                onChange={(e) => {
+                  const value = e.target.value;
+                  console.log('Bank account selected:', value);
+                  setSelectedBankAccountId(value);
+                }}
                 className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 required
               >

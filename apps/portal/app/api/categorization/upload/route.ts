@@ -50,7 +50,8 @@ export async function POST(request: NextRequest) {
 
     const formData = await request.formData();
     const file = formData.get("file") as File;
-    const bankAccountId = formData.get("bank_account_id") as string | null;
+    const bankAccountIdRaw = formData.get("bank_account_id") as string | null;
+    const bankAccountId = bankAccountIdRaw?.trim() || null; // Handle empty strings
     const spreadsheetId = formData.get("spreadsheet_id") as string | null;
     const spreadsheetTabId = formData.get("spreadsheet_tab_id") as string | null;
 
@@ -115,9 +116,13 @@ export async function POST(request: NextRequest) {
     }
 
     // Require bank_account_id
-    if (!bankAccountId) {
+    if (!bankAccountId || bankAccountId === "") {
       return NextResponse.json(
-        { error: "BANK_ACCOUNT_REQUIRED", error_code: "BANK_ACCOUNT_REQUIRED" },
+        { 
+          error: "Please select a bank account before uploading.",
+          error_code: "BANK_ACCOUNT_REQUIRED",
+          status_message: "Please select a bank account before uploading."
+        },
         { status: 400 }
       );
     }
