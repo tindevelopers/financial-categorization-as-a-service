@@ -590,8 +590,31 @@ export default function SpreadsheetUpload() {
         </div>
       </div>
 
-      {/* Error Message */}
-      {uploadState.error && (
+      {/* Error Message - Profile Incomplete */}
+      {uploadState.error === 'PROFILE_INCOMPLETE' && (
+        <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg p-4">
+          <div className="flex items-start gap-3">
+            <ExclamationTriangleIcon className="h-5 w-5 text-amber-500 flex-shrink-0 mt-0.5" />
+            <div className="flex-1">
+              <p className="text-sm font-medium text-amber-800 dark:text-amber-200">
+                Profile Setup Required
+              </p>
+              <p className="text-sm text-amber-600 dark:text-amber-300 mt-1">
+                Please complete your company/individual profile before uploading bank statements.
+              </p>
+              <Link
+                href="/dashboard/setup"
+                className="inline-flex items-center gap-2 mt-3 px-4 py-2 text-sm font-medium rounded-lg bg-amber-600 text-white hover:bg-amber-700 transition-colors"
+              >
+                Complete Setup
+              </Link>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Error Message - Generic */}
+      {uploadState.error && uploadState.error !== 'PROFILE_INCOMPLETE' && (
         <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4 flex items-start gap-3">
           <XCircleIcon className="h-5 w-5 text-red-500 flex-shrink-0 mt-0.5" />
           <div>
