@@ -33,7 +33,7 @@ GOOGLE_APPLICATION_CREDENTIALS=<path-to-service-account-key.json>
 # OR use GOOGLE_APPLICATION_CREDENTIALS_JSON with base64 encoded JSON
 ```
 
-#### Google OAuth (Required for Google Sheets and Google Drive)
+#### Google OAuth (Required for Google Sheets and Google Drive - Individual User Connections)
 ```
 GOOGLE_CLIENT_ID=<your-google-client-id>
 GOOGLE_CLIENT_SECRET=<your-google-client-secret>
@@ -43,6 +43,17 @@ GOOGLE_REDIRECT_URI=https://your-domain.com/api/integrations/google-sheets/callb
 # GOOGLE_REDIRECT_URI=https://your-domain.com/api/storage/drive/callback
 # Note: If using both, you may need separate OAuth credentials or add both redirect URIs to the same OAuth app
 ```
+
+#### Google Service Account (Required for Corporate/Company-Level Google Sheets Export)
+```
+GOOGLE_SERVICE_ACCOUNT_EMAIL=fincat-service-account@financial-categorization.iam.gserviceaccount.com
+GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n"
+```
+**Note:** 
+- The `GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY` should contain the full private key with literal `\n` characters (not actual newlines)
+- This is used for server-side Google Sheets export functionality
+- The service account needs the `https://www.googleapis.com/auth/spreadsheets` scope
+- Ensure the Google Sheets API is enabled in your Google Cloud project
 
 #### Dropbox OAuth (Required for Cloud Storage)
 ```

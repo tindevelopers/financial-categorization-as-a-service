@@ -143,9 +143,10 @@ export async function POST(
           { status: 400 }
         );
       }
-      
-      // Fallback to CSV export (if error response not returned above)
-      
+    }
+    
+    // Fallback to CSV export if we reach here (shouldn't happen due to checks above, but TypeScript needs it)
+    if (!hasServiceAccount && !userOAuthTokens && transactions) {
       // Generate CSV as fallback
       const csvHeaders = [
         "Date",
@@ -306,6 +307,9 @@ export async function POST(
           
           // Try to read existing data to check structure
           try {
+            if (!spreadsheetId) {
+              throw new Error("Spreadsheet ID is null");
+            }
             const existingData = await sheets.spreadsheets.values.get({
               spreadsheetId,
               range: "Sheet1",
@@ -381,7 +385,7 @@ export async function POST(
         );
       }
 
-      spreadsheetId = spreadsheet.data.spreadsheetId;
+      spreadsheetId = spreadsheet.data.spreadsheetId || null;
       if (!spreadsheetId) {
         return NextResponse.json(
           { error: "Failed to create spreadsheet: No spreadsheet ID returned" },
