@@ -144,7 +144,7 @@ export default function GoogleSheetsIntegrationPage() {
           </Text>
         </div>
         {connected && (
-          <Button onClick={checkConnection} variant="outline" className="gap-2">
+          <Button onClick={checkConnection} outline className="gap-2">
             <ArrowPathIcon className="h-5 w-5" />
             Refresh
           </Button>
@@ -214,8 +214,7 @@ export default function GoogleSheetsIntegrationPage() {
             </div>
             <Button
               onClick={handleDisconnect}
-              variant="outline"
-              color="red"
+              outline
             >
               Disconnect
             </Button>
