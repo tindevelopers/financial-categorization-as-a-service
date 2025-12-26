@@ -13,7 +13,9 @@ import {
   ExclamationTriangleIcon,
   Squares2X2Icon,
   TableCellsIcon,
-  ArrowTopRightOnSquareIcon
+  ArrowTopRightOnSquareIcon,
+  ChevronDownIcon,
+  FunnelIcon
 } from '@heroicons/react/24/outline'
 import Link from 'next/link'
 
@@ -68,7 +70,11 @@ export default function UploadsPage() {
   const [connectedSheets, setConnectedSheets] = useState<ConnectedSheet[]>([])
   const [syncingJobId, setSyncingJobId] = useState<string | null>(null)
   const [retryingJobId, setRetryingJobId] = useState<string | null>(null)
+  const [cleanupDropdownOpen, setCleanupDropdownOpen] = useState(false)
+  const [cleaningUp, setCleaningUp] = useState(false)
+  const [cleanupPreview, setCleanupPreview] = useState<{ type: string; count: number; jobs: any[] } | null>(null)
   const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null)
+  const cleanupDropdownRef = useRef<HTMLDivElement>(null)
 
   const fetchUploads = async () => {
     // #region agent log
@@ -468,6 +474,79 @@ export default function UploadsPage() {
     }
   }
 
+  const handleCleanupPreview = async (type: string) => {
+    try {
+      const response = await fetch(`/api/categorization/jobs/cleanup?type=${type}&dryRun=true`, {
+        method: 'DELETE',
+      })
+
+      const result = await response.json()
+
+      if (!response.ok) {
+        throw new Error(result.error || 'Failed to preview cleanup')
+      }
+
+      setCleanupPreview({
+        type,
+        count: result.count,
+        jobs: result.jobs || [],
+      })
+    } catch (error: any) {
+      console.error('Error previewing cleanup:', error)
+      alert(`Failed to preview cleanup: ${error.message}`)
+    }
+  }
+
+  const handleCleanup = async (type: string) => {
+    const typeLabels: Record<string, string> = {
+      failed: 'failed jobs',
+      duplicates: 'duplicate jobs (keeping latest)',
+      all_except_latest: 'older versions of each file',
+      empty: 'jobs with no transactions',
+    }
+
+    if (!confirm(`Are you sure you want to delete all ${typeLabels[type] || type}? This cannot be undone.`)) {
+      return
+    }
+
+    setCleaningUp(true)
+    setCleanupDropdownOpen(false)
+    try {
+      const response = await fetch(`/api/categorization/jobs/cleanup?type=${type}`, {
+        method: 'DELETE',
+      })
+
+      const result = await response.json()
+
+      if (!response.ok) {
+        throw new Error(result.error || 'Failed to cleanup')
+      }
+
+      // Refresh uploads to show updated list
+      await fetchUploads()
+      alert(`Successfully deleted ${result.deleted} job(s).`)
+    } catch (error: any) {
+      console.error('Error cleaning up:', error)
+      alert(`Failed to cleanup: ${error.message}`)
+    } finally {
+      setCleaningUp(false)
+      setCleanupPreview(null)
+    }
+  }
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (cleanupDropdownRef.current && !cleanupDropdownRef.current.contains(event.target as Node)) {
+        setCleanupDropdownOpen(false)
+        setCleanupPreview(null)
+      }
+    }
+
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
+
   return (
     <div className="space-y-8">
       {/* Header */}
@@ -515,6 +594,99 @@ export default function UploadsPage() {
               </>
             )}
           </Button>
+          {/* Cleanup Dropdown */}
+          <div className="relative" ref={cleanupDropdownRef}>
+            <Button
+              color="zinc"
+              className="gap-2"
+              onClick={() => setCleanupDropdownOpen(!cleanupDropdownOpen)}
+              disabled={cleaningUp || uploads.length === 0}
+            >
+              {cleaningUp ? (
+                <>
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-current"></div>
+                  Cleaning...
+                </>
+              ) : (
+                <>
+                  <FunnelIcon className="h-5 w-5" />
+                  Clean Up
+                  <ChevronDownIcon className="h-4 w-4" />
+                </>
+              )}
+            </Button>
+            {cleanupDropdownOpen && (
+              <div className="absolute right-0 mt-2 w-72 rounded-lg shadow-lg bg-white dark:bg-gray-800 ring-1 ring-black ring-opacity-5 z-50">
+                <div className="py-1">
+                  <div className="px-4 py-2 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider border-b border-gray-200 dark:border-gray-700">
+                    Bulk Cleanup Options
+                  </div>
+                  <button
+                    className="w-full text-left px-4 py-3 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center justify-between group"
+                    onClick={() => handleCleanup('failed')}
+                    onMouseEnter={() => handleCleanupPreview('failed')}
+                  >
+                    <div className="flex items-center gap-2">
+                      <XCircleIcon className="h-5 w-5 text-red-500" />
+                      <span>Delete All Failed Jobs</span>
+                    </div>
+                    {cleanupPreview?.type === 'failed' && (
+                      <span className="text-xs text-gray-500 dark:text-gray-400">
+                        {cleanupPreview.count} job{cleanupPreview.count !== 1 ? 's' : ''}
+                      </span>
+                    )}
+                  </button>
+                  <button
+                    className="w-full text-left px-4 py-3 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center justify-between group"
+                    onClick={() => handleCleanup('duplicates')}
+                    onMouseEnter={() => handleCleanupPreview('duplicates')}
+                  >
+                    <div className="flex items-center gap-2">
+                      <DocumentTextIcon className="h-5 w-5 text-yellow-500" />
+                      <span>Delete Duplicate Jobs</span>
+                    </div>
+                    {cleanupPreview?.type === 'duplicates' && (
+                      <span className="text-xs text-gray-500 dark:text-gray-400">
+                        {cleanupPreview.count} job{cleanupPreview.count !== 1 ? 's' : ''}
+                      </span>
+                    )}
+                  </button>
+                  <button
+                    className="w-full text-left px-4 py-3 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center justify-between group"
+                    onClick={() => handleCleanup('empty')}
+                    onMouseEnter={() => handleCleanupPreview('empty')}
+                  >
+                    <div className="flex items-center gap-2">
+                      <TrashIcon className="h-5 w-5 text-gray-500" />
+                      <span>Delete Jobs with No Transactions</span>
+                    </div>
+                    {cleanupPreview?.type === 'empty' && (
+                      <span className="text-xs text-gray-500 dark:text-gray-400">
+                        {cleanupPreview.count} job{cleanupPreview.count !== 1 ? 's' : ''}
+                      </span>
+                    )}
+                  </button>
+                  <div className="border-t border-gray-200 dark:border-gray-700 mt-1 pt-1">
+                    <button
+                      className="w-full text-left px-4 py-3 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 flex items-center justify-between group"
+                      onClick={() => handleCleanup('all_except_latest')}
+                      onMouseEnter={() => handleCleanupPreview('all_except_latest')}
+                    >
+                      <div className="flex items-center gap-2">
+                        <ExclamationTriangleIcon className="h-5 w-5" />
+                        <span>Keep Only Latest of Each File</span>
+                      </div>
+                      {cleanupPreview?.type === 'all_except_latest' && (
+                        <span className="text-xs">
+                          {cleanupPreview.count} job{cleanupPreview.count !== 1 ? 's' : ''}
+                        </span>
+                      )}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
           <Link href="/dashboard/uploads/receipts">
             <Button color="zinc" className="gap-2">
               <DocumentTextIcon className="h-5 w-5" />

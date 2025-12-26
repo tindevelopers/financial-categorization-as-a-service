@@ -90,25 +90,27 @@ export class TransactionMergeService {
     });
     // #endregion
 
-    // Decide on merge strategy based on similarity
-    if (similarity.similarityScore < 50 && !options.forceMerge) {
-      // Low similarity - insert everything
+    // Always use merge mode to skip duplicate transactions
+    // This ensures we never insert duplicates, regardless of similarity score
+    if (similarity.matchingCount > 0) {
       // #region agent log
-      console.log('[DEBUG] Low similarity, inserting all transactions', {
-        similarityScore: similarity.similarityScore
+      console.log('[DEBUG] Duplicates detected, using merge mode', {
+        similarityScore: similarity.similarityScore,
+        matchingCount: similarity.matchingCount,
+        newTransactionsCount: similarity.totalNewTransactions
       });
       // #endregion
-      return this.insertAllTransactions(transactions, options);
+      return this.mergeTransactions(similarity, options);
     }
 
-    // Merge mode - only insert new transactions
+    // No duplicates - insert everything
     // #region agent log
-    console.log('[DEBUG] High similarity, merging transactions', {
+    console.log('[DEBUG] No duplicates found, inserting all transactions', {
       similarityScore: similarity.similarityScore,
-      newTransactionsCount: similarity.totalNewTransactions
+      transactionCount: transactions.length
     });
     // #endregion
-    return this.mergeTransactions(similarity, options);
+    return this.insertAllTransactions(transactions, options);
   }
 
   /**
@@ -231,8 +233,6 @@ export class TransactionMergeService {
 
       return {
         job_id: jobId,
-        user_id: this.userId,
-        tenant_id: this.tenantId,
         original_description: tx.original_description,
         amount: tx.amount,
         date: dateStr,
@@ -244,7 +244,6 @@ export class TransactionMergeService {
         source_type: options.sourceType,
         source_identifier: options.sourceIdentifier || null,
         sync_version: 1,
-        bank_account_id: options.bankAccountId || null,
       };
     });
 

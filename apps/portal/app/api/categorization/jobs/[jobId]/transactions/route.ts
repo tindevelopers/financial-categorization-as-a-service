@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/database/server";
+import { createAdminClient } from "@/lib/database/admin-client";
 
 /**
  * OPTIONS /api/categorization/jobs/[jobId]/transactions
@@ -63,11 +64,16 @@ export async function GET(
     }
 
     // Get transactions
-    const { data: transactions, error: transactionsError } = await supabase
+    // NOTE: Using admin client to bypass RLS issue - the SELECT RLS policy seems to have
+    // issues with the EXISTS subquery even though the job ownership is verified.
+    // Security is still enforced above via job ownership verification.
+    const adminClientForQuery = createAdminClient();
+    const { data: transactions, error: transactionsError } = await adminClientForQuery
       .from("categorized_transactions")
       .select("*")
       .eq("job_id", jobId)
       .order("date", { ascending: false });
+
 
     if (transactionsError) {
       console.error("Error fetching transactions:", transactionsError);

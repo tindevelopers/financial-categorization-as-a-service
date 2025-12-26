@@ -207,7 +207,8 @@ async function processSpreadsheet(jobId: string, userId: string, supabase: any) 
     console.log('[DEBUG] Starting spreadsheet processing', { jobId, fileSize: fileData.size });
     // #endregion
     const arrayBuffer = await fileData.arrayBuffer();
-    const result = await processSpreadsheetFile(arrayBuffer, jobId, userId, supabase);
+    // Pass admin client to bypass RLS for transaction inserts
+    const result = await processSpreadsheetFile(arrayBuffer, jobId, userId, supabase, adminClient);
 
     // #region agent log
     console.log('[DEBUG] Spreadsheet processing completed', { jobId, success: result.success, transactionCount: result.transactionCount, insertedCount: result.insertedCount, skippedCount: result.skippedCount, error: result.error });

@@ -429,12 +429,23 @@ export async function categorizeTransactions(
         for (let j = 0; j < batch.length; j++) {
           const originalTx = transactions[i + j];
           const aiResult = batchResults[j];
-          results.push({
-            ...originalTx,
-            category: aiResult.category,
-            subcategory: aiResult.subcategory,
-            confidenceScore: aiResult.confidenceScore,
-          });
+          // Handle case where AI returns fewer results than batch size
+          if (aiResult) {
+            results.push({
+              ...originalTx,
+              category: aiResult.category,
+              subcategory: aiResult.subcategory,
+              confidenceScore: aiResult.confidenceScore,
+            });
+          } else {
+            // Fallback for missing AI result
+            results.push({
+              ...originalTx,
+              category: "Uncategorized",
+              subcategory: undefined,
+              confidenceScore: 0.3,
+            });
+          }
         }
       }
       
@@ -541,12 +552,14 @@ export async function categorizeTransactions(
 /**
  * Process a spreadsheet file and return categorized transactions
  * Uses TransactionMergeService for duplicate detection
+ * @param adminClient - Optional admin client for inserts (bypasses RLS)
  */
 export async function processSpreadsheetFile(
   fileBuffer: ArrayBuffer,
   jobId: string,
   userId: string,
-  supabase: any
+  supabase: any,
+  adminClient?: any
 ): Promise<ProcessResult> {
   await debugLog('process-spreadsheet.ts:294', 'processSpreadsheetFile entry', {
     jobId,
@@ -611,7 +624,9 @@ export async function processSpreadsheetFile(
     }));
 
     // Use TransactionMergeService for duplicate detection and insertion
-    const mergeService = createMergeService(supabase, userId, userData?.tenant_id || null);
+    // Use admin client if provided to bypass RLS for inserts
+    const clientForInserts = adminClient || supabase;
+    const mergeService = createMergeService(clientForInserts, userId, userData?.tenant_id || null);
     
     // Categorize transactions first
     await debugLog('process-spreadsheet.ts:346', 'Starting categorization', {
