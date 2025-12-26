@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/database/server";
 import { createAdminClient } from "@/lib/database/admin-client";
 import { google } from "googleapis";
-import crypto from "crypto";
+import { getUserOAuthTokens, createOAuthSheetsClient } from "@/lib/google-sheets/auth-helpers";
+import { detectUserAccountType, getRecommendedAuthMethod } from "@/lib/google-sheets/user-preference";
 
 export async function POST(
   request: NextRequest,
@@ -86,88 +87,64 @@ export async function POST(
       process.env.GOOGLE_CLIENT_SECRET
     );
 
-    // Helper function to decrypt OAuth tokens
-    const decryptToken = (encryptedText: string): string => {
-      if (!encryptedText) return "";
-      const encryptionKey = process.env.ENCRYPTION_KEY;
-      if (!encryptionKey) {
-        throw new Error("ENCRYPTION_KEY not configured");
-      }
-      const parts = encryptedText.split(":");
-      if (parts.length !== 2) {
-        throw new Error("Invalid encrypted text format");
-      }
-      const [ivHex, ciphertext] = parts;
-      const algorithm = "aes-256-cbc";
-      const iv = Buffer.from(ivHex, "hex");
-      const decipher = crypto.createDecipheriv(
-        algorithm,
-        Buffer.from(encryptionKey, "hex"),
-        iv
-      );
-      let decrypted = decipher.update(ciphertext, "hex", "utf8");
-      decrypted += decipher.final("utf8");
-      return decrypted;
-    };
-
-    // Try to get user's OAuth tokens (Option B)
-    let userOAuthTokens: { accessToken: string; refreshToken: string | null; expiresAt: Date | null } | null = null;
+    // Try to get user's OAuth tokens (Option B) using helper module
+    let userOAuthTokens = null;
     if (!hasServiceAccount && hasOAuthCredentials) {
-      // Check for user's Google Sheets OAuth connection
-      const { data: integration } = await supabase
-        .from("user_integrations")
-        .select("access_token, refresh_token, expires_at")
-        .eq("user_id", user.id)
-        .eq("provider", "google_sheets")
-        .single();
-
-      const { data: connection } = await supabase
-        .from("cloud_storage_connections")
-        .select("access_token_encrypted, refresh_token_encrypted, token_expires_at")
-        .eq("user_id", user.id)
-        .eq("provider", "google_sheets")
-        .eq("is_active", true)
-        .single();
-
-      if (integration?.access_token || connection?.access_token_encrypted) {
-        try {
-          const accessToken = integration?.access_token 
-            ? decryptToken(integration.access_token)
-            : connection?.access_token_encrypted 
-              ? decryptToken(connection.access_token_encrypted)
-              : null;
-          
-          const refreshToken = integration?.refresh_token
-            ? decryptToken(integration.refresh_token)
-            : connection?.refresh_token_encrypted
-              ? decryptToken(connection.refresh_token_encrypted)
-              : null;
-
-          const expiresAt = integration?.expires_at 
-            ? new Date(integration.expires_at)
-            : connection?.token_expires_at
-              ? new Date(connection.token_expires_at)
-              : null;
-
-          if (accessToken) {
-            userOAuthTokens = { accessToken, refreshToken, expiresAt };
-            console.log("Google Sheets export: Found user OAuth connection (Option B)");
-          }
-        } catch (decryptError: any) {
-          console.warn("Google Sheets export: Failed to decrypt OAuth tokens:", decryptError.message);
+      try {
+        userOAuthTokens = await getUserOAuthTokens(user.id);
+        if (userOAuthTokens) {
+          console.log("Google Sheets export: Found user OAuth connection (Option B)");
         }
+      } catch (error: any) {
+        console.warn("Google Sheets export: Failed to get OAuth tokens:", error.message);
       }
     }
 
-    // If neither service account nor OAuth tokens are available, fallback to CSV
+    // Detect user account type for better error messages
+    const accountType = await detectUserAccountType(user.id);
+    const recommendedMethod = await getRecommendedAuthMethod(user.id);
+    
+    // If neither service account nor OAuth tokens are available, provide helpful error
     if (!hasServiceAccount && !userOAuthTokens) {
       console.warn("Google Sheets export: No authentication method available", {
         hasServiceAccount,
         hasOAuthCredentials,
         hasUserOAuthTokens: !!userOAuthTokens,
+        accountType,
+        recommendedMethod,
       });
       
-      // Fallback to CSV export
+      // Enhanced error message based on account type
+      if (accountType.isCorporate) {
+        return NextResponse.json(
+          {
+            error: "Google Sheets export requires authentication setup",
+            error_code: "AUTH_REQUIRED",
+            accountType: "corporate",
+            guidance: hasServiceAccount
+              ? "Please connect your Google account in Settings > Integrations > Google Sheets"
+              : "Corporate export requires service account configuration. Please contact your administrator.",
+            helpUrl: "/dashboard/integrations/google-sheets",
+            fallbackAvailable: true,
+          },
+          { status: 400 }
+        );
+      } else {
+        // Individual user - guide them to connect OAuth
+        return NextResponse.json(
+          {
+            error: "Please connect your Google account to export to Google Sheets",
+            error_code: "OAUTH_REQUIRED",
+            accountType: "individual",
+            guidance: "Connect your Google account in Settings > Integrations > Google Sheets",
+            helpUrl: "/dashboard/integrations/google-sheets",
+            fallbackAvailable: true,
+          },
+          { status: 400 }
+        );
+      }
+      
+      // Fallback to CSV export (if error response not returned above)
       
       // Generate CSV as fallback
       const csvHeaders = [
@@ -250,67 +227,60 @@ export async function POST(
         });
         authMethod = "service_account";
       } else if (userOAuthTokens) {
-        // Option B: Use user OAuth tokens (individual-level)
+        // Option B: Use user OAuth tokens (individual-level) via helper module
         console.log("Google Sheets export: Using user OAuth (Option B)");
-        const oauth2Client = new google.auth.OAuth2(
-          process.env.GOOGLE_CLIENT_ID,
-          process.env.GOOGLE_CLIENT_SECRET,
-          process.env.GOOGLE_SHEETS_REDIRECT_URI || 
-          process.env.GOOGLE_REDIRECT_URI || 
-          `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/integrations/google-sheets/callback`
-        );
-
-        // Check if token is expired and refresh if needed
-        if (userOAuthTokens.expiresAt && userOAuthTokens.expiresAt < new Date()) {
-          if (userOAuthTokens.refreshToken) {
-            try {
-              oauth2Client.setCredentials({
-                refresh_token: userOAuthTokens.refreshToken,
-              });
-              const { credentials } = await oauth2Client.refreshAccessToken();
-              userOAuthTokens.accessToken = credentials.access_token || userOAuthTokens.accessToken;
-              console.log("Google Sheets export: Refreshed expired OAuth token");
-            } catch (refreshError: any) {
-              console.error("Google Sheets export: Token refresh failed:", refreshError);
-              return NextResponse.json(
-                { 
-                  error: "Your Google account connection has expired. Please reconnect in Settings > Integrations.",
-                  error_code: "TOKEN_EXPIRED",
-                  requiresReconnect: true
-                },
-                { status: 401 }
-              );
-            }
-          } else {
-            return NextResponse.json(
-              { 
-                error: "Your Google account connection has expired. Please reconnect in Settings > Integrations.",
-                error_code: "TOKEN_EXPIRED",
-                requiresReconnect: true
-              },
-              { status: 401 }
-            );
-          }
+        try {
+          const { auth: oauthAuth } = await createOAuthSheetsClient(user.id);
+          auth = oauthAuth;
+          authMethod = "oauth";
+        } catch (oauthError: any) {
+          // Enhanced error handling with guidance
+          const errorMessage = oauthError.message || "Failed to authenticate with Google";
+          const requiresReconnect = errorMessage.includes("reconnect") || errorMessage.includes("expired");
+          
+          return NextResponse.json(
+            { 
+              error: errorMessage,
+              error_code: requiresReconnect ? "TOKEN_EXPIRED" : "OAUTH_ERROR",
+              requiresReconnect,
+              guidance: requiresReconnect 
+                ? "Please connect your Google account in Settings > Integrations > Google Sheets"
+                : "Please check your Google account connection settings",
+              helpUrl: "/dashboard/integrations/google-sheets"
+            },
+            { status: 401 }
+          );
         }
-
-        oauth2Client.setCredentials({
-          access_token: userOAuthTokens.accessToken,
-          refresh_token: userOAuthTokens.refreshToken || undefined,
-        });
-
-        auth = oauth2Client;
-        authMethod = "oauth";
       } else {
         // This should never happen due to check above, but TypeScript needs it
         return NextResponse.json(
-          { error: "No Google authentication method available" },
+          {
+            error: "No Google authentication method available",
+            error_code: "NO_AUTH_METHOD",
+            guidance: accountType.isCorporate
+              ? "Please configure service account credentials or connect your Google account"
+              : "Please connect your Google account in Settings > Integrations > Google Sheets",
+            helpUrl: "/dashboard/integrations/google-sheets",
+          },
           { status: 500 }
         );
       }
     } catch (authError: any) {
       console.error("Google Sheets export: Auth initialization error:", authError);
+      
+      // Enhanced error handling for auth errors
+      const errorMessage = authError.message || "Failed to initialize Google Auth";
+      const isServiceAccountError = errorMessage.includes("service account") || errorMessage.includes("credentials");
+      
       return NextResponse.json(
-        { error: `Failed to initialize Google Auth: ${authError.message}` },
+        {
+          error: errorMessage,
+          error_code: isServiceAccountError ? "SERVICE_ACCOUNT_ERROR" : "AUTH_INIT_ERROR",
+          guidance: isServiceAccountError && accountType.isCorporate
+            ? "Service account configuration issue. Please contact your administrator."
+            : "Please check your Google account connection in Settings > Integrations",
+          helpUrl: "/dashboard/integrations/google-sheets",
+        },
         { status: 500 }
       );
     }
@@ -375,8 +345,38 @@ export async function POST(
         });
       } catch (createError: any) {
         console.error("Google Sheets export: Failed to create spreadsheet:", createError);
+        
+        // Enhanced error handling based on error type
+        const errorCode = createError.code || "UNKNOWN_ERROR";
+        const isPermissionError = errorCode === 403 || createError.message?.includes("permission");
+        const isQuotaError = errorCode === 429 || createError.message?.includes("quota");
+        
+        let errorMessage = `Failed to create spreadsheet: ${createError.message}`;
+        let guidance = "";
+        
+        if (isPermissionError) {
+          if (authMethod === "service_account") {
+            errorMessage = "Service account does not have permission to create spreadsheets";
+            guidance = accountType.isCorporate
+              ? "Corporate export requires domain-wide delegation setup. Please contact your Google Workspace administrator."
+              : "Service account needs proper permissions. Please contact your administrator.";
+          } else {
+            errorMessage = "Your Google account does not have permission to create spreadsheets";
+            guidance = "Please ensure your Google account has permission to create Google Sheets, or try reconnecting in Settings > Integrations.";
+          }
+        } else if (isQuotaError) {
+          errorMessage = "Google Sheets API quota exceeded";
+          guidance = "Please try again later or contact support if this persists.";
+        }
+        
         return NextResponse.json(
-          { error: `Failed to create spreadsheet: ${createError.message}` },
+          {
+            error: errorMessage,
+            error_code: isPermissionError ? "PERMISSION_DENIED" : isQuotaError ? "QUOTA_EXCEEDED" : "CREATE_ERROR",
+            authMethod,
+            guidance,
+            helpUrl: authMethod === "oauth" ? "/dashboard/integrations/google-sheets" : undefined,
+          },
           { status: 500 }
         );
       }
