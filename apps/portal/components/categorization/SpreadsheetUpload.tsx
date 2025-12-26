@@ -67,20 +67,46 @@ export default function SpreadsheetUpload() {
   }, []);
 
   const fetchBankAccounts = async () => {
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'SpreadsheetUpload.tsx:69',message:'fetchBankAccounts start',data:{timestamp:Date.now()},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'F'})}).catch(()=>{});
+    // #endregion
     try {
       const response = await fetch("/api/bank-accounts");
+      
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'SpreadsheetUpload.tsx:72',message:'fetchBankAccounts response received',data:{status:response.status,statusText:response.statusText,ok:response.ok,contentType:response.headers.get('content-type')},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'F'})}).catch(()=>{});
+      // #endregion
+      
       const data = await response.json();
+      
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'SpreadsheetUpload.tsx:75',message:'fetchBankAccounts data parsed',data:{hasSuccess:data.success,hasBankAccounts:!!data.bank_accounts,bankAccountsCount:data.bank_accounts?.length || 0,hasError:!!data.error,error:data.error || null,bankAccountIds:data.bank_accounts?.map((ba:any)=>ba.id) || []},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'F'})}).catch(()=>{});
+      // #endregion
+      
       if (data.success && data.bank_accounts) {
         setBankAccounts(data.bank_accounts);
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'SpreadsheetUpload.tsx:79',message:'fetchBankAccounts - setting bank accounts',data:{bankAccountsCount:data.bank_accounts.length,willAutoSelect:data.bank_accounts.length === 1,autoSelectedId:data.bank_accounts.length === 1 ? data.bank_accounts[0].id : null},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'F'})}).catch(()=>{});
+        // #endregion
         // Auto-select first account if only one exists
         if (data.bank_accounts.length === 1) {
           setSelectedBankAccountId(data.bank_accounts[0].id);
         }
+      } else {
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'SpreadsheetUpload.tsx:85',message:'fetchBankAccounts - invalid response',data:{hasSuccess:data.success,hasBankAccounts:!!data.bank_accounts,error:data.error || null},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'F'})}).catch(()=>{});
+        // #endregion
       }
-    } catch (error) {
+    } catch (error: any) {
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'SpreadsheetUpload.tsx:90',message:'fetchBankAccounts - exception',data:{errorMessage:error?.message || 'unknown',errorType:error?.constructor?.name || 'unknown',errorStack:error?.stack?.substring(0,200) || null},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'F'})}).catch(()=>{});
+      // #endregion
       console.error("Error fetching bank accounts:", error);
     } finally {
       setLoadingBankAccounts(false);
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'SpreadsheetUpload.tsx:95',message:'fetchBankAccounts - finally',data:{loadingBankAccounts:false},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'F'})}).catch(()=>{});
+      // #endregion
     }
   };
 

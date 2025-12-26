@@ -26,7 +26,28 @@ export async function OPTIONS() {
 
 export async function POST(request: NextRequest) {
   try {
+    // #region agent log
+    const envCheck = {
+      hasSupabaseUrl: !!process.env.NEXT_PUBLIC_SUPABASE_URL,
+      supabaseUrlLength: process.env.NEXT_PUBLIC_SUPABASE_URL?.length || 0,
+      supabaseUrlPreview: process.env.NEXT_PUBLIC_SUPABASE_URL?.substring(0, 50) || 'MISSING',
+      hasSupabaseAnonKey: !!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+      anonKeyLength: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.length || 0,
+      isLocalhost: process.env.NEXT_PUBLIC_SUPABASE_URL?.includes('localhost') || process.env.NEXT_PUBLIC_SUPABASE_URL?.includes('127.0.0.1'),
+    };
+    fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'upload/route.ts:27',message:'Environment variables check',data:envCheck,timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'A'})}).catch(()=>{});
+    // #endregion
+    
     const supabase = await createClient();
+    
+    // #region agent log
+    const clientCheck = {
+      supabaseUrl: (supabase as any).supabaseUrl || 'UNKNOWN',
+      isLocalhost: ((supabase as any).supabaseUrl || '').includes('localhost') || ((supabase as any).supabaseUrl || '').includes('127.0.0.1'),
+    };
+    fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'upload/route.ts:35',message:'Supabase client created',data:clientCheck,timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'B'})}).catch(()=>{});
+    // #endregion
+    
     const { data: { user }, error: authError } = await supabase.auth.getUser();
 
     if (authError || !user) {
@@ -128,6 +149,10 @@ export async function POST(request: NextRequest) {
     }
 
     // Validate bank account and spreadsheet requirement
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'upload/route.ts:131',message:'Bank account validation query start',data:{bankAccountId,userId:user.id,supabaseUrl:process.env.NEXT_PUBLIC_SUPABASE_URL?.substring(0,50) || 'MISSING'},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'D'})}).catch(()=>{});
+    // #endregion
+    
     const { data: bankAccount, error: bankAccountError } = await supabase
       .from("bank_accounts")
       .select("id, default_spreadsheet_id, spreadsheet_tab_name, account_name, is_active")
@@ -135,7 +160,14 @@ export async function POST(request: NextRequest) {
       .eq("user_id", user.id)
       .single();
 
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'upload/route.ts:138',message:'Bank account validation query result',data:{hasBankAccount:!!bankAccount,bankAccountId:bankAccount?.id || null,hasError:!!bankAccountError,errorMessage:bankAccountError?.message || null,errorCode:bankAccountError?.code || null,errorDetails:bankAccountError?.details || null,errorHint:bankAccountError?.hint || null},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'D'})}).catch(()=>{});
+    // #endregion
+
     if (bankAccountError || !bankAccount || !bankAccount.is_active) {
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'upload/route.ts:142',message:'Bank account validation failed',data:{bankAccountError:bankAccountError ? {message:bankAccountError.message,code:bankAccountError.code,details:bankAccountError.details,hint:bankAccountError.hint} : null,hasBankAccount:!!bankAccount,isActive:bankAccount?.is_active || false},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'C'})}).catch(()=>{});
+      // #endregion
       return NextResponse.json(
         { error: "Invalid or inactive bank account", error_code: "BANK_ACCOUNT_INVALID" },
         { status: 400 }

@@ -3,8 +3,21 @@ import { createClient } from "@/lib/database/server";
 
 export async function GET(request: NextRequest) {
   try {
+    // #region agent log
+    const envCheck = {
+      hasSupabaseUrl: !!process.env.NEXT_PUBLIC_SUPABASE_URL,
+      supabaseUrlPreview: process.env.NEXT_PUBLIC_SUPABASE_URL?.substring(0, 50) || 'MISSING',
+      isLocalhost: process.env.NEXT_PUBLIC_SUPABASE_URL?.includes('localhost') || process.env.NEXT_PUBLIC_SUPABASE_URL?.includes('127.0.0.1'),
+    };
+    fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'bank-accounts/route.ts:4',message:'GET bank accounts - env check',data:envCheck,timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'A'})}).catch(()=>{});
+    // #endregion
+    
     const supabase = await createClient();
     const { data: { user }, error: authError } = await supabase.auth.getUser();
+
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'bank-accounts/route.ts:10',message:'GET bank accounts - auth check',data:{hasUser:!!user,userId:user?.id || null,hasAuthError:!!authError,authError:authError?.message || null},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'B'})}).catch(()=>{});
+    // #endregion
 
     if (authError || !user) {
       return NextResponse.json(
@@ -17,6 +30,10 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const includeInactive = searchParams.get("include_inactive") === "true";
     const accountType = searchParams.get("account_type");
+
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'bank-accounts/route.ts:22',message:'GET bank accounts - query params',data:{includeInactive,accountType,userId:user.id},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'C'})}).catch(()=>{});
+    // #endregion
 
     // Build query
     let query = supabase
@@ -33,15 +50,30 @@ export async function GET(request: NextRequest) {
       query = query.eq("account_type", accountType);
     }
 
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'bank-accounts/route.ts:36',message:'GET bank accounts - executing query',data:{userId:user.id,includeInactive,accountType},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'D'})}).catch(()=>{});
+    // #endregion
+
     const { data: bankAccounts, error } = await query;
+
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'bank-accounts/route.ts:38',message:'GET bank accounts - query result',data:{hasError:!!error,errorMessage:error?.message || null,errorCode:error?.code || null,errorDetails:error?.details || null,errorHint:error?.hint || null,bankAccountsCount:bankAccounts?.length || 0,bankAccountIds:bankAccounts?.map((ba:any)=>ba.id) || []},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'D'})}).catch(()=>{});
+    // #endregion
 
     if (error) {
       console.error("Error fetching bank accounts:", error);
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'bank-accounts/route.ts:42',message:'GET bank accounts - query error',data:{errorMessage:error.message,errorCode:error.code,errorDetails:error.details,errorHint:error.hint},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'C'})}).catch(()=>{});
+      // #endregion
       return NextResponse.json(
         { error: "Failed to fetch bank accounts" },
         { status: 500 }
       );
     }
+
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'bank-accounts/route.ts:49',message:'GET bank accounts - success response',data:{bankAccountsCount:bankAccounts?.length || 0,success:true},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'E'})}).catch(()=>{});
+    // #endregion
 
     return NextResponse.json({
       success: true,
