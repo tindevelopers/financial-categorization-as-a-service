@@ -38,17 +38,11 @@ export async function POST(
     // Get transactions using admin client to bypass RLS
     // Security is enforced by the job ownership check above
     const adminClient = createAdminClient();
+    
+    // First, get transactions
     const { data: transactions, error: transactionsError } = await adminClient
       .from("categorized_transactions")
-      .select(`
-        *,
-        matched_document:financial_documents!categorized_transactions_matched_document_id_fkey(
-          id,
-          vendor_name,
-          original_filename,
-          document_date
-        )
-      `)
+      .select("*")
       .eq("job_id", jobId)
       .order("date", { ascending: false });
 
@@ -57,6 +51,26 @@ export async function POST(
         { error: "No transactions found" },
         { status: 400 }
       );
+    }
+
+    // Get matched documents separately to avoid foreign key relationship issues
+    const matchedDocumentIds = transactions
+      .map((tx: any) => tx.matched_document_id)
+      .filter((id: string | null) => id !== null) as string[];
+
+    let matchedDocumentsMap: Record<string, any> = {};
+    if (matchedDocumentIds.length > 0) {
+      const { data: documents } = await adminClient
+        .from("financial_documents")
+        .select("id, vendor_name, original_filename, document_date")
+        .in("id", matchedDocumentIds);
+
+      if (documents) {
+        matchedDocumentsMap = documents.reduce((acc: Record<string, any>, doc: any) => {
+          acc[doc.id] = doc;
+          return acc;
+        }, {});
+      }
     }
 
     // Initialize Google Sheets API
@@ -103,7 +117,7 @@ export async function POST(
         "Notes",
       ],
       ...transactions.map((tx: any) => {
-        const matchedDoc = tx.matched_document;
+        const matchedDoc = tx.matched_document_id ? matchedDocumentsMap[tx.matched_document_id] : null;
         const reconciliationStatus = tx.reconciliation_status || "unreconciled";
         const matchedDocInfo = matchedDoc
           ? `${matchedDoc.vendor_name || matchedDoc.original_filename || "Document"} (${matchedDoc.document_date || "N/A"})`

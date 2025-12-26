@@ -6,6 +6,12 @@ export interface Transaction {
   date: Date | string;
   description: string;
   amount: number;
+  transaction_type?: 'debit' | 'credit' | 'interest' | 'fee' | 'transfer' | 'deposit' | 'withdrawal' | 'payment' | 'refund';
+  is_debit?: boolean;
+  posted_date?: Date | string;
+  reference_number?: string;
+  merchant_category_code?: string;
+  running_balance?: number;
 }
 
 export interface CategorizedTransaction extends Transaction {
@@ -122,10 +128,49 @@ export function extractTransactions(data: any[]): Transaction[] {
     "credit amount",
   ];
 
+  const balancePatterns = [
+    "balance",
+    "running_balance",
+    "running balance",
+    "account_balance",
+    "account balance",
+    "closing_balance",
+    "closing balance",
+  ];
+
+  const referencePatterns = [
+    "reference",
+    "ref",
+    "reference_number",
+    "reference number",
+    "ref_no",
+    "ref no",
+    "check_no",
+    "check no",
+    "chq_no",
+    "chq no",
+    "transaction_id",
+    "transaction id",
+    "txn_id",
+    "txn id",
+  ];
+
+  const typePatterns = [
+    "type",
+    "transaction_type",
+    "transaction type",
+    "txn_type",
+    "txn type",
+  ];
+
   for (const row of data) {
     let date: Date | string | null = null;
+    let postedDate: Date | string | null = null;
     let description: string | null = null;
     let amount: number | null = null;
+    let transactionType: Transaction['transaction_type'] | null = null;
+    let referenceNumber: string | null = null;
+    let runningBalance: number | null = null;
 
     // Find date using extended patterns
     const dateValue = findColumnValue(row, datePatterns);
@@ -138,6 +183,12 @@ export function extractTransactions(data: any[]): Transaction[] {
       if (firstKey && isDateLike(row[firstKey])) {
         date = parseDate(row[firstKey]);
       }
+    }
+
+    // Find posted date (may differ from transaction date)
+    const postedDateValue = findColumnValue(row, ["posted_date", "post_date", "date_posted", "cleared_date", "cleared date"]);
+    if (postedDateValue) {
+      postedDate = parseDate(postedDateValue);
     }
 
     // Find description using extended patterns
@@ -156,6 +207,32 @@ export function extractTransactions(data: any[]): Transaction[] {
       }
     }
 
+    // Extract reference number from description or dedicated column
+    if (description) {
+      const refFromDesc = extractReferenceFromDescription(description);
+      if (refFromDesc) {
+        referenceNumber = refFromDesc;
+      }
+    }
+    
+    // Try dedicated reference column
+    const refValue = findColumnValue(row, referencePatterns);
+    if (refValue && typeof refValue === "string") {
+      referenceNumber = refValue.trim();
+    }
+
+    // Find transaction type from dedicated column
+    const typeValue = findColumnValue(row, typePatterns);
+    if (typeValue && typeof typeValue === "string") {
+      transactionType = classifyTransactionTypeFromString(typeValue.toLowerCase());
+    }
+
+    // Find running balance
+    const balanceValue = findColumnValue(row, balancePatterns);
+    if (balanceValue !== undefined) {
+      runningBalance = parseAmount(balanceValue);
+    }
+
     // Find amount using extended patterns
     // Try debit/credit columns separately first (common in bank statements)
     const rowKeys = Object.keys(row);
@@ -169,14 +246,20 @@ export function extractTransactions(data: any[]): Transaction[] {
           keyLower.includes("money out") || keyLower.includes("withdrawal")) {
         const val = parseAmount(row[key]);
         if (val !== null && val !== 0) {
-          debitAmount = Math.abs(val); // Debits are typically negative (outflows)
+          debitAmount = Math.abs(val);
+          if (!transactionType) {
+            transactionType = 'debit';
+          }
         }
       }
       if (keyLower.includes("credit") || keyLower.includes("paid in") || 
           keyLower.includes("money in") || keyLower.includes("deposit")) {
         const val = parseAmount(row[key]);
         if (val !== null && val !== 0) {
-          creditAmount = Math.abs(val); // Credits are typically positive (inflows)
+          creditAmount = Math.abs(val);
+          if (!transactionType) {
+            transactionType = 'credit';
+          }
         }
       }
     }
@@ -202,13 +285,57 @@ export function extractTransactions(data: any[]): Transaction[] {
       }
     }
 
+    // Classify transaction type if not already set
+    if (!transactionType && description && amount !== null) {
+      transactionType = classifyTransactionTypeFromDescription(description, amount);
+    }
+
+    // Determine is_debit based on transaction type and amount
+    let is_debit: boolean | undefined;
+    if (transactionType) {
+      const debitTypes: Array<typeof transactionType> = ['debit', 'withdrawal', 'payment', 'fee'];
+      is_debit = debitTypes.includes(transactionType);
+    } else if (amount !== null) {
+      is_debit = amount < 0;
+    }
+
+    // Normalize amount (make positive, use is_debit flag)
+    let normalizedAmount = amount;
+    if (amount !== null && is_debit && amount > 0) {
+      // If it's a debit but amount is positive, keep positive (is_debit flag indicates direction)
+      normalizedAmount = amount;
+    } else if (amount !== null && !is_debit && amount < 0) {
+      // If it's a credit but amount is negative, make positive
+      normalizedAmount = Math.abs(amount);
+    } else if (amount !== null) {
+      normalizedAmount = Math.abs(amount);
+    }
+
     // Only add if we have all required fields
-    if (date && description && amount !== null) {
-      transactions.push({
+    if (date && description && normalizedAmount !== null) {
+      const transaction: Transaction = {
         date,
         description,
-        amount,
-      });
+        amount: normalizedAmount,
+      };
+
+      if (transactionType) {
+        transaction.transaction_type = transactionType;
+      }
+      if (is_debit !== undefined) {
+        transaction.is_debit = is_debit;
+      }
+      if (postedDate) {
+        transaction.posted_date = postedDate;
+      }
+      if (referenceNumber) {
+        transaction.reference_number = referenceNumber;
+      }
+      if (runningBalance !== null) {
+        transaction.running_balance = runningBalance;
+      }
+
+      transactions.push(transaction);
     }
   }
 
@@ -268,6 +395,133 @@ function isDateLike(value: any): boolean {
     return /^\d{4}-\d{2}-\d{2}/.test(value) || /^\d{2}\/\d{2}\/\d{4}/.test(value);
   }
   return false;
+}
+
+/**
+ * Extract reference number from description text
+ */
+function extractReferenceFromDescription(description: string): string | null {
+  const patterns = [
+    /ref[:\s]+([A-Z0-9-]+)/i,
+    /reference[:\s]+([A-Z0-9-]+)/i,
+    /ref\s+no[:\s]+([A-Z0-9-]+)/i,
+    /check\s+no[:\s]+([0-9]+)/i,
+    /chq\s+no[:\s]+([0-9]+)/i,
+    /transaction\s+id[:\s]+([A-Z0-9-]+)/i,
+    /txn[:\s]+([A-Z0-9-]+)/i,
+  ];
+
+  for (const pattern of patterns) {
+    const match = description.match(pattern);
+    if (match && match[1]) {
+      return match[1];
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Classify transaction type from a type string
+ */
+function classifyTransactionTypeFromString(typeStr: string): Transaction['transaction_type'] | null {
+  const normalized = typeStr.toLowerCase().trim();
+  
+  if (normalized.includes('debit') || normalized.includes('withdrawal') || normalized.includes('payment')) {
+    return 'debit';
+  }
+  if (normalized.includes('credit') || normalized.includes('deposit')) {
+    return 'credit';
+  }
+  if (normalized.includes('interest')) {
+    return 'interest';
+  }
+  if (normalized.includes('fee') || normalized.includes('charge')) {
+    return 'fee';
+  }
+  if (normalized.includes('transfer')) {
+    return 'transfer';
+  }
+  if (normalized.includes('refund')) {
+    return 'refund';
+  }
+  
+  return null;
+}
+
+/**
+ * Classify transaction type from description and amount
+ */
+function classifyTransactionTypeFromDescription(
+  description: string,
+  amount: number
+): Transaction['transaction_type'] {
+  const descLower = description.toLowerCase();
+
+  // Interest payments/receipts
+  if (descLower.includes('interest') || descLower.includes('int ')) {
+    return 'interest';
+  }
+
+  // Fees
+  if (
+    descLower.includes('fee') ||
+    descLower.includes('charge') ||
+    descLower.includes('overdraft') ||
+    descLower.includes('maintenance') ||
+    descLower.includes('service charge')
+  ) {
+    return 'fee';
+  }
+
+  // Refunds
+  if (
+    descLower.includes('refund') ||
+    descLower.includes('reversal') ||
+    descLower.includes('chargeback')
+  ) {
+    return 'refund';
+  }
+
+  // Transfers
+  if (
+    descLower.includes('transfer') ||
+    descLower.includes('internal transfer') ||
+    descLower.includes('online transfer')
+  ) {
+    return 'transfer';
+  }
+
+  // Deposits
+  if (
+    descLower.includes('deposit') ||
+    descLower.includes('credit') ||
+    descLower.includes('payment received')
+  ) {
+    return 'deposit';
+  }
+
+  // Withdrawals
+  if (
+    descLower.includes('withdrawal') ||
+    descLower.includes('cash withdrawal') ||
+    descLower.includes('atm')
+  ) {
+    return 'withdrawal';
+  }
+
+  // Payments
+  if (
+    descLower.includes('payment') ||
+    descLower.includes('direct debit') ||
+    descLower.includes('standing order') ||
+    descLower.includes('card payment')
+  ) {
+    return 'payment';
+  }
+
+  // Default based on amount sign
+  return amount < 0 ? 'debit' : 'credit';
 }
 
 /**
@@ -341,10 +595,36 @@ export async function categorizeTransactions(
       await debugLog('process-spreadsheet.ts:179', 'AI categorization enabled, importing factory', {});
       
       const { AICategorizationFactory } = await import("@/lib/ai/AICategorizationFactory");
+      const { VercelAICategorizationService } = await import("@/lib/ai/VercelAICategorizationService");
       const provider = AICategorizationFactory.getDefaultProvider();
       
       console.log('[DEBUG] AI factory imported', { provider });
       await debugLog('process-spreadsheet.ts:185', 'AI factory imported', { provider });
+      
+      // Get company profile ID if available
+      const { data: companyProfile } = await supabase
+        .from("company_profiles")
+        .select("id")
+        .eq("user_id", userId)
+        .eq("setup_completed", true)
+        .limit(1)
+        .single();
+      
+      const companyProfileId = companyProfile?.id;
+      
+      // Load AI instructions
+      const aiInstructions = await VercelAICategorizationService.loadCategorizationInstructions(
+        supabase,
+        userId,
+        companyProfileId
+      );
+      
+      console.log('[DEBUG] AI instructions loaded', {
+        hasSystemPrompt: !!aiInstructions.systemPrompt,
+        hasCategoryRules: !!aiInstructions.categoryRules,
+        hasExceptionRules: !!aiInstructions.exceptionRules,
+        companyProfileId
+      });
       
       const userMappings = mappings?.map((m: any) => ({
         pattern: m.pattern,
@@ -352,16 +632,25 @@ export async function categorizeTransactions(
         subcategory: m.subcategory || undefined,
       }));
       
-      const aiService = AICategorizationFactory.create(provider, userMappings);
+      const aiService = AICategorizationFactory.create(
+        provider,
+        userMappings,
+        aiInstructions,
+        companyProfileId
+      );
       
       console.log('[DEBUG] AI service created', { hasService: !!aiService, provider });
       await debugLog('process-spreadsheet.ts:194', 'AI service created', { hasService: !!aiService });
       
-      // Convert transactions to AI service format
+      // Convert transactions to AI service format (include transaction type and other metadata)
       const aiTransactions = transactions.map(tx => ({
         original_description: tx.description,
         amount: tx.amount,
         date: typeof tx.date === "string" ? tx.date : tx.date.toISOString().split("T")[0],
+        transaction_type: tx.transaction_type,
+        is_debit: tx.is_debit,
+        reference_number: tx.reference_number,
+        posted_date: tx.posted_date ? (typeof tx.posted_date === "string" ? tx.posted_date : tx.posted_date.toISOString().split("T")[0]) : undefined,
       }));
 
       // Categorize in batches (process 20 at a time to avoid token limits)
