@@ -17,6 +17,7 @@ import {
   TrashIcon,
   ClipboardDocumentIcon,
   EnvelopeIcon,
+  BanknotesIcon,
 } from '@heroicons/react/24/outline'
 
 type EntityType = 'individual' | 'company'
@@ -888,6 +889,14 @@ This could mean:
                         Choose which spreadsheet to export your transactions to
                       </p>
                     </div>
+                    <Button
+                      color="zinc"
+                      onClick={() => window.location.href = '/dashboard/settings/spreadsheets'}
+                      className="gap-2"
+                    >
+                      <DocumentIcon className="h-4 w-4" />
+                      Browse All Spreadsheets
+                    </Button>
                   </div>
 
                   {sheetPreferences ? (
@@ -1326,16 +1335,33 @@ This could mean:
             More Settings
           </h2>
         </div>
-        <div className="p-6 text-center py-12">
-          <div className="bg-gray-100 dark:bg-gray-800 rounded-full p-4 inline-flex mb-4">
-            <Cog6ToothIcon className="h-8 w-8 text-gray-400 dark:text-gray-500" />
+        <div className="p-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <a
+              href="/dashboard/settings/bank-accounts"
+              className="p-4 border border-gray-200 dark:border-zinc-700 rounded-lg hover:bg-gray-50 dark:hover:bg-zinc-800 transition-colors"
+            >
+              <div className="flex items-center gap-3">
+                <BanknotesIcon className="h-6 w-6 text-gray-400" />
+                <div>
+                  <h3 className="font-medium text-gray-900 dark:text-white">Bank Accounts</h3>
+                  <p className="text-sm text-gray-500">Manage bank accounts and spreadsheet links</p>
+                </div>
+              </div>
+            </a>
+            <a
+              href="/dashboard/settings/spreadsheets"
+              className="p-4 border border-gray-200 dark:border-zinc-700 rounded-lg hover:bg-gray-50 dark:hover:bg-zinc-800 transition-colors"
+            >
+              <div className="flex items-center gap-3">
+                <DocumentIcon className="h-6 w-6 text-gray-400" />
+                <div>
+                  <h3 className="font-medium text-gray-900 dark:text-white">Available Spreadsheets</h3>
+                  <p className="text-sm text-gray-500">View all Google Sheets you have access to</p>
+                </div>
+              </div>
+            </a>
           </div>
-          <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">
-            More Settings Coming Soon
-          </h3>
-          <p className="text-gray-600 dark:text-gray-400 max-w-md mx-auto">
-            Account preferences, notification settings, and more integrations will be available soon.
-          </p>
         </div>
       </div>
     </div>

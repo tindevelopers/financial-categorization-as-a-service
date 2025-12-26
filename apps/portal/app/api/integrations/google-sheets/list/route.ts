@@ -19,6 +19,14 @@ export async function GET(request: NextRequest) {
     }
 
     // Check if user has Google Sheets integration
+    // Try both tables - user_integrations and cloud_storage_connections
+    const { data: integration } = await supabase
+      .from("user_integrations")
+      .select("access_token, provider_email, provider")
+      .eq("user_id", user.id)
+      .eq("provider", "google_sheets")
+      .single();
+
     const { data: connection } = await supabase
       .from("cloud_storage_connections")
       .select("encrypted_credentials, provider")
@@ -27,7 +35,11 @@ export async function GET(request: NextRequest) {
       .eq("is_active", true)
       .single();
 
-    if (!connection) {
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'google-sheets/list/route.ts:20',message:'Checking Google Sheets connection',data:{hasIntegration:!!integration,hasConnection:!!connection,integrationProvider:integration?.provider,connectionProvider:connection?.provider},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'H'})}).catch(()=>{});
+    // #endregion
+
+    if (!integration && !connection) {
       return NextResponse.json(
         { 
           error: "Google Sheets not connected",
@@ -42,14 +54,21 @@ export async function GET(request: NextRequest) {
       process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL && 
       process.env.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY;
 
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'google-sheets/list/route.ts:52',message:'Service account check',data:{hasServiceAccount,hasServiceEmail:!!process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL,hasServiceKey:!!process.env.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'H'})}).catch(()=>{});
+    // #endregion
+
     let auth;
-    let sheets;
+    let sheets: ReturnType<typeof google.sheets>;
 
     // Try to use OAuth credentials first (from user's connection)
     try {
       // Decrypt credentials (you'll need to implement decryption)
       // For now, we'll use service account as fallback
       if (hasServiceAccount) {
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'google-sheets/list/route.ts:65',message:'Using service account auth',data:{serviceEmail:process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL?.substring(0,30) || 'MISSING'},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'H'})}).catch(()=>{});
+        // #endregion
         auth = new google.auth.GoogleAuth({
           credentials: {
             client_email: process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL,
@@ -73,6 +92,10 @@ export async function GET(request: NextRequest) {
       sheets = google.sheets({ version: "v4", auth });
       const drive = google.drive({ version: "v3", auth });
 
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'google-sheets/list/route.ts:88',message:'Fetching spreadsheets from Drive',data:{timestamp:Date.now()},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'H'})}).catch(()=>{});
+      // #endregion
+
       // List spreadsheets from Google Drive
       const response = await drive.files.list({
         q: "mimeType='application/vnd.google-apps.spreadsheet' and trashed=false",
@@ -82,6 +105,10 @@ export async function GET(request: NextRequest) {
       });
 
       const spreadsheetFiles = response.data.files || [];
+
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'google-sheets/list/route.ts:96',message:'Drive API response received',data:{spreadsheetCount:spreadsheetFiles.length,fileIds:spreadsheetFiles.map((f:any)=>f.id).slice(0,5)},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'H'})}).catch(()=>{});
+      // #endregion
 
       // For each spreadsheet, get its sheets/tabs
       const spreadsheetsWithTabs = await Promise.all(
