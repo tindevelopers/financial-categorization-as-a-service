@@ -9,7 +9,8 @@ import {
   BuildingLibraryIcon,
   CreditCardIcon,
   BanknotesIcon,
-  WalletIcon
+  WalletIcon,
+  DocumentTextIcon
 } from '@heroicons/react/24/outline'
 
 interface BankAccount {
@@ -184,10 +185,20 @@ export default function BankAccountsPage() {
             Manage your bank accounts and link them to spreadsheets
           </Text>
         </div>
-        <Button onClick={() => setShowForm(true)} className="gap-2">
-          <PlusIcon className="h-5 w-5" />
-          Add Bank Account
-        </Button>
+        <div className="flex gap-2">
+          <Button 
+            onClick={() => window.location.href = '/dashboard/settings/spreadsheets'} 
+            color="zinc"
+            className="gap-2"
+          >
+            <DocumentTextIcon className="h-5 w-5" />
+            View Spreadsheets
+          </Button>
+          <Button onClick={() => setShowForm(true)} className="gap-2">
+            <PlusIcon className="h-5 w-5" />
+            Add Bank Account
+          </Button>
+        </div>
       </div>
 
       {/* Form */}
@@ -303,14 +314,28 @@ export default function BankAccountsPage() {
                 <label className="block text-sm font-medium mb-1">
                   Default Spreadsheet ID *
                 </label>
-                <input
-                  type="text"
-                  required
-                  value={formData.default_spreadsheet_id}
-                  onChange={(e) => setFormData({ ...formData, default_spreadsheet_id: e.target.value })}
-                  className="w-full px-3 py-2 border rounded-lg dark:bg-gray-700 dark:border-gray-600"
-                  placeholder="Google Sheets spreadsheet ID"
-                />
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    required
+                    value={formData.default_spreadsheet_id}
+                    onChange={(e) => setFormData({ ...formData, default_spreadsheet_id: e.target.value })}
+                    className="flex-1 px-3 py-2 border rounded-lg dark:bg-gray-700 dark:border-gray-600"
+                    placeholder="Google Sheets spreadsheet ID"
+                  />
+                  <Button
+                    type="button"
+                    color="zinc"
+                    onClick={() => window.location.href = '/dashboard/settings/spreadsheets'}
+                    className="gap-2"
+                  >
+                    <DocumentTextIcon className="h-4 w-4" />
+                    Browse
+                  </Button>
+                </div>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                  Click "Browse" to view all available spreadsheets and copy their IDs
+                </p>
               </div>
             </div>
             <div className="flex gap-2">
