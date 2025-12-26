@@ -58,21 +58,56 @@ export class TransactionMergeService {
     transactions: Transaction[],
     options: MergeOptions
   ): Promise<MergeResult> {
+    // #region agent log
+    console.log('[DEBUG] processUploadWithMerge entry', {
+      transactionCount: transactions.length,
+      skipDuplicateCheck: options.skipDuplicateCheck,
+      forceMerge: options.forceMerge,
+      jobId: options.jobId,
+      userId: this.userId
+    });
+    // #endregion
+    
     // If skip duplicate check, just insert all
     if (options.skipDuplicateCheck) {
+      // #region agent log
+      console.log('[DEBUG] Skipping duplicate check, inserting all transactions');
+      // #endregion
       return this.insertAllTransactions(transactions, options);
     }
 
     // Detect duplicates
+    // #region agent log
+    console.log('[DEBUG] Detecting duplicates');
+    // #endregion
     const similarity = await this.duplicateDetector.detectSimilarity(transactions, this.userId);
+
+    // #region agent log
+    console.log('[DEBUG] Duplicate detection completed', {
+      similarityScore: similarity.similarityScore,
+      matchingCount: similarity.matchingCount,
+      totalNewTransactions: similarity.totalNewTransactions
+    });
+    // #endregion
 
     // Decide on merge strategy based on similarity
     if (similarity.similarityScore < 50 && !options.forceMerge) {
       // Low similarity - insert everything
+      // #region agent log
+      console.log('[DEBUG] Low similarity, inserting all transactions', {
+        similarityScore: similarity.similarityScore
+      });
+      // #endregion
       return this.insertAllTransactions(transactions, options);
     }
 
     // Merge mode - only insert new transactions
+    // #region agent log
+    console.log('[DEBUG] High similarity, merging transactions', {
+      similarityScore: similarity.similarityScore,
+      newTransactionsCount: similarity.totalNewTransactions
+    });
+    // #endregion
     return this.mergeTransactions(similarity, options);
   }
 
@@ -169,7 +204,20 @@ export class TransactionMergeService {
     jobId: string,
     options: MergeOptions
   ): Promise<{ inserted: number; errors: number }> {
+    // #region agent log
+    console.log('[DEBUG] insertTransactions entry', {
+      transactionCount: transactions.length,
+      jobId,
+      userId: this.userId,
+      tenantId: this.tenantId,
+      bankAccountId: options.bankAccountId
+    });
+    // #endregion
+    
     if (transactions.length === 0) {
+      // #region agent log
+      console.log('[DEBUG] No transactions to insert');
+      // #endregion
       return { inserted: 0, errors: 0 };
     }
 
@@ -200,24 +248,86 @@ export class TransactionMergeService {
       };
     });
 
+    // #region agent log
+    const categorizedCount = transactionsToInsert.filter(tx => tx.category).length;
+    console.log('[DEBUG] Transactions prepared for insertion', {
+      totalCount: transactionsToInsert.length,
+      categorizedCount,
+      uncategorizedCount: transactionsToInsert.length - categorizedCount,
+      sampleTransaction: transactionsToInsert[0] ? {
+        description: transactionsToInsert[0].original_description?.substring(0, 50),
+        amount: transactionsToInsert[0].amount,
+        category: transactionsToInsert[0].category,
+        subcategory: transactionsToInsert[0].subcategory
+      } : null
+    });
+    // #endregion
+
     const BATCH_SIZE = 100;
     let totalInserted = 0;
     let totalErrors = 0;
+    const totalBatches = Math.ceil(transactionsToInsert.length / BATCH_SIZE);
+
+    // #region agent log
+    console.log('[DEBUG] Starting batch insertion', {
+      totalTransactions: transactionsToInsert.length,
+      batchSize: BATCH_SIZE,
+      totalBatches
+    });
+    // #endregion
 
     for (let i = 0; i < transactionsToInsert.length; i += BATCH_SIZE) {
       const batch = transactionsToInsert.slice(i, i + BATCH_SIZE);
+      const batchNumber = Math.floor(i / BATCH_SIZE) + 1;
       
-      const { error } = await this.supabase
+      // #region agent log
+      console.log('[DEBUG] Inserting transaction batch', {
+        batchNumber,
+        totalBatches,
+        batchSize: batch.length,
+        batchStartIndex: i,
+        jobId
+      });
+      // #endregion
+      
+      const { error, data } = await this.supabase
         .from('categorized_transactions')
-        .insert(batch);
+        .insert(batch)
+        .select('id');
 
       if (error) {
+        // #region agent log
+        console.log('[DEBUG] Error inserting transaction batch', {
+          batchNumber,
+          errorMessage: error.message,
+          errorCode: error.code,
+          errorDetails: error.details,
+          errorHint: error.hint,
+          batchSize: batch.length
+        });
+        // #endregion
         console.error('Error inserting transaction batch:', error);
         totalErrors += batch.length;
       } else {
+        // #region agent log
+        console.log('[DEBUG] Transaction batch inserted successfully', {
+          batchNumber,
+          insertedCount: data?.length || batch.length,
+          batchSize: batch.length
+        });
+        // #endregion
         totalInserted += batch.length;
       }
     }
+
+    // #region agent log
+    console.log('[DEBUG] All batches processed', {
+      totalInserted,
+      totalErrors,
+      successRate: transactionsToInsert.length > 0 ? (totalInserted / transactionsToInsert.length * 100).toFixed(2) + '%' : '0%',
+      jobId
+    });
+    // #endregion
 
     return { inserted: totalInserted, errors: totalErrors };
   }

@@ -183,10 +183,21 @@ export async function categorizeTransactions(
   userId: string,
   supabase: any
 ): Promise<CategorizedTransaction[]> {
+  // #region agent log
+  const useAIEnv = process.env.USE_AI_CATEGORIZATION === 'true';
+  console.log('[DEBUG] categorizeTransactions entry', {
+    transactionCount: transactions.length,
+    userId,
+    useAI: useAIEnv,
+    hasUseAIEnv: !!process.env.USE_AI_CATEGORIZATION,
+    useAIEnvValue: process.env.USE_AI_CATEGORIZATION
+  });
+  // #endregion
+  
   await debugLog('process-spreadsheet.ts:164', 'categorizeTransactions entry', {
     transactionCount: transactions.length,
     userId,
-    useAI: process.env.USE_AI_CATEGORIZATION === 'true',
+    useAI: useAIEnv,
     hasUseAIEnv: !!process.env.USE_AI_CATEGORIZATION
   });
   
@@ -196,6 +207,13 @@ export async function categorizeTransactions(
     .select("*")
     .eq("user_id", userId);
 
+  // #region agent log
+  console.log('[DEBUG] User mappings fetched', {
+    mappingsCount: mappings?.length || 0,
+    userId
+  });
+  // #endregion
+
   await debugLog('process-spreadsheet.ts:172', 'User mappings fetched', {
     mappingsCount: mappings?.length || 0
   });
@@ -203,13 +221,27 @@ export async function categorizeTransactions(
   // Use AI categorization service if available
   const useAI = process.env.USE_AI_CATEGORIZATION === "true";
   
+  // #region agent log
+  console.log('[DEBUG] AI categorization check', {
+    useAI,
+    envVarValue: process.env.USE_AI_CATEGORIZATION,
+    willUseAI: useAI
+  });
+  // #endregion
+  
   if (useAI) {
     try {
+      // #region agent log
+      console.log('[DEBUG] AI categorization enabled, importing factory');
+      // #endregion
       await debugLog('process-spreadsheet.ts:179', 'AI categorization enabled, importing factory', {});
       
       const { AICategorizationFactory } = await import("@/lib/ai/AICategorizationFactory");
       const provider = AICategorizationFactory.getDefaultProvider();
       
+      // #region agent log
+      console.log('[DEBUG] AI factory imported', { provider });
+      // #endregion
       await debugLog('process-spreadsheet.ts:185', 'AI factory imported', { provider });
       
       const userMappings = mappings?.map((m: any) => ({
@@ -220,6 +252,9 @@ export async function categorizeTransactions(
       
       const aiService = AICategorizationFactory.create(provider, userMappings);
       
+      // #region agent log
+      console.log('[DEBUG] AI service created', { hasService: !!aiService, provider });
+      // #endregion
       await debugLog('process-spreadsheet.ts:194', 'AI service created', { hasService: !!aiService });
       
       // Convert transactions to AI service format
@@ -232,18 +267,47 @@ export async function categorizeTransactions(
       // Categorize in batches (process 20 at a time to avoid token limits)
       const BATCH_SIZE = 20;
       const results: CategorizedTransaction[] = [];
+      const totalBatches = Math.ceil(aiTransactions.length / BATCH_SIZE);
+      
+      // #region agent log
+      console.log('[DEBUG] Starting AI categorization batches', {
+        totalTransactions: aiTransactions.length,
+        batchSize: BATCH_SIZE,
+        totalBatches
+      });
+      // #endregion
       
       for (let i = 0; i < aiTransactions.length; i += BATCH_SIZE) {
         const batch = aiTransactions.slice(i, i + BATCH_SIZE);
         
+        // #region agent log
+        console.log('[DEBUG] Calling AI categorizeBatch', {
+          batchIndex: i,
+          batchSize: batch.length,
+          batchNumber: Math.floor(i / BATCH_SIZE) + 1,
+          totalBatches
+        });
+        // #endregion
         await debugLog('process-spreadsheet.ts:207', 'Calling AI categorizeBatch', {
           batchIndex: i,
           batchSize: batch.length,
-          totalBatches: Math.ceil(aiTransactions.length / BATCH_SIZE)
+          totalBatches
         });
         
         const batchResults = await aiService.categorizeBatch(batch);
         
+        // #region agent log
+        console.log('[DEBUG] AI categorizeBatch completed', {
+          batchIndex: i,
+          resultsCount: batchResults.length,
+          hasResults: batchResults.length > 0,
+          sampleResult: batchResults[0] ? {
+            category: batchResults[0].category,
+            subcategory: batchResults[0].subcategory,
+            confidenceScore: batchResults[0].confidenceScore
+          } : null
+        });
+        // #endregion
         await debugLog('process-spreadsheet.ts:211', 'AI categorizeBatch completed', {
           resultsCount: batchResults.length,
           hasResults: batchResults.length > 0
@@ -262,12 +326,25 @@ export async function categorizeTransactions(
         }
       }
       
+      // #region agent log
+      console.log('[DEBUG] AI categorization completed successfully', {
+        totalResults: results.length,
+        categorizedCount: results.filter(r => r.category && r.category !== 'Uncategorized').length
+      });
+      // #endregion
       await debugLog('process-spreadsheet.ts:226', 'AI categorization completed successfully', {
         totalResults: results.length
       });
       
       return results;
     } catch (error: any) {
+      // #region agent log
+      console.log('[DEBUG] AI categorization failed, falling back to rule-based', {
+        errorMessage: error.message,
+        errorName: error.name,
+        errorStack: error.stack?.substring(0, 500) || null
+      });
+      // #endregion
       await debugLog('process-spreadsheet.ts:230', 'AI categorization failed, falling back', {
         errorMessage: error.message,
         errorName: error.name,
@@ -276,6 +353,12 @@ export async function categorizeTransactions(
       console.error("AI categorization failed, falling back to rule-based:", error);
       // Fall through to rule-based categorization
     }
+  } else {
+    // #region agent log
+    console.log('[DEBUG] AI categorization disabled, using rule-based', {
+      useAIEnv: process.env.USE_AI_CATEGORIZATION
+    });
+    // #endregion
   }
 
   // Basic rule-based categorization (fallback)
@@ -444,6 +527,14 @@ export async function processSpreadsheetFile(
     });
 
     // Process with merge service (handles duplicate detection)
+    // #region agent log
+    console.log('[DEBUG] Starting merge service', {
+      syncTransactionCount: categorizedSyncTransactions.length,
+      jobId,
+      bankAccountId,
+      categorizedCount: categorizedSyncTransactions.filter(tx => tx.category).length
+    });
+    // #endregion
     await debugLog('process-spreadsheet.ts:365', 'Starting merge service', {
       syncTransactionCount: categorizedSyncTransactions.length
     });
@@ -457,6 +548,16 @@ export async function processSpreadsheetFile(
       bankAccountId: bankAccountId,
     });
 
+    // #region agent log
+    console.log('[DEBUG] Merge service completed', {
+      inserted: mergeResult.inserted,
+      skipped: mergeResult.skipped,
+      updated: mergeResult.updated,
+      mode: mergeResult.mode,
+      message: mergeResult.message,
+      jobId
+    });
+    // #endregion
     await debugLog('process-spreadsheet.ts:375', 'Merge service completed', {
       inserted: mergeResult.inserted,
       skipped: mergeResult.skipped
