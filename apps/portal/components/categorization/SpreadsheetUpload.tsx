@@ -89,8 +89,9 @@ export default function SpreadsheetUpload() {
         fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'SpreadsheetUpload.tsx:79',message:'fetchBankAccounts - setting bank accounts',data:{bankAccountsCount:data.bank_accounts.length,willAutoSelect:data.bank_accounts.length === 1,autoSelectedId:data.bank_accounts.length === 1 ? data.bank_accounts[0].id : null},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'F'})}).catch(()=>{});
         // #endregion
         // Auto-select first account if only one exists
-        if (data.bank_accounts.length === 1) {
-          setSelectedBankAccountId(data.bank_accounts[0].id);
+        if (data.bank_accounts.length === 1 && data.bank_accounts[0].id) {
+          // Ensure we set a string value
+          setSelectedBankAccountId(String(data.bank_accounts[0].id));
         }
       } else {
         // #region agent log
@@ -175,8 +176,10 @@ export default function SpreadsheetUpload() {
       return;
     }
     // Validate bank account selection - check both empty string and falsy values
-    if (!selectedBankAccountId || selectedBankAccountId.trim() === '') {
-      console.error('Bank account validation failed:', { selectedBankAccountId, bankAccountsCount: bankAccounts.length });
+    // Ensure selectedBankAccountId is a string and not an object
+    const bankAccountId = typeof selectedBankAccountId === 'string' ? selectedBankAccountId : String(selectedBankAccountId || '');
+    if (!bankAccountId || bankAccountId.trim() === '') {
+      console.error('Bank account validation failed:', { selectedBankAccountId, bankAccountId, bankAccountsCount: bankAccounts.length, type: typeof selectedBankAccountId });
       setUploadState(prev => ({ ...prev, error: "Please select a bank account before uploading." }));
       return;
     }
@@ -194,8 +197,10 @@ export default function SpreadsheetUpload() {
 
     try {
       // Validate bank account selection again (double-check)
-      if (!selectedBankAccountId || selectedBankAccountId.trim() === '') {
-        console.error('Bank account validation failed in try block:', { selectedBankAccountId });
+      // Ensure selectedBankAccountId is a string and not an object
+      const bankAccountId = typeof selectedBankAccountId === 'string' ? selectedBankAccountId : String(selectedBankAccountId || '');
+      if (!bankAccountId || bankAccountId.trim() === '') {
+        console.error('Bank account validation failed in try block:', { selectedBankAccountId, bankAccountId, type: typeof selectedBankAccountId });
         setUploadState(prev => ({
           ...prev,
           uploading: false,
@@ -204,18 +209,20 @@ export default function SpreadsheetUpload() {
         return;
       }
 
-      console.log('Uploading with bank account:', selectedBankAccountId);
+      console.log('Uploading with bank account:', bankAccountId);
       const formData = new FormData();
       formData.append('file', file);
-      formData.append('bank_account_id', selectedBankAccountId);
+      formData.append('bank_account_id', bankAccountId);
       
       // Add spreadsheet_id and spreadsheet_tab_id if bank account has defaults
-      if (selectedBankAccount) {
-        if (selectedBankAccount.default_spreadsheet_id) {
-          formData.append('spreadsheet_id', selectedBankAccount.default_spreadsheet_id);
+      // Re-find selected bank account using the validated bankAccountId
+      const validatedSelectedBankAccount = bankAccounts.find(acc => acc.id === bankAccountId);
+      if (validatedSelectedBankAccount) {
+        if (validatedSelectedBankAccount.default_spreadsheet_id) {
+          formData.append('spreadsheet_id', validatedSelectedBankAccount.default_spreadsheet_id);
         }
-        if (selectedBankAccount.spreadsheet_tab_name) {
-          formData.append('spreadsheet_tab_id', selectedBankAccount.spreadsheet_tab_name);
+        if (validatedSelectedBankAccount.spreadsheet_tab_name) {
+          formData.append('spreadsheet_tab_id', validatedSelectedBankAccount.spreadsheet_tab_name);
         }
       }
 
@@ -343,11 +350,14 @@ export default function SpreadsheetUpload() {
       setUploadState(prev => ({ ...prev, error: "Please complete your profile (individual/company name) before uploading." }));
       return;
     }
-    if (!selectedBankAccountId) {
+    // Ensure selectedBankAccountId is a string
+    const bankAccountId = typeof selectedBankAccountId === 'string' ? selectedBankAccountId : String(selectedBankAccountId || '');
+    if (!bankAccountId || bankAccountId.trim() === '') {
       setUploadState(prev => ({ ...prev, error: "Please select a bank account before uploading." }));
       return;
     }
-    if (selectedBankAccount && !selectedBankAccount.default_spreadsheet_id) {
+    const validatedSelectedBankAccount = bankAccounts.find(acc => acc.id === bankAccountId);
+    if (validatedSelectedBankAccount && !validatedSelectedBankAccount.default_spreadsheet_id) {
       setUploadState(prev => ({ ...prev, error: "Please set a default spreadsheet for this bank account before uploading." }));
       return;
     }
@@ -362,7 +372,7 @@ export default function SpreadsheetUpload() {
     }));
 
     try {
-      if (!selectedBankAccountId) {
+      if (!bankAccountId || bankAccountId.trim() === '') {
         setUploadState(prev => ({
           ...prev,
           uploading: false,
@@ -375,16 +385,16 @@ export default function SpreadsheetUpload() {
       formData.append('file', pendingFile);
       formData.append('force', 'true');
       // Only append bank_account_id if it's not empty
-      if (selectedBankAccountId && selectedBankAccountId.trim() !== '') {
-        formData.append('bank_account_id', selectedBankAccountId);
+      if (bankAccountId && bankAccountId.trim() !== '') {
+        formData.append('bank_account_id', bankAccountId);
       }
       
-      if (selectedBankAccount) {
-        if (selectedBankAccount.default_spreadsheet_id) {
-          formData.append('spreadsheet_id', selectedBankAccount.default_spreadsheet_id);
+      if (validatedSelectedBankAccount) {
+        if (validatedSelectedBankAccount.default_spreadsheet_id) {
+          formData.append('spreadsheet_id', validatedSelectedBankAccount.default_spreadsheet_id);
         }
-        if (selectedBankAccount.spreadsheet_tab_name) {
-          formData.append('spreadsheet_tab_id', selectedBankAccount.spreadsheet_tab_name);
+        if (validatedSelectedBankAccount.spreadsheet_tab_name) {
+          formData.append('spreadsheet_tab_id', validatedSelectedBankAccount.spreadsheet_tab_name);
         }
       }
 
@@ -624,11 +634,12 @@ export default function SpreadsheetUpload() {
               <select
                 id="bank-account"
                 name="bank-account"
-                value={selectedBankAccountId}
+                value={typeof selectedBankAccountId === 'string' ? selectedBankAccountId : ''}
                 onChange={(e) => {
                   const value = e.target.value;
-                  console.log('Bank account selected:', value);
-                  setSelectedBankAccountId(value);
+                  console.log('Bank account selected:', value, 'type:', typeof value);
+                  // Ensure we always set a string value
+                  setSelectedBankAccountId(String(value || ''));
                 }}
                 className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 required
