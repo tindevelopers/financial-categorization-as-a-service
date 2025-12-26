@@ -278,6 +278,7 @@ const debugLog = async (location: string, message: string, data: any) => {
   // Only log if explicitly enabled and in development
   if (process.env.ENABLE_DEBUG_LOGGING === 'true') {
     try {
+      fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ location, message, data, timestamp: Date.now(), sessionId: 'debug-session', runId: 'ai-fix' }),
