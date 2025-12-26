@@ -158,7 +158,16 @@ export async function PUT(request: NextRequest) {
 
     // Prepare update data
     const updatePayload: any = {}
-    if (updateData.companyName !== undefined) updatePayload.company_name = updateData.companyName
+    // Only update company_name if it's provided and not empty
+    if (updateData.companyName !== undefined && updateData.companyName && updateData.companyName.trim() !== '') {
+      updatePayload.company_name = updateData.companyName.trim()
+    } else if (updateData.companyName !== undefined && (!updateData.companyName || updateData.companyName.trim() === '')) {
+      // Reject empty company names
+      return NextResponse.json(
+        { error: 'Company name cannot be empty' },
+        { status: 400 }
+      )
+    }
     if (updateData.companyType !== undefined) updatePayload.company_type = updateData.companyType
     if (updateData.companyNumber !== undefined) updatePayload.company_number = updateData.companyNumber || null
     if (updateData.vatRegistered !== undefined) updatePayload.vat_registered = updateData.vatRegistered
@@ -183,6 +192,10 @@ export async function PUT(request: NextRequest) {
     if (updateData.setupCompleted !== undefined) updatePayload.setup_completed = updateData.setupCompleted
     if (updateData.setupStep !== undefined) updatePayload.setup_step = updateData.setupStep
 
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'company/route.ts:187',message:'Updating company profile',data:{id,userId:user.id,updatePayload,hasCompanyName:!!updatePayload.company_name,companyName:updatePayload.company_name || null},timestamp:Date.now(),sessionId:'debug-session',runId:'profile-fix',hypothesisId:'C'})}).catch(()=>{});
+    // #endregion
+
     // Update company profile
     const { data: company, error: updateError } = await supabase
       .from('company_profiles')
@@ -191,6 +204,10 @@ export async function PUT(request: NextRequest) {
       .eq('user_id', user.id)
       .select()
       .single()
+
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'company/route.ts:195',message:'Company profile update result',data:{hasError:!!updateError,errorMessage:updateError?.message || null,hasCompany:!!company,companyId:company?.id || null,companyName:company?.company_name || null,companyNameType:typeof company?.company_name,isEmptyString:company?.company_name === '',setupCompleted:company?.setup_completed || false},timestamp:Date.now(),sessionId:'debug-session',runId:'profile-fix',hypothesisId:'C'})}).catch(()=>{});
+    // #endregion
 
     if (updateError) {
       console.error('Company update error:', updateError)

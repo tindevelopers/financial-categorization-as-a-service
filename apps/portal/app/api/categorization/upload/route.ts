@@ -123,13 +123,28 @@ export async function POST(request: NextRequest) {
     // #endregion
 
     // Enforce profile/company name
-    const { data: profile } = await supabase
+    // Get the most recent company profile (order by created_at DESC, limit 1)
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'upload/route.ts:126',message:'Querying company profile',data:{userId:user.id},timestamp:Date.now(),sessionId:'debug-session',runId:'profile-fix',hypothesisId:'A'})}).catch(()=>{});
+    // #endregion
+    
+    const { data: profiles, error: profileError } = await supabase
       .from("company_profiles")
-      .select("id, company_name")
+      .select("id, company_name, created_at")
       .eq("user_id", user.id)
-      .maybeSingle();
+      .order("created_at", { ascending: false })
+      .limit(1);
 
-    if (!profile || !profile.company_name) {
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'upload/route.ts:133',message:'Company profile query result',data:{hasError:!!profileError,errorMessage:profileError?.message || null,profilesCount:profiles?.length || 0,profileId:profiles?.[0]?.id || null,companyName:profiles?.[0]?.company_name || null,companyNameType:typeof profiles?.[0]?.company_name,isEmptyString:profiles?.[0]?.company_name === '',isNull:profiles?.[0]?.company_name === null,isUndefined:profiles?.[0]?.company_name === undefined},timestamp:Date.now(),sessionId:'debug-session',runId:'profile-fix',hypothesisId:'A'})}).catch(()=>{});
+    // #endregion
+
+    const profile = profiles && profiles.length > 0 ? profiles[0] : null;
+
+    if (!profile || !profile.company_name || profile.company_name.trim() === '') {
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'upload/route.ts:140',message:'Profile validation failed',data:{hasProfile:!!profile,companyName:profile?.company_name || null,companyNameTrimmed:profile?.company_name?.trim() || null,isEmptyAfterTrim:profile?.company_name?.trim() === ''},timestamp:Date.now(),sessionId:'debug-session',runId:'profile-fix',hypothesisId:'B'})}).catch(()=>{});
+      // #endregion
       return NextResponse.json(
         { error: "PROFILE_INCOMPLETE", error_code: "PROFILE_INCOMPLETE" },
         { status: 400 }
