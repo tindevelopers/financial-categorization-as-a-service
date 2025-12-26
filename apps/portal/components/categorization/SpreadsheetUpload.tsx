@@ -56,6 +56,28 @@ export default function SpreadsheetUpload() {
   const [pendingFile, setPendingFile] = useState<File | null>(null);
   const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([]);
   const [selectedBankAccountId, setSelectedBankAccountId] = useState<string>("");
+  
+  // Wrapper to ensure we always set a string value and log if something goes wrong
+  const setSelectedBankAccountIdSafe = (value: any) => {
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'SpreadsheetUpload.tsx:59',message:'setSelectedBankAccountIdSafe called',data:{value,valueType:typeof value,isString:typeof value === 'string',isObject:typeof value === 'object',stringValue:String(value)},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'G'})}).catch(()=>{});
+    // #endregion
+    
+    if (typeof value === 'string') {
+      setSelectedBankAccountId(value);
+    } else if (value && typeof value === 'object') {
+      console.error('Attempted to set selectedBankAccountId to an object:', value);
+      // Try to extract id if it's a bank account object
+      if ('id' in value && typeof value.id === 'string') {
+        console.warn('Extracting id from bank account object:', value.id);
+        setSelectedBankAccountId(value.id);
+      } else {
+        setSelectedBankAccountId('');
+      }
+    } else {
+      setSelectedBankAccountId(String(value || ''));
+    }
+  };
   const [loadingBankAccounts, setLoadingBankAccounts] = useState(true);
   const [profileReady, setProfileReady] = useState(false);
   const [profileLoading, setProfileLoading] = useState(true);
@@ -90,8 +112,14 @@ export default function SpreadsheetUpload() {
         // #endregion
         // Auto-select first account if only one exists
         if (data.bank_accounts.length === 1 && data.bank_accounts[0].id) {
-          // Ensure we set a string value
-          setSelectedBankAccountId(String(data.bank_accounts[0].id));
+          // Ensure we set a string value - validate it's actually a string
+          const accountId = data.bank_accounts[0].id;
+          if (typeof accountId === 'string') {
+            setSelectedBankAccountIdSafe(accountId);
+          } else {
+            console.error('Auto-select failed: account id is not a string:', accountId, typeof accountId);
+            setSelectedBankAccountIdSafe('');
+          }
         }
       } else {
         // #region agent log
@@ -170,6 +198,10 @@ export default function SpreadsheetUpload() {
   }, []);
 
   const handleUpload = async (file: File) => {
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'SpreadsheetUpload.tsx:171',message:'handleUpload entry',data:{selectedBankAccountId,selectedBankAccountIdType:typeof selectedBankAccountId,isString:typeof selectedBankAccountId === 'string',isObject:typeof selectedBankAccountId === 'object',bankAccountsCount:bankAccounts.length},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'G'})}).catch(()=>{});
+    // #endregion
+    
     // Gating checks
     if (!profileReady && !profileLoading) {
       setUploadState(prev => ({ ...prev, error: "Please complete your profile (individual/company name) before uploading." }));
@@ -177,9 +209,26 @@ export default function SpreadsheetUpload() {
     }
     // Validate bank account selection - check both empty string and falsy values
     // Ensure selectedBankAccountId is a string and not an object
-    const bankAccountId = typeof selectedBankAccountId === 'string' ? selectedBankAccountId : String(selectedBankAccountId || '');
-    if (!bankAccountId || bankAccountId.trim() === '') {
-      console.error('Bank account validation failed:', { selectedBankAccountId, bankAccountId, bankAccountsCount: bankAccounts.length, type: typeof selectedBankAccountId });
+    let bankAccountId: string = '';
+    if (typeof selectedBankAccountId === 'string') {
+      bankAccountId = selectedBankAccountId;
+    } else if (selectedBankAccountId && typeof selectedBankAccountId === 'object') {
+      // If it's an object, try to extract an id property, otherwise log error
+      console.error('Bank account validation failed: selectedBankAccountId is an object:', selectedBankAccountId);
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'SpreadsheetUpload.tsx:186',message:'Bank account is object - validation failed',data:{selectedBankAccountId,selectedBankAccountIdType:typeof selectedBankAccountId,hasId:selectedBankAccountId && 'id' in selectedBankAccountId},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'G'})}).catch(()=>{});
+      // #endregion
+      setUploadState(prev => ({ ...prev, error: "Please select a bank account before uploading." }));
+      return;
+    } else {
+      bankAccountId = String(selectedBankAccountId || '');
+    }
+    
+    if (!bankAccountId || bankAccountId.trim() === '' || bankAccountId === '[object Object]') {
+      console.error('Bank account validation failed:', { selectedBankAccountId, bankAccountId, bankAccountsCount: bankAccounts.length, type: typeof selectedBankAccountId, isObjectString: bankAccountId === '[object Object]' });
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'SpreadsheetUpload.tsx:194',message:'Bank account validation failed - empty or object string',data:{selectedBankAccountId,bankAccountId,isObjectString:bankAccountId === '[object Object]',bankAccountsCount:bankAccounts.length},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'G'})}).catch(()=>{});
+      // #endregion
       setUploadState(prev => ({ ...prev, error: "Please select a bank account before uploading." }));
       return;
     }
@@ -198,9 +247,24 @@ export default function SpreadsheetUpload() {
     try {
       // Validate bank account selection again (double-check)
       // Ensure selectedBankAccountId is a string and not an object
-      const bankAccountId = typeof selectedBankAccountId === 'string' ? selectedBankAccountId : String(selectedBankAccountId || '');
-      if (!bankAccountId || bankAccountId.trim() === '') {
-        console.error('Bank account validation failed in try block:', { selectedBankAccountId, bankAccountId, type: typeof selectedBankAccountId });
+      let bankAccountId: string = '';
+      if (typeof selectedBankAccountId === 'string') {
+        bankAccountId = selectedBankAccountId;
+      } else if (selectedBankAccountId && typeof selectedBankAccountId === 'object') {
+        // If it's an object, try to extract an id property, otherwise log error
+        console.error('Bank account validation failed in try block: selectedBankAccountId is an object:', selectedBankAccountId);
+        setUploadState(prev => ({
+          ...prev,
+          uploading: false,
+          error: 'Please select a bank account before uploading',
+        }));
+        return;
+      } else {
+        bankAccountId = String(selectedBankAccountId || '');
+      }
+      
+      if (!bankAccountId || bankAccountId.trim() === '' || bankAccountId === '[object Object]') {
+        console.error('Bank account validation failed in try block:', { selectedBankAccountId, bankAccountId, type: typeof selectedBankAccountId, isObjectString: bankAccountId === '[object Object]' });
         setUploadState(prev => ({
           ...prev,
           uploading: false,
@@ -637,9 +701,9 @@ export default function SpreadsheetUpload() {
                 value={typeof selectedBankAccountId === 'string' ? selectedBankAccountId : ''}
                 onChange={(e) => {
                   const value = e.target.value;
-                  console.log('Bank account selected:', value, 'type:', typeof value);
-                  // Ensure we always set a string value
-                  setSelectedBankAccountId(String(value || ''));
+                  console.log('Bank account selected:', value, 'type:', typeof value, 'event target:', e.target);
+                  // Use safe setter to ensure we always set a string value
+                  setSelectedBankAccountIdSafe(value);
                 }}
                 className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 required
