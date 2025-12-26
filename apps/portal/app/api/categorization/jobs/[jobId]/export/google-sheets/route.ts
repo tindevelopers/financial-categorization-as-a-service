@@ -40,7 +40,15 @@ export async function POST(
     const adminClient = createAdminClient();
     const { data: transactions, error: transactionsError } = await adminClient
       .from("categorized_transactions")
-      .select("*")
+      .select(`
+        *,
+        matched_document:financial_documents!categorized_transactions_matched_document_id_fkey(
+          id,
+          vendor_name,
+          original_filename,
+          document_date
+        )
+      `)
       .eq("job_id", jobId)
       .order("date", { ascending: false });
 
@@ -79,19 +87,42 @@ export async function POST(
       );
     }
 
-    // Prepare data
+    // Prepare data with reconciliation status
     const values = [
-      ["Date", "Description", "Amount", "Category", "Subcategory", "Confidence", "Confirmed", "Notes"],
-      ...transactions.map((tx) => [
-        new Date(tx.date).toLocaleDateString(),
-        tx.original_description,
-        tx.amount.toString(),
-        tx.category || "Uncategorized",
-        tx.subcategory || "",
-        (tx.confidence_score * 100).toFixed(0) + "%",
-        tx.user_confirmed ? "Yes" : "No",
-        tx.user_notes || "",
-      ]),
+      [
+        "Date",
+        "Description",
+        "Amount",
+        "Category",
+        "Subcategory",
+        "Confidence",
+        "Confirmed",
+        "Reconciliation Status",
+        "Matched Document",
+        "Source Type",
+        "Notes",
+      ],
+      ...transactions.map((tx: any) => {
+        const matchedDoc = tx.matched_document;
+        const reconciliationStatus = tx.reconciliation_status || "unreconciled";
+        const matchedDocInfo = matchedDoc
+          ? `${matchedDoc.vendor_name || matchedDoc.original_filename || "Document"} (${matchedDoc.document_date || "N/A"})`
+          : "";
+
+        return [
+          new Date(tx.date).toLocaleDateString(),
+          tx.original_description,
+          tx.amount.toString(),
+          tx.category || "Uncategorized",
+          tx.subcategory || "",
+          (tx.confidence_score * 100).toFixed(0) + "%",
+          tx.user_confirmed ? "Yes" : "No",
+          reconciliationStatus.charAt(0).toUpperCase() + reconciliationStatus.slice(1),
+          matchedDocInfo,
+          tx.source_type || "upload",
+          tx.user_notes || "",
+        ];
+      }),
     ];
 
     // Write data to sheet
@@ -143,7 +174,7 @@ export async function POST(
                 sheetId: 0,
                 dimension: "COLUMNS",
                 startIndex: 0,
-                endIndex: 8,
+                endIndex: 11, // Updated for new columns
               },
             },
           },

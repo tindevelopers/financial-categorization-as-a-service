@@ -69,8 +69,43 @@ export async function POST(request: NextRequest) {
     }
 
     // Validate file type
-    const validExtensions = [".xlsx", ".xls", ".csv"];
+    const validExtensions = [".xlsx", ".xls", ".csv", ".pdf"];
     const fileExtension = file.name.substring(file.name.lastIndexOf(".")).toLowerCase();
+    
+    // If PDF, route to bank statement PDF processing endpoint
+    if (fileExtension === ".pdf") {
+      // Forward the request to the PDF bank statement processing endpoint
+      const pdfFormData = new FormData();
+      pdfFormData.append("file", file);
+      if (bankAccountId) {
+        pdfFormData.append("bank_account_id", bankAccountId);
+      }
+
+      try {
+        const pdfResponse = await fetch(
+          `${request.nextUrl.origin}/api/categorization/process-bank-statement-pdf`,
+          {
+            method: "POST",
+            headers: {
+              // Forward authorization header if present
+              ...(request.headers.get("authorization") && {
+                authorization: request.headers.get("authorization")!,
+              }),
+            },
+            body: pdfFormData,
+          }
+        );
+
+        const pdfResult = await pdfResponse.json();
+        return NextResponse.json(pdfResult, { status: pdfResponse.status });
+      } catch (error: any) {
+        console.error("Error routing PDF to processing endpoint:", error);
+        return NextResponse.json(
+          { error: "Failed to process PDF bank statement" },
+          { status: 500 }
+        );
+      }
+    }
     
     if (!validExtensions.includes(fileExtension)) {
       const errorResponse = createJobErrorResponse("INVALID_FILE_TYPE");

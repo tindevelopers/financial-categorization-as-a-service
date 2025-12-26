@@ -1,3 +1,19 @@
+/**
+ * Google Cloud Document AI OCR Integration
+ * 
+ * This module uses Google Document AI (https://cloud.google.com/document-ai) 
+ * for OCR processing of invoices and financial documents.
+ * 
+ * OCR Provider: Google Document AI
+ * SDK: @google-cloud/documentai
+ * 
+ * Required Environment Variables:
+ * - GOOGLE_CLOUD_PROJECT_ID: Google Cloud project ID
+ * - GOOGLE_DOCUMENT_AI_PROCESSOR_ID: Document AI processor ID
+ * - GOOGLE_APPLICATION_CREDENTIALS: Path to service account credentials JSON file
+ * - GOOGLE_CLOUD_LOCATION: (Optional) Location, defaults to "us"
+ */
+
 // Optional import - Google Cloud Document AI SDK
 // Only used if @google-cloud/documentai is installed
 // Using dynamic import to handle optional dependency
@@ -24,11 +40,52 @@ export interface InvoiceData {
   confidence_score?: number;
 }
 
+/**
+ * Verify that Google Document AI is properly configured
+ * @returns Object with verification status and details
+ */
+export function verifyOCRSource(): {
+  configured: boolean;
+  provider: string;
+  hasProjectId: boolean;
+  hasProcessorId: boolean;
+  hasCredentials: boolean;
+  error?: string;
+} {
+  const hasProjectId = !!PROJECT_ID;
+  const hasProcessorId = !!PROCESSOR_ID;
+  const hasCredentials = !!process.env.GOOGLE_APPLICATION_CREDENTIALS;
+  
+  const configured = hasProjectId && hasProcessorId && hasCredentials;
+  
+  let error: string | undefined;
+  if (!configured) {
+    const missing: string[] = [];
+    if (!hasProjectId) missing.push("GOOGLE_CLOUD_PROJECT_ID");
+    if (!hasProcessorId) missing.push("GOOGLE_DOCUMENT_AI_PROCESSOR_ID");
+    if (!hasCredentials) missing.push("GOOGLE_APPLICATION_CREDENTIALS");
+    error = `Missing required environment variables: ${missing.join(", ")}`;
+  }
+  
+  return {
+    configured,
+    provider: "google_document_ai",
+    hasProjectId,
+    hasProcessorId,
+    hasCredentials,
+    error,
+  };
+}
+
 export async function processInvoiceOCR(
   fileData: Blob,
   filename: string
 ): Promise<InvoiceData> {
-  if (!PROJECT_ID || !PROCESSOR_ID) {
+  // Verify OCR source configuration
+  const verification = verifyOCRSource();
+  
+  if (!verification.configured) {
+    console.warn("[DocumentAI] OCR not configured:", verification.error);
     // Return basic structure if Document AI not configured
     return {
       extracted_text: "",
@@ -42,6 +99,13 @@ export async function processInvoiceOCR(
     const { DocumentProcessorServiceClient } = await import("@google-cloud/documentai");
     const client = new DocumentProcessorServiceClient({
       keyFilename: process.env.GOOGLE_APPLICATION_CREDENTIALS,
+    });
+    
+    console.log("[DocumentAI] Processing invoice with Google Document AI", {
+      projectId: PROJECT_ID,
+      location: LOCATION,
+      processorId: PROCESSOR_ID,
+      filename,
     });
 
     const processorName = `projects/${PROJECT_ID}/locations/${LOCATION}/processors/${PROCESSOR_ID}`;
