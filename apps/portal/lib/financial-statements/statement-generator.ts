@@ -179,8 +179,8 @@ export async function generateProfitAndLoss(
     .eq("is_active", true);
 
   // Map transactions to accounts
-  const revenueMap = new Map<string, { code: string; name: string; amount: number }>();
-  const expenseMap = new Map<string, { code: string; name: string; amount: number }>();
+  const revenueMap = new Map<string, { account_code: string; account_name: string; amount: number }>();
+  const expenseMap = new Map<string, { account_code: string; account_name: string; amount: number }>();
 
   transactions?.forEach((tx: any) => {
     // Find account mapping for this category
@@ -197,11 +197,11 @@ export async function generateProfitAndLoss(
     const amount = Math.abs(tx.amount || 0);
 
     if (account.account_type === 'income') {
-      const existing = revenueMap.get(accountCode) || { code: accountCode, name: account.account_name, amount: 0 };
+      const existing = revenueMap.get(accountCode) || { account_code: accountCode, account_name: account.account_name, amount: 0 };
       existing.amount += amount;
       revenueMap.set(accountCode, existing);
     } else if (account.account_type === 'expense') {
-      const existing = expenseMap.get(accountCode) || { code: accountCode, name: account.account_name, amount: 0 };
+      const existing = expenseMap.get(accountCode) || { account_code: accountCode, account_name: account.account_name, amount: 0 };
       existing.amount += amount;
       expenseMap.set(accountCode, existing);
     }
