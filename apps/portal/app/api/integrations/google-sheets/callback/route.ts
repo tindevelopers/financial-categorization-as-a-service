@@ -1,216 +1,158 @@
-import { createClient } from '@/lib/database/server'
-import { NextResponse } from 'next/server'
-import { decrypt } from '@/lib/encryption'
-import { getSecret } from '@/lib/vault'
+import { NextRequest, NextResponse } from "next/server";
+import { createClient } from "@/lib/database/server";
+import { google } from "googleapis";
+import crypto from "crypto";
 
-/**
- * Get Google OAuth credentials based on source
- */
-async function getGoogleCredentials(
-  supabase: any, 
-  userId: string, 
-  source: 'tenant' | 'platform'
-): Promise<{
-  clientId: string | null;
-  clientSecret: string | null;
-  redirectUri: string;
-}> {
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 
-    (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000')
-  const defaultRedirectUri = `${baseUrl}/api/integrations/google-sheets/callback`
+const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
+const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
+const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 
+  (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000');
+const GOOGLE_SHEETS_REDIRECT_URI = process.env.GOOGLE_SHEETS_REDIRECT_URI || 
+  process.env.GOOGLE_REDIRECT_URI || 
+  `${baseUrl}/api/integrations/google-sheets/callback`;
 
-  if (source === 'tenant') {
-    // Get user's tenant ID
-    const { data: userData } = await supabase
-      .from('users')
-      .select('tenant_id')
-      .eq('id', userId)
-      .single()
-
-    const tenantId = userData?.tenant_id
-
-    if (tenantId) {
-      const { data: tenantSettings } = await (supabase as any)
-        .from('tenant_integration_settings')
-        .select('*')
-        .eq('tenant_id', tenantId)
-        .eq('provider', 'google_sheets')
-        .single()
-
-      if (tenantSettings?.custom_client_id && tenantSettings?.use_custom_credentials) {
-        let decryptedSecret = null
-        
-        // Try to get secret from vault first
-        if (tenantSettings.client_secret_vault_id) {
-          try {
-            decryptedSecret = await getSecret(
-              supabase,
-              tenantId,
-              'google_sheets',
-              'client_secret'
-            )
-          } catch (error) {
-            console.error('Failed to retrieve secret from vault:', error)
-          }
-        }
-        
-        // Fall back to legacy encrypted secret
-        if (!decryptedSecret && tenantSettings.custom_client_secret) {
-          try {
-            decryptedSecret = decrypt(tenantSettings.custom_client_secret)
-          } catch (error) {
-            console.error('Failed to decrypt client secret:', error)
-          }
-        }
-
-        if (decryptedSecret) {
-          return {
-            clientId: tenantSettings.custom_client_id,
-            clientSecret: decryptedSecret,
-            redirectUri: tenantSettings.custom_redirect_uri || defaultRedirectUri,
-          }
-        }
-      }
-    }
-  }
-
-  // Fall back to platform-level environment variables
-  return {
-    clientId: process.env.GOOGLE_CLIENT_ID || null,
-    clientSecret: process.env.GOOGLE_CLIENT_SECRET || null,
-    redirectUri: process.env.GOOGLE_REDIRECT_URI || defaultRedirectUri,
-  }
+function encrypt(text: string, key: string): string {
+  const algorithm = "aes-256-cbc";
+  const iv = crypto.randomBytes(16);
+  const cipher = crypto.createCipheriv(
+    algorithm,
+    Buffer.from(key, "hex"),
+    iv
+  );
+  let encrypted = cipher.update(text, "utf8", "hex");
+  encrypted += cipher.final("hex");
+  return iv.toString("hex") + ":" + encrypted;
 }
 
-export async function GET(request: Request) {
-  const { searchParams } = new URL(request.url)
-  const code = searchParams.get('code')
-  const state = searchParams.get('state')
-  const error = searchParams.get('error')
-
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000')
-
-  if (error) {
-    console.error('OAuth error:', error)
-    return NextResponse.redirect(`${baseUrl}/dashboard/settings?error=oauth_denied`)
+function decrypt(encryptedText: string, key: string): string {
+  const parts = encryptedText.split(":");
+  if (parts.length !== 2) {
+    throw new Error("Invalid encrypted text format");
   }
+  const [ivHex, ciphertext] = parts;
+  const algorithm = "aes-256-cbc";
+  const iv = Buffer.from(ivHex, "hex");
+  const decipher = crypto.createDecipheriv(
+    algorithm,
+    Buffer.from(key, "hex"),
+    iv
+  );
+  let decrypted = decipher.update(ciphertext, "hex", "utf8");
+  decrypted += decipher.final("utf8");
+  return decrypted;
+}
 
-  if (!code || !state) {
-    return NextResponse.redirect(`${baseUrl}/dashboard/settings?error=invalid_callback`)
-  }
-
+export async function GET(request: NextRequest) {
   try {
-    const supabase = await createClient()
+    const supabase = await createClient();
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+
+    if (authError || !user) {
+      return NextResponse.redirect("/dashboard/integrations/google-sheets?error=unauthorized");
+    }
+
+    const searchParams = request.nextUrl.searchParams;
+    const code = searchParams.get("code");
+    const state = searchParams.get("state");
+    const storedState = request.cookies.get("google_sheets_oauth_state")?.value;
+
+    // Verify state
+    if (!state || state !== storedState) {
+      return NextResponse.redirect("/dashboard/integrations/google-sheets?error=invalid_state");
+    }
+
+    if (!code) {
+      return NextResponse.redirect("/dashboard/integrations/google-sheets?error=no_code");
+    }
+
+    // Exchange code for tokens using googleapis
+    const oauth2Client = new google.auth.OAuth2(
+      GOOGLE_CLIENT_ID,
+      GOOGLE_CLIENT_SECRET,
+      GOOGLE_SHEETS_REDIRECT_URI
+    );
+
+    const { tokens } = await oauth2Client.getToken(code);
     
-    // Verify state and get user
-    const { data: oauthState, error: stateError } = await (supabase as any)
-      .from('oauth_states')
-      .select('*')
-      .eq('state', state)
-      .eq('provider', 'google_sheets')
-      .single()
-
-    if (stateError || !oauthState) {
-      console.error('Invalid OAuth state:', stateError)
-      return NextResponse.redirect(`${baseUrl}/dashboard/settings?error=invalid_state`)
+    if (!tokens.access_token) {
+      return NextResponse.redirect("/dashboard/integrations/google-sheets?error=no_access_token");
     }
 
-    // Check if state is expired
-    if (new Date(oauthState.expires_at) < new Date()) {
-      return NextResponse.redirect(`${baseUrl}/dashboard/settings?error=state_expired`)
+    // Get user info to get email
+    oauth2Client.setCredentials(tokens);
+    const oauth2 = google.oauth2({ version: "v2", auth: oauth2Client });
+    const userInfo = await oauth2.userinfo.get();
+    const providerEmail = userInfo.data.email || null;
+
+    // Encrypt tokens before storing
+    const encryptionKey = process.env.ENCRYPTION_KEY;
+    if (!encryptionKey) {
+      console.error("ENCRYPTION_KEY not configured");
+      return NextResponse.redirect("/dashboard/integrations/google-sheets?error=configuration_error");
     }
+    
+    const encryptedAccessToken = encrypt(tokens.access_token, encryptionKey);
+    const encryptedRefreshToken = tokens.refresh_token 
+      ? encrypt(tokens.refresh_token, encryptionKey) 
+      : null;
 
-    const userId = oauthState.user_id
+    // Get tenant_id
+    const { data: userData } = await supabase
+      .from("users")
+      .select("tenant_id")
+      .eq("id", user.id)
+      .single();
 
-    // Parse the state to get credential source
-    let credentialSource: 'tenant' | 'platform' = 'platform'
-    try {
-      const stateData = JSON.parse(Buffer.from(state, 'base64').toString())
-      credentialSource = stateData.credentialSource || 'platform'
-    } catch (e) {
-      console.error('Failed to parse state:', e)
-    }
+    // Calculate expiration
+    const expiresAt = tokens.expiry_date 
+      ? new Date(tokens.expiry_date)
+      : tokens.access_token 
+        ? new Date(Date.now() + 3600 * 1000) // Default 1 hour
+        : null;
 
-    // Get the appropriate credentials
-    const credentials = await getGoogleCredentials(supabase, userId, credentialSource)
-
-    if (!credentials.clientId || !credentials.clientSecret) {
-      return NextResponse.redirect(`${baseUrl}/dashboard/settings?error=configuration_error`)
-    }
-
-    // Exchange code for tokens
-    const tokenResponse = await fetch('https://oauth2.googleapis.com/token', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({
-        code,
-        client_id: credentials.clientId,
-        client_secret: credentials.clientSecret,
-        redirect_uri: credentials.redirectUri,
-        grant_type: 'authorization_code',
-      }),
-    })
-
-    if (!tokenResponse.ok) {
-      const errorData = await tokenResponse.json()
-      console.error('Token exchange failed:', errorData)
-      return NextResponse.redirect(`${baseUrl}/dashboard/settings?error=token_exchange_failed`)
-    }
-
-    const tokens = await tokenResponse.json()
-
-    // Get user's email from Google
-    let providerEmail = null
-    try {
-      const userInfoResponse = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
-        headers: { Authorization: `Bearer ${tokens.access_token}` },
-      })
-      if (userInfoResponse.ok) {
-        const userInfo = await userInfoResponse.json()
-        providerEmail = userInfo.email
-      }
-    } catch (e) {
-      console.error('Failed to get user info:', e)
-    }
-
-    // Store tokens in database
-    const { error: upsertError } = await (supabase as any)
-      .from('user_integrations')
+    // Store connection in database - try both tables for compatibility
+    const { error: insertError1 } = await supabase
+      .from("cloud_storage_connections")
       .upsert({
-        user_id: userId,
-        provider: 'google_sheets',
-        access_token: tokens.access_token,
-        refresh_token: tokens.refresh_token,
-        token_expires_at: tokens.expires_in 
-          ? new Date(Date.now() + tokens.expires_in * 1000).toISOString()
-          : null,
-        provider_email: providerEmail,
-        metadata: {
-          credential_source: credentialSource,
-        },
-        created_at: new Date().toISOString(),
+        user_id: user.id,
+        tenant_id: userData?.tenant_id || null,
+        provider: "google_sheets",
+        access_token_encrypted: encryptedAccessToken,
+        refresh_token_encrypted: encryptedRefreshToken,
+        token_expires_at: expiresAt,
+        is_active: true,
         updated_at: new Date().toISOString(),
       }, {
-        onConflict: 'user_id,provider',
-      })
+        onConflict: "user_id,provider",
+      });
 
-    if (upsertError) {
-      console.error('Failed to store tokens:', upsertError)
-      return NextResponse.redirect(`${baseUrl}/dashboard/settings?error=storage_failed`)
+    // Also store in user_integrations for compatibility
+    const { error: insertError2 } = await supabase
+      .from("user_integrations")
+      .upsert({
+        user_id: user.id,
+        provider: "google_sheets",
+        access_token: encryptedAccessToken,
+        refresh_token: encryptedRefreshToken,
+        provider_email: providerEmail,
+        expires_at: expiresAt,
+        updated_at: new Date().toISOString(),
+      }, {
+        onConflict: "user_id,provider",
+      });
+
+    if (insertError1 && insertError2) {
+      console.error("Database insert errors:", insertError1, insertError2);
+      return NextResponse.redirect("/dashboard/integrations/google-sheets?error=database_error");
     }
 
-    // Clean up OAuth state
-    await (supabase as any)
-      .from('oauth_states')
-      .delete()
-      .eq('state', state)
+    // Clear state cookie
+    const response = NextResponse.redirect("/dashboard/integrations/google-sheets?connected=true");
+    response.cookies.delete("google_sheets_oauth_state");
 
-    // Note: Session refresh happens on the client side after redirect
-    // The middleware will also refresh the session when the page loads
-    return NextResponse.redirect(`${baseUrl}/dashboard/settings?success=google_sheets_connected`)
-  } catch (error) {
-    console.error('OAuth callback error:', error)
-    return NextResponse.redirect(`${baseUrl}/dashboard/settings?error=callback_failed`)
+    return response;
+  } catch (error: any) {
+    console.error("Google Sheets callback error:", error);
+    return NextResponse.redirect("/dashboard/integrations/google-sheets?error=callback_failed");
   }
 }
-

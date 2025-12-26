@@ -679,23 +679,33 @@ This could mean:
                   </div>
                 </div>
                 <div className="flex-shrink-0">
-                  {integrations.googleSheets.connected ? (
-                    <Button
-                      color="red"
-                      onClick={handleDisconnectGoogleSheets}
-                      disabled={disconnecting}
-                    >
-                      {disconnecting ? 'Disconnecting...' : 'Disconnect'}
-                    </Button>
-                  ) : (
-                    <Button
-                      color="blue"
-                      onClick={handleConnectGoogleSheets}
-                      disabled={connecting || loading}
-                    >
-                      {connecting ? 'Connecting...' : 'Connect Google Account'}
-                    </Button>
-                  )}
+                    <div className="flex gap-2">
+                      {integrations.googleSheets.connected ? (
+                        <>
+                          <Button
+                            color="white"
+                            onClick={() => window.location.href = '/dashboard/integrations/google-sheets'}
+                          >
+                            Manage
+                          </Button>
+                          <Button
+                            color="red"
+                            onClick={handleDisconnectGoogleSheets}
+                            disabled={disconnecting}
+                          >
+                            {disconnecting ? 'Disconnecting...' : 'Disconnect'}
+                          </Button>
+                        </>
+                      ) : (
+                        <Button
+                          color="blue"
+                          onClick={() => window.location.href = '/dashboard/integrations/google-sheets'}
+                          disabled={loading}
+                        >
+                          Connect Google Account
+                        </Button>
+                      )}
+                    </div>
                 </div>
               </div>
 

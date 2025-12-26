@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/database/server";
 import { google } from "googleapis";
+import crypto from "crypto";
 
 /**
  * GET /api/integrations/google-sheets/list
@@ -22,22 +23,18 @@ export async function GET(request: NextRequest) {
     // Try both tables - user_integrations and cloud_storage_connections
     const { data: integration } = await supabase
       .from("user_integrations")
-      .select("access_token, provider_email, provider")
+      .select("access_token, refresh_token, provider_email, provider, expires_at")
       .eq("user_id", user.id)
       .eq("provider", "google_sheets")
       .single();
 
     const { data: connection } = await supabase
       .from("cloud_storage_connections")
-      .select("encrypted_credentials, provider")
+      .select("access_token_encrypted, refresh_token_encrypted, provider, token_expires_at")
       .eq("user_id", user.id)
       .eq("provider", "google_sheets")
       .eq("is_active", true)
       .single();
-
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'google-sheets/list/route.ts:20',message:'Checking Google Sheets connection',data:{hasIntegration:!!integration,hasConnection:!!connection,integrationProvider:integration?.provider,connectionProvider:connection?.provider},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'H'})}).catch(()=>{});
-    // #endregion
 
     if (!integration && !connection) {
       return NextResponse.json(
@@ -49,52 +46,111 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Check if service account credentials are available (for OAuth fallback)
-    const hasServiceAccount = 
-      process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL && 
-      process.env.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY;
-
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'google-sheets/list/route.ts:52',message:'Service account check',data:{hasServiceAccount,hasServiceEmail:!!process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL,hasServiceKey:!!process.env.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'H'})}).catch(()=>{});
-    // #endregion
+    // Helper function to decrypt tokens
+    const decryptToken = (encryptedText: string): string => {
+      if (!encryptedText) return "";
+      const encryptionKey = process.env.ENCRYPTION_KEY;
+      if (!encryptionKey) {
+        throw new Error("ENCRYPTION_KEY not configured");
+      }
+      const parts = encryptedText.split(":");
+      if (parts.length !== 2) {
+        throw new Error("Invalid encrypted text format");
+      }
+      const [ivHex, ciphertext] = parts;
+      const algorithm = "aes-256-cbc";
+      const iv = Buffer.from(ivHex, "hex");
+      const decipher = crypto.createDecipheriv(
+        algorithm,
+        Buffer.from(encryptionKey, "hex"),
+        iv
+      );
+      let decrypted = decipher.update(ciphertext, "hex", "utf8");
+      decrypted += decipher.final("utf8");
+      return decrypted;
+    };
 
     let auth;
     let sheets: ReturnType<typeof google.sheets>;
 
     // Try to use OAuth credentials first (from user's connection)
     try {
-      // Decrypt credentials (you'll need to implement decryption)
-      // For now, we'll use service account as fallback
-      if (hasServiceAccount) {
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'google-sheets/list/route.ts:65',message:'Using service account auth',data:{serviceEmail:process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL?.substring(0,30) || 'MISSING'},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'H'})}).catch(()=>{});
-        // #endregion
-        auth = new google.auth.GoogleAuth({
-          credentials: {
-            client_email: process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL,
-            private_key: process.env.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY?.replace(/\\n/g, "\n"),
-          },
-          scopes: [
-            "https://www.googleapis.com/auth/spreadsheets.readonly",
-            "https://www.googleapis.com/auth/drive.readonly",
-          ],
-        });
-      } else {
+      let accessToken: string | null = null;
+      let refreshToken: string | null = null;
+      let expiresAt: Date | null = null;
+
+      // Get tokens from either table
+      if (integration?.access_token) {
+        accessToken = decryptToken(integration.access_token);
+        refreshToken = integration.refresh_token ? decryptToken(integration.refresh_token) : null;
+        expiresAt = integration.expires_at ? new Date(integration.expires_at) : null;
+      } else if (connection?.access_token_encrypted) {
+        accessToken = decryptToken(connection.access_token_encrypted);
+        refreshToken = connection.refresh_token_encrypted ? decryptToken(connection.refresh_token_encrypted) : null;
+        expiresAt = connection.token_expires_at ? new Date(connection.token_expires_at) : null;
+      }
+
+      if (!accessToken) {
         return NextResponse.json(
           { 
-            error: "Google Sheets API not configured",
-            error_code: "NOT_CONFIGURED"
+            error: "Failed to retrieve access token",
+            error_code: "TOKEN_ERROR"
           },
           { status: 500 }
         );
       }
 
+      // Check if token is expired and refresh if needed
+      const oauth2Client = new google.auth.OAuth2(
+        process.env.GOOGLE_CLIENT_ID,
+        process.env.GOOGLE_CLIENT_SECRET,
+        process.env.GOOGLE_SHEETS_REDIRECT_URI || 
+        process.env.GOOGLE_REDIRECT_URI || 
+        `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/integrations/google-sheets/callback`
+      );
+
+      oauth2Client.setCredentials({
+        access_token: accessToken,
+        refresh_token: refreshToken || undefined,
+      });
+
+      // Refresh token if expired
+      if (expiresAt && expiresAt < new Date()) {
+        if (refreshToken) {
+          try {
+            const { credentials } = await oauth2Client.refreshAccessToken();
+            accessToken = credentials.access_token || accessToken;
+            // Update stored token (simplified - in production, update database)
+          } catch (refreshError) {
+            console.error("Token refresh failed:", refreshError);
+            return NextResponse.json(
+              { 
+                error: "Token expired and refresh failed. Please reconnect.",
+                error_code: "TOKEN_EXPIRED"
+              },
+              { status: 401 }
+            );
+          }
+        } else {
+          return NextResponse.json(
+            { 
+              error: "Token expired. Please reconnect.",
+              error_code: "TOKEN_EXPIRED"
+            },
+            { status: 401 }
+          );
+        }
+      }
+
+      oauth2Client.setCredentials({
+        access_token: accessToken,
+        refresh_token: refreshToken || undefined,
+      });
+
+      auth = oauth2Client;
+
       sheets = google.sheets({ version: "v4", auth });
       const drive = google.drive({ version: "v3", auth });
-
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'google-sheets/list/route.ts:88',message:'Fetching spreadsheets from Drive',data:{timestamp:Date.now()},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'H'})}).catch(()=>{});
-      // #endregion
 
       // List spreadsheets from Google Drive
       const response = await drive.files.list({
@@ -105,10 +161,6 @@ export async function GET(request: NextRequest) {
       });
 
       const spreadsheetFiles = response.data.files || [];
-
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'google-sheets/list/route.ts:96',message:'Drive API response received',data:{spreadsheetCount:spreadsheetFiles.length,fileIds:spreadsheetFiles.map((f:any)=>f.id).slice(0,5)},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'H'})}).catch(()=>{});
-      // #endregion
 
       // For each spreadsheet, get its sheets/tabs
       const spreadsheetsWithTabs = await Promise.all(

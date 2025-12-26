@@ -144,11 +144,16 @@ export default function SpreadsheetsPage() {
             </p>
             {error.includes('not connected') && (
               <a
-                href="/dashboard/settings"
+                href="/dashboard/integrations/google-sheets"
                 className="mt-2 inline-block text-sm text-red-700 dark:text-red-400 underline"
               >
-                Go to Settings to connect Google Sheets
+                Connect Google Sheets Integration
               </a>
+            )}
+            {error.includes('not configured') && (
+              <p className="mt-2 text-sm text-red-600 dark:text-red-300">
+                Please contact your administrator to configure Google Sheets integration.
+              </p>
             )}
           </div>
         </div>
