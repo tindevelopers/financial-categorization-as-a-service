@@ -6,6 +6,8 @@ import { getSecret, isVaultAvailable } from '@/lib/vault'
 /**
  * Get Google OAuth credentials
  * Priority: 1) Custom tenant credentials (from vault or encrypted), 2) Environment variables
+ * 
+ * Note: In Vercel, the 'develop' branch uses Preview environment variables, not Development.
  */
 async function getGoogleCredentials(supabase: any, userId: string): Promise<{
   clientId: string | null;
@@ -20,8 +22,13 @@ async function getGoogleCredentials(supabase: any, userId: string): Promise<{
   fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'apps/portal/app/api/integrations/google-sheets/auth-url/route.ts:getGoogleCredentials:env',message:'Environment variables before trim',data:{nextPublicAppUrlRaw,nextPublicAppUrlLength:nextPublicAppUrlRaw?.length,nextPublicAppUrlHasTrailingWs:nextPublicAppUrlRaw?.[nextPublicAppUrlRaw.length-1]===' '||nextPublicAppUrlRaw?.[nextPublicAppUrlRaw.length-1]==='\n',vercelUrlRaw,googleRedirectUriRaw,googleRedirectUriLength:googleRedirectUriRaw?.length,googleRedirectUriHasTrailingWs:googleRedirectUriRaw?.[googleRedirectUriRaw?.length-1]===' '||googleRedirectUriRaw?.[googleRedirectUriRaw?.length-1]==='\n'},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
   // #endregion
   
-  const baseUrl = (process.env.NEXT_PUBLIC_APP_URL?.trim() || 
-    (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL.trim()}` : 'http://localhost:3000')).trim()
+  const nextPublicAppUrl = process.env.NEXT_PUBLIC_APP_URL?.trim();
+  const vercelUrl = process.env.VERCEL_URL?.trim();
+  // #region agent log - Check base URL construction inputs
+  fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'apps/portal/app/api/integrations/google-sheets/auth-url/route.ts:getGoogleCredentials:baseUrlInputs',message:'Base URL construction inputs',data:{nextPublicAppUrl,vercelUrl,hasNextPublicAppUrl:!!nextPublicAppUrl,hasVercelUrl:!!vercelUrl},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+  // #endregion
+  const baseUrl = (nextPublicAppUrl || 
+    (vercelUrl ? `https://${vercelUrl}` : 'http://localhost:3000')).trim()
   const defaultRedirectUri = `${baseUrl}/api/integrations/google-sheets/callback`.trim()
   
   // #region agent log - Check constructed defaultRedirectUri
@@ -110,9 +117,15 @@ async function getGoogleCredentials(supabase: any, userId: string): Promise<{
   }
 
   // Fall back to platform-level environment variables
-  const platformRedirectUri = (process.env.GOOGLE_REDIRECT_URI?.trim() || defaultRedirectUri).trim()
+  // Check both GOOGLE_REDIRECT_URI and GOOGLE_SHEETS_REDIRECT_URI
+  const googleRedirectUri = process.env.GOOGLE_REDIRECT_URI?.trim();
+  const googleSheetsRedirectUri = process.env.GOOGLE_SHEETS_REDIRECT_URI?.trim();
+  // #region agent log - Check which redirect URI env vars are available
+  fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'apps/portal/app/api/integrations/google-sheets/auth-url/route.ts:getGoogleCredentials:checkEnvVars',message:'Checking redirect URI environment variables',data:{hasGoogleRedirectUri:!!googleRedirectUri,hasGoogleSheetsRedirectUri:!!googleSheetsRedirectUri,googleRedirectUri,googleSheetsRedirectUri,defaultRedirectUri},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+  // #endregion
+  const platformRedirectUri = (googleSheetsRedirectUri || googleRedirectUri || defaultRedirectUri).trim()
   // #region agent log - Check platform redirect URI before return
-  fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'apps/portal/app/api/integrations/google-sheets/auth-url/route.ts:getGoogleCredentials:platformRedirectUri',message:'Final redirect URI before return (platform)',data:{platformRedirectUri,platformRedirectUriLength:platformRedirectUri.length,hasTrailingWs:platformRedirectUri[platformRedirectUri.length-1]===' '||platformRedirectUri[platformRedirectUri.length-1]==='\n',defaultRedirectUri},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+  fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'apps/portal/app/api/integrations/google-sheets/auth-url/route.ts:getGoogleCredentials:platformRedirectUri',message:'Final redirect URI before return (platform)',data:{platformRedirectUri,platformRedirectUriLength:platformRedirectUri.length,hasTrailingWs:platformRedirectUri[platformRedirectUri.length-1]===' '||platformRedirectUri[platformRedirectUri.length-1]==='\n',defaultRedirectUri,usedEnvVar:googleSheetsRedirectUri?'GOOGLE_SHEETS_REDIRECT_URI':googleRedirectUri?'GOOGLE_REDIRECT_URI':'defaultRedirectUri'},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
   // #endregion
   return {
     clientId: process.env.GOOGLE_CLIENT_ID || null,
@@ -129,10 +142,12 @@ export async function GET() {
       NEXT_PUBLIC_APP_URL: process.env.NEXT_PUBLIC_APP_URL || '(not set)',
       VERCEL_URL: process.env.VERCEL_URL || '(not set)',
       GOOGLE_REDIRECT_URI: process.env.GOOGLE_REDIRECT_URI || '(not set)',
+      GOOGLE_SHEETS_REDIRECT_URI: process.env.GOOGLE_SHEETS_REDIRECT_URI || '(not set)',
       GOOGLE_CLIENT_ID_PREFIX: process.env.GOOGLE_CLIENT_ID?.substring(0, 25) || '(not set)',
       NODE_ENV: process.env.NODE_ENV,
     };
     console.log('[DEBUG] Auth URL endpoint - Environment:', JSON.stringify(debugEnvInfo));
+    fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'apps/portal/app/api/integrations/google-sheets/auth-url/route.ts:GET:envCheck',message:'Environment variables at endpoint entry',data:debugEnvInfo,timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
     // #endregion
     const supabase = await createClient()
     const { data: { user }, error: authError } = await supabase.auth.getUser()
@@ -202,6 +217,9 @@ export async function GET() {
     console.log('[DEBUG] Final credentials:', JSON.stringify(debugCredentialsInfo));
     // #endregion
 
+    // #region agent log - Log final redirect URI being used
+    fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'apps/portal/app/api/integrations/google-sheets/auth-url/route.ts:GET:finalRedirectUri',message:'Final redirect URI being sent to Google',data:{redirectUri:credentials.redirectUri,credentialSource:credentials.source,envVars:{NEXT_PUBLIC_APP_URL:process.env.NEXT_PUBLIC_APP_URL,GOOGLE_SHEETS_REDIRECT_URI:process.env.GOOGLE_SHEETS_REDIRECT_URI,GOOGLE_REDIRECT_URI:process.env.GOOGLE_REDIRECT_URI,VERCEL_URL:process.env.VERCEL_URL}},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+    // #endregion
     return NextResponse.json({ 
       authUrl: authUrl.toString(),
       credentialSource: credentials.source,
@@ -212,6 +230,7 @@ export async function GET() {
           NEXT_PUBLIC_APP_URL: process.env.NEXT_PUBLIC_APP_URL || '(not set)',
           VERCEL_URL: process.env.VERCEL_URL || '(not set)',
           GOOGLE_REDIRECT_URI_ENV: process.env.GOOGLE_REDIRECT_URI || '(not set)',
+          GOOGLE_SHEETS_REDIRECT_URI_ENV: process.env.GOOGLE_SHEETS_REDIRECT_URI || '(not set)',
         },
         credentials: debugCredentialsInfo,
       },
