@@ -1,15 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/database/server";
+import { getCredentialManager } from "@/lib/credentials/VercelCredentialManager";
 import { google } from "googleapis";
 import crypto from "crypto";
-
-const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
-const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
-const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 
-  (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000');
-const GOOGLE_SHEETS_REDIRECT_URI = process.env.GOOGLE_SHEETS_REDIRECT_URI || 
-  process.env.GOOGLE_REDIRECT_URI || 
-  `${baseUrl}/api/integrations/google-sheets/callback`;
 
 function encrypt(text: string, key: string): string {
   const algorithm = "aes-256-cbc";
@@ -65,12 +58,28 @@ export async function GET(request: NextRequest) {
       return NextResponse.redirect("/dashboard/integrations/google-sheets?error=no_code");
     }
 
+    // Get tenant_id for tenant-specific credentials
+    const { data: userData } = await supabase
+      .from("users")
+      .select("tenant_id")
+      .eq("id", user.id)
+      .single();
+
+    // Get OAuth credentials from credential manager (prefers tenant-specific if available)
+    const credentialManager = getCredentialManager();
+    const oauthCreds = await credentialManager.getBestGoogleOAuth(userData?.tenant_id || undefined);
+
+    if (!oauthCreds) {
+      return NextResponse.redirect("/dashboard/integrations/google-sheets?error=no_credentials");
+    }
+
     // Exchange code for tokens using googleapis
     const oauth2Client = new google.auth.OAuth2(
-      GOOGLE_CLIENT_ID,
-      GOOGLE_CLIENT_SECRET,
-      GOOGLE_SHEETS_REDIRECT_URI
+      oauthCreds.clientId,
+      oauthCreds.clientSecret,
+      oauthCreds.redirectUri
     );
+
 
     const { tokens } = await oauth2Client.getToken(code);
     
@@ -96,12 +105,6 @@ export async function GET(request: NextRequest) {
       ? encrypt(tokens.refresh_token, encryptionKey) 
       : null;
 
-    // Get tenant_id
-    const { data: userData } = await supabase
-      .from("users")
-      .select("tenant_id")
-      .eq("id", user.id)
-      .single();
 
     // Calculate expiration
     const expiresAt = tokens.expiry_date 

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getCredentialManager } from "@/lib/credentials/VercelCredentialManager";
 
 /**
  * GET /api/integrations/google-sheets/check-config
@@ -7,32 +8,26 @@ import { NextRequest, NextResponse } from "next/server";
  */
 export async function GET(request: NextRequest) {
   try {
-    const oauthConfigured = !!(
-      process.env.GOOGLE_CLIENT_ID && 
-      process.env.GOOGLE_CLIENT_SECRET
-    );
+    const credentialManager = getCredentialManager();
     
-    const serviceAccountConfigured = !!(
-      process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL && 
-      process.env.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY
-    );
-
-    const redirectUri = process.env.GOOGLE_SHEETS_REDIRECT_URI || 
-      process.env.GOOGLE_REDIRECT_URI || 
-      `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/integrations/google-sheets/callback`;
+    const oauthCreds = await credentialManager.getGoogleOAuth();
+    const oauthConfigured = oauthCreds !== null;
+    
+    const serviceAccountCreds = await credentialManager.getGoogleServiceAccount();
+    const serviceAccountConfigured = serviceAccountCreds !== null;
 
     return NextResponse.json({
       oauth: {
         configured: oauthConfigured,
-        hasClientId: !!process.env.GOOGLE_CLIENT_ID,
-        hasClientSecret: !!process.env.GOOGLE_CLIENT_SECRET,
-        redirectUri,
+        hasClientId: !!oauthCreds?.clientId,
+        hasClientSecret: !!oauthCreds?.clientSecret,
+        redirectUri: oauthCreds?.redirectUri || 'not configured',
         purpose: "Individual user-level OAuth connections",
       },
       serviceAccount: {
         configured: serviceAccountConfigured,
-        hasEmail: !!process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL,
-        hasPrivateKey: !!process.env.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY,
+        hasEmail: !!serviceAccountCreds?.email,
+        hasPrivateKey: !!serviceAccountCreds?.privateKey,
         purpose: "Corporate/Company-level server-to-server API access",
       },
       summary: {

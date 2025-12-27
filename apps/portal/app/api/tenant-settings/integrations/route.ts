@@ -234,21 +234,59 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Failed to save settings' }, { status: 500 });
     }
 
+    // Verify persistence by reading back the saved record
+    const { data: verifiedSettings } = await (supabase as any)
+      .from('tenant_integration_settings')
+      .select('*')
+      .eq('tenant_id', entityInfo.tenantId)
+      .eq('provider', body.provider)
+      .single();
+
+    if (!verifiedSettings) {
+      console.error('Failed to verify saved settings');
+      return NextResponse.json({ error: 'Settings saved but verification failed' }, { status: 500 });
+    }
+
+    // Verify credentials are actually stored
+    const hasClientId = !!verifiedSettings.custom_client_id;
+    const hasClientSecret = !!(verifiedSettings.client_secret_vault_id || verifiedSettings.custom_client_secret);
+    
+    if (body.use_custom_credentials && (!hasClientId || !hasClientSecret)) {
+      console.error('Credentials not properly persisted:', {
+        hasClientId,
+        hasClientSecret,
+        hasVaultId: !!verifiedSettings.client_secret_vault_id,
+        hasEncryptedSecret: !!verifiedSettings.custom_client_secret,
+      });
+      return NextResponse.json({ 
+        error: 'Credentials were not properly saved. Please try again.' 
+      }, { status: 500 });
+    }
+
     // Return masked result
     const maskedResult = {
-      ...result,
-      custom_client_secret: (result.client_secret_vault_id || result.custom_client_secret) 
+      ...verifiedSettings,
+      custom_client_secret: (verifiedSettings.client_secret_vault_id || verifiedSettings.custom_client_secret) 
         ? '••••••••' 
         : null,
-      airtable_api_key: (result.api_key_vault_id || result.airtable_api_key) 
+      airtable_api_key: (verifiedSettings.api_key_vault_id || verifiedSettings.airtable_api_key) 
         ? '••••••••' 
         : null,
       _storage_method: vaultAvailable ? 'vault' : 'encryption',
+      _persisted: true,
     };
+
+    console.log('[Tenant Settings] Credentials saved and verified:', {
+      provider: body.provider,
+      hasClientId,
+      hasClientSecret,
+      storageMethod: vaultAvailable ? 'vault' : 'encryption',
+    });
 
     return NextResponse.json({
       success: true,
       settings: maskedResult,
+      message: 'Credentials saved successfully and verified',
     });
 
   } catch (error) {

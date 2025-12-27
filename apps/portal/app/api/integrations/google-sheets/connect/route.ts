@@ -1,14 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/database/server";
+import { getCredentialManager } from "@/lib/credentials/VercelCredentialManager";
 import crypto from "crypto";
-
-const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
-const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
-const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 
-  (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000');
-const GOOGLE_SHEETS_REDIRECT_URI = process.env.GOOGLE_SHEETS_REDIRECT_URI || 
-  process.env.GOOGLE_REDIRECT_URI || 
-  `${baseUrl}/api/integrations/google-sheets/callback`;
 
 export async function GET(request: NextRequest) {
   try {
@@ -22,14 +15,22 @@ export async function GET(request: NextRequest) {
       );
     }
 
+    // Get tenant_id for tenant-specific credentials
+    const { data: userData } = await supabase
+      .from("users")
+      .select("tenant_id")
+      .eq("id", user.id)
+      .single();
+
+    const credentialManager = getCredentialManager();
+
     // Check for OAuth credentials (required for user-level connections)
-    const hasOAuthCredentials = !!(GOOGLE_CLIENT_ID && GOOGLE_CLIENT_SECRET);
+    // Try tenant-specific credentials first, then fall back to platform credentials
+    const oauthCreds = await credentialManager.getBestGoogleOAuth(userData?.tenant_id || undefined);
+    const hasOAuthCredentials = oauthCreds !== null;
     
     // Check for service account credentials (alternative method for server-level access)
-    const hasServiceAccountCredentials = !!(
-      process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL && 
-      process.env.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY
-    );
+    const hasServiceAccountCredentials = await credentialManager.hasGoogleServiceAccount();
 
     if (!hasOAuthCredentials && !hasServiceAccountCredentials) {
       return NextResponse.json(
@@ -56,8 +57,8 @@ export async function GET(request: NextRequest) {
     // Generate state for CSRF protection
     const state = crypto.randomBytes(32).toString("hex");
 
-    // Google OAuth URL
-    if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET) {
+    // Google OAuth URL - use credentials from credential manager
+    if (!oauthCreds) {
       return NextResponse.json(
         { error: "Google Sheets integration not configured. Please contact your administrator." },
         { status: 500 }
@@ -65,8 +66,8 @@ export async function GET(request: NextRequest) {
     }
     
     const authUrl = new URL("https://accounts.google.com/o/oauth2/v2/auth");
-    authUrl.searchParams.set("client_id", GOOGLE_CLIENT_ID);
-    authUrl.searchParams.set("redirect_uri", GOOGLE_SHEETS_REDIRECT_URI);
+    authUrl.searchParams.set("client_id", oauthCreds.clientId);
+    authUrl.searchParams.set("redirect_uri", oauthCreds.redirectUri);
     authUrl.searchParams.set("response_type", "code");
     authUrl.searchParams.set("scope", [
       "https://www.googleapis.com/auth/spreadsheets",
@@ -76,6 +77,7 @@ export async function GET(request: NextRequest) {
     authUrl.searchParams.set("access_type", "offline"); // Get refresh token
     authUrl.searchParams.set("prompt", "consent"); // Force consent to get refresh token
     authUrl.searchParams.set("state", state);
+
 
     const response = NextResponse.redirect(authUrl.toString());
 

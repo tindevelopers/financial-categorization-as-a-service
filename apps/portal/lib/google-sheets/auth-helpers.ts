@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/database/server";
+import { getCredentialManager } from "@/lib/credentials/VercelCredentialManager";
 import { google } from "googleapis";
 import crypto from "crypto";
 
@@ -123,28 +124,25 @@ export async function getUserOAuthTokens(userId: string): Promise<OAuthTokens | 
  */
 export async function refreshOAuthToken(
   accessToken: string,
-  refreshToken: string | null
+  refreshToken: string | null,
+  tenantId?: string
 ): Promise<OAuthTokens> {
   if (!refreshToken) {
     throw new Error("Refresh token not available. User needs to reconnect.");
   }
   
-  const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
-  const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 
-    (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000');
-  const GOOGLE_SHEETS_REDIRECT_URI = process.env.GOOGLE_SHEETS_REDIRECT_URI || 
-    process.env.GOOGLE_REDIRECT_URI || 
-    `${baseUrl}/api/integrations/google-sheets/callback`;
+  // Get OAuth credentials from credential manager (prefers tenant-specific if available)
+  const credentialManager = getCredentialManager();
+  const oauthCreds = await credentialManager.getBestGoogleOAuth(tenantId);
   
-  if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET) {
+  if (!oauthCreds) {
     throw new Error("Google OAuth credentials not configured");
   }
   
   const oauth2Client = new google.auth.OAuth2(
-    GOOGLE_CLIENT_ID,
-    GOOGLE_CLIENT_SECRET,
-    GOOGLE_SHEETS_REDIRECT_URI
+    oauthCreds.clientId,
+    oauthCreds.clientSecret,
+    oauthCreds.redirectUri
   );
   
   oauth2Client.setCredentials({
@@ -182,6 +180,15 @@ export async function createOAuthSheetsClient(
   auth: any;
   tokens: OAuthTokens;
 }> {
+  const supabase = await createClient();
+  
+  // Get user's tenant_id for tenant-specific credentials
+  const { data: userData } = await supabase
+    .from("users")
+    .select("tenant_id")
+    .eq("id", userId)
+    .single();
+  
   // Get user's OAuth tokens
   let tokens = await getUserOAuthTokens(userId);
   
@@ -196,30 +203,25 @@ export async function createOAuthSheetsClient(
     }
     
     try {
-      tokens = await refreshOAuthToken(tokens.accessToken, tokens.refreshToken);
+      tokens = await refreshOAuthToken(tokens.accessToken, tokens.refreshToken, userData?.tenant_id);
       console.log("Google Sheets: Refreshed expired OAuth token");
     } catch (error: any) {
       throw new Error("Your Google account connection has expired. Please reconnect in Settings > Integrations.");
     }
   }
   
-  // Create OAuth2 client
-  const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
-  const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 
-    (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000');
-  const GOOGLE_SHEETS_REDIRECT_URI = process.env.GOOGLE_SHEETS_REDIRECT_URI || 
-    process.env.GOOGLE_REDIRECT_URI || 
-    `${baseUrl}/api/integrations/google-sheets/callback`;
+  // Get OAuth credentials from credential manager (prefers tenant-specific if available)
+  const credentialManager = getCredentialManager();
+  const oauthCreds = await credentialManager.getBestGoogleOAuth(userData?.tenant_id || undefined);
   
-  if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET) {
+  if (!oauthCreds) {
     throw new Error("Google OAuth credentials not configured");
   }
   
   const oauth2Client = new google.auth.OAuth2(
-    GOOGLE_CLIENT_ID,
-    GOOGLE_CLIENT_SECRET,
-    GOOGLE_SHEETS_REDIRECT_URI
+    oauthCreds.clientId,
+    oauthCreds.clientSecret,
+    oauthCreds.redirectUri
   );
   
   oauth2Client.setCredentials({
