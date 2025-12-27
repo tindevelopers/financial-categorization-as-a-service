@@ -273,8 +273,6 @@ export async function GET(request: NextRequest) {
       accountType: finalAccountType,
     });
     
-    // Note: cloud_storage_connections table doesn't have account_type, workspace_domain, is_workspace_admin columns
-    // These would need a migration to add if needed in the future
     const { error: insertError1, data: insertData1 } = await supabase
       .from("cloud_storage_connections")
       .upsert({
@@ -285,6 +283,9 @@ export async function GET(request: NextRequest) {
         refresh_token_encrypted: encryptedRefreshToken,
         token_expires_at: expiresAt,
         is_active: true,
+        account_type: finalAccountType,
+        workspace_domain: workspaceDomain,
+        is_workspace_admin: isWorkspaceAccount,
         updated_at: new Date().toISOString(),
       }, {
         onConflict: "user_id,provider",
