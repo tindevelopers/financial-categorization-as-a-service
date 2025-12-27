@@ -19,9 +19,10 @@ interface CompletionStepProps {
       bank: string
     }>
   }
+  setupCompleted?: boolean
 }
 
-export function CompletionStep({ data }: CompletionStepProps) {
+export function CompletionStep({ data, setupCompleted = false }: CompletionStepProps) {
   const companyTypeLabel = {
     sole_trader: 'Sole Trader',
     limited_company: 'Limited Company',
@@ -46,10 +47,21 @@ export function CompletionStep({ data }: CompletionStepProps) {
         <div className="inline-flex items-center justify-center w-16 h-16 bg-green-100 dark:bg-green-900/20 rounded-full mb-4">
           <CheckCircleIcon className="h-10 w-10 text-green-600 dark:text-green-400" />
         </div>
-        <Heading level={2}>Almost there!</Heading>
-        <Text className="mt-2">
-          Please review your details before completing setup
-        </Text>
+        {setupCompleted ? (
+          <>
+            <Heading level={2}>Setup Complete</Heading>
+            <Text className="mt-2">
+              Your company setup has been completed successfully
+            </Text>
+          </>
+        ) : (
+          <>
+            <Heading level={2}>Almost there!</Heading>
+            <Text className="mt-2">
+              Please review your details before completing setup
+            </Text>
+          </>
+        )}
       </div>
 
       {/* Company Details */}

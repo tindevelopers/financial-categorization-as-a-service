@@ -14,6 +14,7 @@ export default function SetupWizardPage() {
   const [currentStep, setCurrentStep] = useState(1)
   const [loading, setLoading] = useState(true)
   const [companyProfileId, setCompanyProfileId] = useState<string | null>(null)
+  const [setupCompleted, setSetupCompleted] = useState(false)
   const [formData, setFormData] = useState({
     // Company Details
     companyName: '',
@@ -52,6 +53,7 @@ export default function SetupWizardPage() {
           
           if (company) {
             setCompanyProfileId(company.id)
+            setSetupCompleted(company.setup_completed || false)
             // Populate form with existing data
             setFormData({
               companyName: company.company_name || '',
@@ -107,7 +109,7 @@ export default function SetupWizardPage() {
             setupStep: totalSteps,
           }
       // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'apps/portal/app/dashboard/setup/page.tsx:handleSubmit:beforeFetch',message:'About to send request',data:{method,url,bodySetupCompleted:body.setupCompleted,bodySetupStep:body.setupStep,bodyId:body.id},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+      fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'apps/portal/app/dashboard/setup/page.tsx:handleSubmit:beforeFetch',message:'About to send request',data:{method,url,bodySetupCompleted:body.setupCompleted,bodySetupStep:body.setupStep,bodyId:'id' in body ? body.id : undefined},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
       // #endregion
 
       const response = await fetch(url, {
@@ -131,6 +133,11 @@ export default function SetupWizardPage() {
       // #region agent log
       fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'apps/portal/app/dashboard/setup/page.tsx:handleSubmit:success',message:'Response data received',data:{success:data.success,companySetupCompleted:data.company?.setup_completed,companyId:data.company?.id},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
       // #endregion
+      
+      // Update local state to show "Setup Complete" before redirect
+      if (data.company?.setup_completed) {
+        setSetupCompleted(true)
+      }
       
       // Redirect to dashboard
       // #region agent log
@@ -234,7 +241,7 @@ export default function SetupWizardPage() {
 
           {currentStep === 4 && (
             <ErrorBoundary>
-              <CompletionStep data={formData} />
+              <CompletionStep data={formData} setupCompleted={setupCompleted} />
             </ErrorBoundary>
           )}
 
