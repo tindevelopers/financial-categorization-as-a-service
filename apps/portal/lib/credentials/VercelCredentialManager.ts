@@ -277,7 +277,7 @@ export class VercelCredentialManager {
           return {
             clientId: corporateCreds.clientId?.trim(),
             clientSecret: corporateCreds.clientSecret?.trim(),
-            redirectUri: customRedirectUri || corporateCreds.redirectUri || defaultRedirectUri,
+            redirectUri: customRedirectUri || defaultRedirectUri,
           };
         }
       }
@@ -308,7 +308,7 @@ export class VercelCredentialManager {
         return {
           clientId: tenantCreds.clientId?.trim(),
           clientSecret: tenantCreds.clientSecret?.trim(),
-          redirectUri: customRedirectUri || tenantCreds.redirectUri || defaultRedirectUri,
+          redirectUri: customRedirectUri || defaultRedirectUri,
         };
       }
     }
