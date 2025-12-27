@@ -143,10 +143,24 @@ export async function GET(request: NextRequest) {
       oauthCreds.redirectUri
     ).trim();
 
+    // Log detailed OAuth configuration for debugging invalid_client errors
+    console.log("OAuth token exchange configuration:", {
+      clientId: oauthCreds.clientId ? `${oauthCreds.clientId.substring(0, 20)}...` : "missing",
+      clientIdLength: oauthCreds.clientId?.length || 0,
+      hasClientSecret: !!oauthCreds.clientSecret,
+      clientSecretLength: oauthCreds.clientSecret?.length || 0,
+      redirectUriForTokenExchange,
+      redirectUriLength: redirectUriForTokenExchange.length,
+      redirectUriCookie,
+      oauthCredsRedirectUri: oauthCreds.redirectUri,
+      requestOrigin: request.nextUrl.origin,
+      tenantId: userData?.tenant_id || "none",
+    });
+
     // Exchange code for tokens using googleapis
     const oauth2Client = new google.auth.OAuth2(
-      oauthCreds.clientId,
-      oauthCreds.clientSecret,
+      oauthCreds.clientId?.trim(),
+      oauthCreds.clientSecret?.trim(),
       redirectUriForTokenExchange
     );
 

@@ -65,8 +65,8 @@ export class VercelCredentialManager {
       return this.cache.get(cacheKey);
     }
 
-    const clientId = process.env.GOOGLE_CLIENT_ID;
-    const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
+    const clientId = process.env.GOOGLE_CLIENT_ID?.trim();
+    const clientSecret = process.env.GOOGLE_CLIENT_SECRET?.trim();
     
     if (!clientId || !clientSecret) {
       return null;
@@ -75,10 +75,10 @@ export class VercelCredentialManager {
     // Construct redirect URI
     // Portal app runs on port 3002 by default
     const defaultPort = process.env.PORT || '3002';
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 
-      (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : `http://localhost:${defaultPort}`);
-    const redirectUri = (process.env.GOOGLE_SHEETS_REDIRECT_URI || 
-      process.env.GOOGLE_REDIRECT_URI || 
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL?.trim() || 
+      (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL.trim()}` : `http://localhost:${defaultPort}`);
+    const redirectUri = (process.env.GOOGLE_SHEETS_REDIRECT_URI?.trim() || 
+      process.env.GOOGLE_REDIRECT_URI?.trim() || 
       `${baseUrl}/api/integrations/google-sheets/callback`).trim();
 
     const credentials: GoogleOAuthCredentials = {
@@ -248,15 +248,15 @@ export class VercelCredentialManager {
         if (corporateCreds) {
         // Portal app runs on port 3002 by default
         const defaultPort = process.env.PORT || '3002';
-        const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 
-          (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : `http://localhost:${defaultPort}`);
-        const redirectUri = (process.env.GOOGLE_SHEETS_REDIRECT_URI || 
-          process.env.GOOGLE_REDIRECT_URI || 
+        const baseUrl = process.env.NEXT_PUBLIC_APP_URL?.trim() || 
+          (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL.trim()}` : `http://localhost:${defaultPort}`);
+        const redirectUri = (process.env.GOOGLE_SHEETS_REDIRECT_URI?.trim() || 
+          process.env.GOOGLE_REDIRECT_URI?.trim() || 
           `${baseUrl}/api/integrations/google-sheets/callback`).trim();
 
           return {
-            clientId: corporateCreds.clientId,
-            clientSecret: corporateCreds.clientSecret,
+            clientId: corporateCreds.clientId?.trim(),
+            clientSecret: corporateCreds.clientSecret?.trim(),
             redirectUri,
           };
         }
@@ -267,15 +267,15 @@ export class VercelCredentialManager {
       if (tenantCreds) {
         // Portal app runs on port 3002 by default
         const defaultPort = process.env.PORT || '3002';
-        const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 
-          (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : `http://localhost:${defaultPort}`);
-        const redirectUri = (process.env.GOOGLE_SHEETS_REDIRECT_URI || 
-          process.env.GOOGLE_REDIRECT_URI || 
+        const baseUrl = process.env.NEXT_PUBLIC_APP_URL?.trim() || 
+          (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL.trim()}` : `http://localhost:${defaultPort}`);
+        const redirectUri = (process.env.GOOGLE_SHEETS_REDIRECT_URI?.trim() || 
+          process.env.GOOGLE_REDIRECT_URI?.trim() || 
           `${baseUrl}/api/integrations/google-sheets/callback`).trim();
 
         return {
-          clientId: tenantCreds.clientId,
-          clientSecret: tenantCreds.clientSecret,
+          clientId: tenantCreds.clientId?.trim(),
+          clientSecret: tenantCreds.clientSecret?.trim(),
           redirectUri,
         };
       }
