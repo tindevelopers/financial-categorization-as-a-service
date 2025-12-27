@@ -1,14 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/database/server";
+import { getCredentialManager } from "@/lib/credentials/VercelCredentialManager";
+import { validateOAuthConfig } from "@/lib/google-sheets/oauth-config";
 import crypto from "crypto";
-
-const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
-const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
-const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 
-  (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000');
-const GOOGLE_SHEETS_REDIRECT_URI = process.env.GOOGLE_SHEETS_REDIRECT_URI || 
-  process.env.GOOGLE_REDIRECT_URI || 
-  `${baseUrl}/api/integrations/google-sheets/callback`;
 
 export async function GET(request: NextRequest) {
   try {
@@ -16,26 +10,114 @@ export async function GET(request: NextRequest) {
     const { data: { user }, error: authError } = await supabase.auth.getUser();
 
     if (authError || !user) {
-      return NextResponse.json(
-        { error: "Unauthorized" },
-        { status: 401 }
-      );
+      // This route is navigated to in-browser; returning JSON produces a blank page.
+      // Redirect to signin with a safe return target.
+      const signinUrl = new URL("/signin", request.url);
+      signinUrl.searchParams.set("next", "/dashboard/integrations/google-sheets");
+      return NextResponse.redirect(signinUrl.toString());
     }
 
-    if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET) {
+    // Get tenant_id for tenant-specific credentials
+    const { data: userData } = await supabase
+      .from("users")
+      .select("tenant_id")
+      .eq("id", user.id)
+      .single();
+
+    const tenantId = userData?.tenant_id || undefined;
+    const force = request.nextUrl.searchParams.get("force") === "1";
+
+    // Validate OAuth configuration
+    const configValidation = await validateOAuthConfig(tenantId);
+    
+    if (!configValidation.isValid) {
+      console.error("OAuth configuration validation failed:", configValidation.errors);
       return NextResponse.json(
-        { error: "Google Sheets integration not configured. Please contact your administrator." },
+        { 
+          error: "Google Sheets OAuth is not properly configured",
+          errors: configValidation.errors,
+          warnings: configValidation.warnings,
+          setupGuidance: configValidation.setupGuidance,
+          expectedRedirectUri: configValidation.expectedRedirectUri,
+          helpUrl: "https://console.cloud.google.com/apis/credentials",
+        },
         { status: 500 }
       );
     }
 
+    // Show warnings if any
+    if (configValidation.warnings.length > 0) {
+      console.warn("OAuth configuration warnings:", configValidation.warnings);
+    }
+
+    const credentialManager = getCredentialManager();
+
+    // Check for OAuth credentials (required for user-level connections)
+    // Try tenant-specific credentials first, then fall back to platform credentials
+    const oauthCreds = await credentialManager.getBestGoogleOAuth(tenantId);
+    
+    if (!oauthCreds) {
+      return NextResponse.redirect("/dashboard/integrations/google-sheets?error=no_credentials");
+    }
+
+    // Deterministic redirect URI: derive from the actual request origin so we never drift by port/env.
+    const computedRedirectUri = new URL(
+      "/api/integrations/google-sheets/callback",
+      request.nextUrl.origin
+    ).toString();
+
+    // In development, run a user-visible preflight once per click unless explicitly forced.
+    // This avoids repeatedly dumping users onto Google's opaque redirect_uri_mismatch error page.
+    if (!force && process.env.NODE_ENV !== "production") {
+      const url = new URL("/dashboard/integrations/google-sheets", request.url);
+      url.searchParams.set("error", "preflight_redirect");
+      url.searchParams.set("expected_redirect_uri", computedRedirectUri);
+      url.searchParams.set("continue_url", "/api/integrations/google-sheets/connect?force=1");
+      url.searchParams.set("help_url", "https://console.cloud.google.com/apis/credentials");
+      return NextResponse.redirect(url.toString());
+    }
+
+    // Preflight: if env/config redirect URI differs from the request-derived one, show the user
+    // exactly what to whitelist in Google Cloud Console (and offer a “continue anyway”).
+    if (!force && oauthCreds.redirectUri && oauthCreds.redirectUri !== computedRedirectUri) {
+      const url = new URL("/dashboard/integrations/google-sheets", request.url);
+      url.searchParams.set("error", "redirect_uri_mismatch");
+      url.searchParams.set("expected_redirect_uri", computedRedirectUri);
+      url.searchParams.set("used_redirect_uri", oauthCreds.redirectUri);
+      url.searchParams.set("continue_url", "/api/integrations/google-sheets/connect?force=1");
+      url.searchParams.set("help_url", "https://console.cloud.google.com/apis/credentials");
+      return NextResponse.redirect(url.toString());
+    }
+
+    // If env/config redirectUri differs, we proceed using the computed redirect URI.
+    // This avoids the “redirect_uri_mismatch” loop caused by 3000/3002/env drift.
+    if (oauthCreds.redirectUri && oauthCreds.redirectUri !== computedRedirectUri) {
+      console.warn("Google Sheets OAuth redirectUri differs from request-derived redirectUri. Using request-derived value.", {
+        configuredRedirectUri: oauthCreds.redirectUri,
+        computedRedirectUri,
+        tenantId: tenantId || "none",
+      });
+    }
+
+    // Log OAuth configuration for debugging
+    console.log("Google Sheets OAuth Configuration:", {
+      clientId: oauthCreds.clientId ? `${oauthCreds.clientId.substring(0, 20)}...` : "missing",
+      redirectUri: computedRedirectUri,
+      expectedRedirectUri: configValidation.expectedRedirectUri,
+      tenantId: tenantId || "none",
+      hasTenantCredentials: !!tenantId,
+    });
+
+    // Get account_type from query params (for future Workspace admin support)
+    const searchParams = request.nextUrl.searchParams;
+    const accountType = searchParams.get("account_type") || "personal"; // personal or workspace_admin
+
     // Generate state for CSRF protection
     const state = crypto.randomBytes(32).toString("hex");
-
-    // Google OAuth URL
+    
     const authUrl = new URL("https://accounts.google.com/o/oauth2/v2/auth");
-    authUrl.searchParams.set("client_id", GOOGLE_CLIENT_ID);
-    authUrl.searchParams.set("redirect_uri", GOOGLE_SHEETS_REDIRECT_URI);
+    authUrl.searchParams.set("client_id", oauthCreds.clientId);
+    authUrl.searchParams.set("redirect_uri", computedRedirectUri);
     authUrl.searchParams.set("response_type", "code");
     authUrl.searchParams.set("scope", [
       "https://www.googleapis.com/auth/spreadsheets",
@@ -46,15 +128,41 @@ export async function GET(request: NextRequest) {
     authUrl.searchParams.set("prompt", "consent"); // Force consent to get refresh token
     authUrl.searchParams.set("state", state);
 
+    // Log the OAuth URL (without sensitive data) for debugging
+    console.log("OAuth URL generated:", {
+      baseUrl: authUrl.origin + authUrl.pathname,
+      redirectUri: authUrl.searchParams.get("redirect_uri"),
+      scopes: authUrl.searchParams.get("scope")?.split(" "),
+      hasClientId: !!authUrl.searchParams.get("client_id"),
+    });
+
+    // Store account_type in state for callback (encode in cookie)
     const response = NextResponse.redirect(authUrl.toString());
 
-    // Store state in httpOnly cookie
+    // Store state and account_type in httpOnly cookies
     response.cookies.set("google_sheets_oauth_state", state, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
       sameSite: "lax",
       maxAge: 600, // 10 minutes
     });
+
+    response.cookies.set("google_sheets_account_type", accountType, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      maxAge: 600, // 10 minutes
+    });
+
+    // Store the redirect URI we used so callback can exchange tokens with the same redirect URI.
+    response.cookies.set("google_sheets_redirect_uri", computedRedirectUri, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      maxAge: 600, // 10 minutes
+    });
+
+    console.log(`Initiating Google Sheets OAuth flow for user ${user.id}, account_type: ${accountType}`);
 
     return response;
   } catch (error: any) {

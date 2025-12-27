@@ -46,9 +46,6 @@ export default function SpreadsheetsPage() {
       const data = await response.json()
 
       if (!response.ok) {
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'spreadsheets/page.tsx:45',message:'API response not OK',data:{status:response.status,statusText:response.statusText,errorCode:data.error_code,error:data.error},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'H'})}).catch(()=>{});
-        // #endregion
         
         if (data.error_code === 'NOT_CONNECTED') {
           setError('Google Sheets integration not connected. Please connect your Google account in Settings.')

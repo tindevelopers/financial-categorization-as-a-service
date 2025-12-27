@@ -108,6 +108,7 @@ export default function SettingsPage() {
   const [customClientId, setCustomClientId] = useState('')
   const [customClientSecret, setCustomClientSecret] = useState('')
   const [showClientSecret, setShowClientSecret] = useState(false)
+  const [credentialsSaved, setCredentialsSaved] = useState(false)
   
   // Airtable form state
   const [airtableApiKey, setAirtableApiKey] = useState('')
@@ -181,7 +182,17 @@ export default function SettingsPage() {
         if (googleSettings) {
           setUseCustomCredentials(googleSettings.use_custom_credentials || false)
           setCustomClientId(googleSettings.custom_client_id || '')
-          // Secret is masked, don't overwrite with masked value
+          // Secret is masked (••••••••) if saved, don't overwrite with masked value
+          // User will need to re-enter secret if they want to change it
+          if (googleSettings.custom_client_secret === '••••••••') {
+            // Credentials are saved, show placeholder
+            setCustomClientSecret('••••••••')
+            setCredentialsSaved(true)
+          } else {
+            setCredentialsSaved(false)
+          }
+        } else {
+          setCredentialsSaved(false)
         }
         
         const airtableSettings = data.settings?.find((s: TenantSettings) => s.provider === 'airtable')
@@ -467,31 +478,51 @@ This could mean:
   }
 
   const handleSaveGoogleSettings = async () => {
+    if (!useCustomCredentials) {
+      alert('Please enable "Use Custom Credentials" toggle first')
+      return
+    }
+
+    if (!customClientId || !customClientId.trim()) {
+      alert('Please enter a Client ID')
+      return
+    }
+
+    if (!customClientSecret || customClientSecret === '••••••••' || !customClientSecret.trim()) {
+      alert('Please enter a Client Secret. If you\'ve already saved credentials, you need to re-enter the secret to update it.')
+      return
+    }
+
     setSaving(true)
     try {
       const response = await fetch('/api/tenant-settings/integrations', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({
           provider: 'google_sheets',
-          use_custom_credentials: useCustomCredentials,
-          custom_client_id: useCustomCredentials ? customClientId : null,
-          custom_client_secret: useCustomCredentials && customClientSecret !== '••••••••' 
-            ? customClientSecret 
-            : undefined,
+          use_custom_credentials: true,
+          custom_client_id: customClientId.trim(),
+          custom_client_secret: customClientSecret.trim(),
         }),
       })
       
+      const data = await response.json()
+      
       if (response.ok) {
-        alert('Settings saved successfully!')
-        loadSettings()
+        setCredentialsSaved(true)
+        // Set masked value to show credentials are saved
+        setCustomClientSecret('••••••••')
+        alert('✅ Credentials saved successfully! They are now stored securely and will persist across sessions.')
+        // Reload settings to get updated state
+        await loadSettings()
       } else {
-        const error = await response.json()
-        alert(error.error || 'Failed to save settings')
+        alert(`❌ Failed to save settings: ${data.error || 'Unknown error'}`)
+        console.error('Save error:', data)
       }
     } catch (error) {
       console.error('Failed to save settings:', error)
-      alert('Failed to save settings')
+      alert('❌ Failed to save settings. Please check your connection and try again.')
     } finally {
       setSaving(false)
     }
@@ -737,17 +768,22 @@ This could mean:
                       <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-3">
                         <div className="flex gap-2">
                           <InformationCircleIcon className="h-5 w-5 text-blue-500 flex-shrink-0" />
-                          <p className="text-sm text-blue-800 dark:text-blue-300">
-                            Create credentials at{' '}
-                            <a 
-                              href="https://console.cloud.google.com/apis/credentials" 
-                              target="_blank" 
-                              rel="noopener noreferrer"
-                              className="underline"
-                            >
-                              Google Cloud Console
-                            </a>
-                          </p>
+                          <div className="flex-1">
+                            <p className="text-sm text-blue-800 dark:text-blue-300">
+                              Create credentials at{' '}
+                              <a 
+                                href="https://console.cloud.google.com/apis/credentials" 
+                                target="_blank" 
+                                rel="noopener noreferrer"
+                                className="underline font-medium"
+                              >
+                                Google Cloud Console
+                              </a>
+                            </p>
+                            <p className="text-xs text-blue-700 dark:text-blue-400 mt-1">
+                              💾 Your credentials are encrypted and stored securely. They will persist across sessions and page refreshes.
+                            </p>
+                          </div>
                         </div>
                       </div>
 
@@ -758,28 +794,42 @@ This could mean:
                         <input
                           type="text"
                           value={customClientId}
-                          onChange={(e) => setCustomClientId(e.target.value)}
+                          onChange={(e) => {
+                            setCustomClientId(e.target.value)
+                            setCredentialsSaved(false)
+                          }}
                           placeholder="xxxxx.apps.googleusercontent.com"
                           className="w-full px-3 py-2 border border-gray-300 dark:border-zinc-600 rounded-lg bg-white dark:bg-zinc-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                         />
                       </div>
 
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                          Client Secret
-                        </label>
+                        <div className="flex items-center justify-between mb-1">
+                          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                            Client Secret
+                          </label>
+                          {credentialsSaved && customClientSecret === '••••••••' && (
+                            <Badge color="green" className="text-xs">
+                              Saved
+                            </Badge>
+                          )}
+                        </div>
                         <div className="relative">
                           <input
                             type={showClientSecret ? 'text' : 'password'}
                             value={customClientSecret}
-                            onChange={(e) => setCustomClientSecret(e.target.value)}
-                            placeholder="Enter client secret"
+                            onChange={(e) => {
+                              setCustomClientSecret(e.target.value)
+                              setCredentialsSaved(false)
+                            }}
+                            placeholder={credentialsSaved ? "Credentials saved (re-enter to update)" : "Enter client secret"}
                             className="w-full px-3 py-2 pr-10 border border-gray-300 dark:border-zinc-600 rounded-lg bg-white dark:bg-zinc-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                           />
                           <button
                             type="button"
                             onClick={() => setShowClientSecret(!showClientSecret)}
                             className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                            disabled={customClientSecret === '••••••••'}
                           >
                             {showClientSecret ? (
                               <EyeSlashIcon className="h-5 w-5" />
@@ -788,7 +838,29 @@ This could mean:
                             )}
                           </button>
                         </div>
+                        {credentialsSaved && customClientSecret === '••••••••' && (
+                          <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                            ✓ Credentials are securely stored. Re-enter the secret to update it.
+                          </p>
+                        )}
                       </div>
+
+                      {/* Saved Credentials Indicator */}
+                      {credentialsSaved && customClientId && (
+                        <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg p-4">
+                          <div className="flex items-start gap-3">
+                            <CheckCircleIcon className="h-5 w-5 text-green-500 flex-shrink-0 mt-0.5" />
+                            <div className="flex-1">
+                              <p className="font-medium text-green-900 dark:text-green-200">
+                                ✓ Credentials Saved
+                              </p>
+                              <p className="text-sm text-green-700 dark:text-green-300 mt-1">
+                                Your credentials are securely stored and will persist across sessions. They are being used for Google Sheets integration.
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      )}
 
                       {/* Test Results */}
                       {testResults && (
@@ -827,7 +899,7 @@ This could mean:
                               
                               {testResults.warnings.length > 0 && (
                                 <div className="mt-2">
-                                  <p className="text-sm font-medium text-amber-800 dark:text-amber-300 mb-1">
+                                  <p className="text-sm font-medium text-amber-800 dark:border-amber-300 mb-1">
                                     Warnings:
                                   </p>
                                   <ul className="text-sm text-amber-700 dark:text-amber-400 space-y-1 list-disc list-inside">
@@ -844,7 +916,7 @@ This could mean:
                                     ✅ Credentials are valid! You can now:
                                   </p>
                                   <ul className="text-sm text-green-700 dark:text-green-400 space-y-1 list-disc list-inside mb-3">
-                                    <li>Save these credentials</li>
+                                    <li>Save these credentials (they will persist)</li>
                                     <li>Connect your Google account</li>
                                     <li>Export transactions to Google Sheets</li>
                                   </ul>

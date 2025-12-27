@@ -101,7 +101,7 @@ export default function InvoiceUpload() {
       } else {
         setProfileReady(false);
       }
-    } catch {
+    } catch (error) {
       setProfileReady(false);
     } finally {
       setProfileLoading(false);

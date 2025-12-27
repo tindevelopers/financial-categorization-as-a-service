@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/database/server";
+import { getCredentialManager } from "@/lib/credentials/VercelCredentialManager";
 import { google } from "googleapis";
 import crypto from "crypto";
 
@@ -19,28 +20,54 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Check if user has Google Sheets integration
-    // Try both tables - user_integrations and cloud_storage_connections
-    const { data: integration } = await supabase
-      .from("user_integrations")
-      .select("access_token, refresh_token, provider_email, provider, expires_at")
-      .eq("user_id", user.id)
-      .eq("provider", "google_sheets")
+    // Get tenant_id for tenant-specific credentials
+    const { data: userData } = await supabase
+      .from("users")
+      .select("tenant_id")
+      .eq("id", user.id)
       .single();
 
-    const { data: connection } = await supabase
+    const tenantId = userData?.tenant_id || undefined;
+
+    // Check if user has Google Sheets integration
+    // Try both tables - user_integrations and cloud_storage_connections
+    console.log("Checking Google Sheets connection for user:", user.id, "tenant_id:", tenantId || "none");
+    
+    // Use maybeSingle() to handle cases where no rows exist (returns null instead of error)
+    const { data: integration, error: integrationError } = await supabase
+      .from("user_integrations")
+      .select("access_token, refresh_token, provider_email, provider, token_expires_at")
+      .eq("user_id", user.id)
+      .eq("provider", "google_sheets")
+      .maybeSingle();
+
+    console.log("user_integrations query result:", {
+      hasIntegration: !!integration,
+      error: integrationError?.message || null,
+      providerEmail: integration?.provider_email || null,
+    });
+
+    const { data: connection, error: connectionError } = await supabase
       .from("cloud_storage_connections")
-      .select("access_token_encrypted, refresh_token_encrypted, provider, token_expires_at")
+      .select("access_token_encrypted, refresh_token_encrypted, provider, token_expires_at, is_active")
       .eq("user_id", user.id)
       .eq("provider", "google_sheets")
       .eq("is_active", true)
-      .single();
+      .maybeSingle();
+
+    console.log("cloud_storage_connections query result:", {
+      hasConnection: !!connection,
+      error: connectionError?.message || null,
+      isActive: connection?.is_active || false,
+    });
 
     if (!integration && !connection) {
+      console.log("No Google Sheets connection found for user:", user.id);
       return NextResponse.json(
         { 
-          error: "Google Sheets not connected",
-          error_code: "NOT_CONNECTED"
+          error: "Google Sheets is not connected. Please connect your Google account to access your spreadsheets.",
+          error_code: "NOT_CONNECTED",
+          guidance: "Please go to Settings > Integrations > Google Sheets and click 'Connect Google Account' to authorize access to your Google Sheets."
         },
         { status: 400 }
       );
@@ -83,7 +110,7 @@ export async function GET(request: NextRequest) {
       if (integration?.access_token) {
         accessToken = decryptToken(integration.access_token);
         refreshToken = integration.refresh_token ? decryptToken(integration.refresh_token) : null;
-        expiresAt = integration.expires_at ? new Date(integration.expires_at) : null;
+        expiresAt = integration.token_expires_at ? new Date(integration.token_expires_at) : null;
       } else if (connection?.access_token_encrypted) {
         accessToken = decryptToken(connection.access_token_encrypted);
         refreshToken = connection.refresh_token_encrypted ? decryptToken(connection.refresh_token_encrypted) : null;
@@ -93,20 +120,49 @@ export async function GET(request: NextRequest) {
       if (!accessToken) {
         return NextResponse.json(
           { 
-            error: "Failed to retrieve access token",
-            error_code: "TOKEN_ERROR"
+            error: "Failed to retrieve access token. Please reconnect your Google account.",
+            error_code: "TOKEN_ERROR",
+            guidance: "Your Google Sheets connection may have expired. Please go to Settings > Integrations > Google Sheets and click 'Connect Google Account' to reconnect."
           },
           { status: 500 }
         );
       }
 
+      // Get tenant-specific OAuth credentials (same as used during OAuth flow)
+      const credentialManager = getCredentialManager();
+      const oauthCreds = await credentialManager.getBestGoogleOAuth(tenantId);
+      
+      if (!oauthCreds) {
+        console.error("OAuth credentials not configured for tenant:", tenantId || "platform-level");
+        return NextResponse.json(
+          { 
+            error: "Google OAuth credentials are not configured. Please contact your administrator.",
+            error_code: "CREDENTIALS_NOT_CONFIGURED",
+            guidance: "OAuth credentials need to be set up before you can connect Google Sheets. Please contact your system administrator."
+          },
+          { status: 500 }
+        );
+      }
+
+      // Derive redirect URI from request origin (same pattern as connect route)
+      const computedRedirectUri = new URL(
+        "/api/integrations/google-sheets/callback",
+        request.nextUrl.origin
+      ).toString();
+
+      // Log credential source for debugging
+      console.log("Using OAuth credentials for token refresh:", {
+        credentialSource: tenantId ? "tenant-specific" : "platform-level",
+        tenantId: tenantId || "none",
+        redirectUri: computedRedirectUri,
+        clientIdPrefix: oauthCreds.clientId ? `${oauthCreds.clientId.substring(0, 20)}...` : "missing",
+      });
+
       // Check if token is expired and refresh if needed
       const oauth2Client = new google.auth.OAuth2(
-        process.env.GOOGLE_CLIENT_ID,
-        process.env.GOOGLE_CLIENT_SECRET,
-        process.env.GOOGLE_SHEETS_REDIRECT_URI || 
-        process.env.GOOGLE_REDIRECT_URI || 
-        `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/integrations/google-sheets/callback`
+        oauthCreds.clientId,
+        oauthCreds.clientSecret,
+        computedRedirectUri
       );
 
       oauth2Client.setCredentials({
@@ -116,30 +172,42 @@ export async function GET(request: NextRequest) {
 
       // Refresh token if expired
       if (expiresAt && expiresAt < new Date()) {
+        console.log("Access token expired, attempting refresh. Expires at:", expiresAt.toISOString());
         if (refreshToken) {
           try {
             const { credentials } = await oauth2Client.refreshAccessToken();
             accessToken = credentials.access_token || accessToken;
+            console.log("Token refreshed successfully");
             // Update stored token (simplified - in production, update database)
-          } catch (refreshError) {
-            console.error("Token refresh failed:", refreshError);
+          } catch (refreshError: any) {
+            console.error("Token refresh failed:", {
+              error: refreshError.message,
+              code: refreshError.code,
+              tenantId: tenantId || "none",
+              credentialSource: tenantId ? "tenant-specific" : "platform-level",
+            });
             return NextResponse.json(
               { 
-                error: "Token expired and refresh failed. Please reconnect.",
-                error_code: "TOKEN_EXPIRED"
+                error: "Your Google Sheets connection has expired and we couldn't refresh it automatically. Please reconnect your Google account.",
+                error_code: "TOKEN_EXPIRED",
+                guidance: "Please go to Settings > Integrations > Google Sheets and click 'Connect Google Account' to reconnect."
               },
               { status: 401 }
             );
           }
         } else {
+          console.warn("Token expired but no refresh token available");
           return NextResponse.json(
             { 
-              error: "Token expired. Please reconnect.",
-              error_code: "TOKEN_EXPIRED"
+              error: "Your Google Sheets connection has expired. Please reconnect your Google account.",
+              error_code: "TOKEN_EXPIRED",
+              guidance: "Please go to Settings > Integrations > Google Sheets and click 'Connect Google Account' to reconnect."
             },
             { status: 401 }
           );
         }
+      } else {
+        console.log("Access token is valid. Expires at:", expiresAt ? expiresAt.toISOString() : "unknown");
       }
 
       oauth2Client.setCredentials({
@@ -207,13 +275,36 @@ export async function GET(request: NextRequest) {
         success: true,
         spreadsheets: spreadsheetsWithTabs,
         count: spreadsheetsWithTabs.length,
+        connectedAccount: integration?.provider_email || null,
       });
     } catch (error: any) {
-      console.error("Error listing Google Sheets:", error);
+      console.error("Error listing Google Sheets:", {
+        error: error.message,
+        code: error.code,
+        tenantId: tenantId || "none",
+        credentialSource: tenantId ? "tenant-specific" : "platform-level",
+      });
+      
+      // Provide more specific error messages based on error type
+      let errorMessage = error.message || "Failed to list Google Sheets";
+      let errorCode = "API_ERROR";
+      let guidance = "Please try again or contact support if the issue persists.";
+
+      if (error.code === 401 || error.message?.includes("unauthorized")) {
+        errorMessage = "Your Google Sheets connection is no longer valid. Please reconnect your Google account.";
+        errorCode = "AUTH_ERROR";
+        guidance = "Please go to Settings > Integrations > Google Sheets and click 'Connect Google Account' to reconnect.";
+      } else if (error.code === 403 || error.message?.includes("permission")) {
+        errorMessage = "You don't have permission to access Google Sheets. Please check your Google account permissions.";
+        errorCode = "PERMISSION_ERROR";
+        guidance = "Please ensure you've granted the necessary permissions when connecting your Google account.";
+      }
+
       return NextResponse.json(
         { 
-          error: error.message || "Failed to list Google Sheets",
-          error_code: "API_ERROR"
+          error: errorMessage,
+          error_code: errorCode,
+          guidance: guidance
         },
         { status: 500 }
       );

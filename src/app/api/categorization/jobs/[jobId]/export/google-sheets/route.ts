@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/core/database/server";
+import { getCredentialManager } from "@/lib/credentials/VercelCredentialManager";
 
 export async function POST(
   request: NextRequest,
@@ -65,11 +66,23 @@ export async function POST(
       );
     }
 
-    // Check if Google Sheets API is configured
-    const googleServiceEmail = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL;
-    const googlePrivateKey = process.env.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY;
+    // Get credentials from credential manager
+    // For corporate Google Sheets export, use tenant-specific service account if available
+    const credentialManager = getCredentialManager();
+    
+    // Get tenant_id for tenant-specific credentials
+    const { data: userData } = await supabase
+      .from("users")
+      .select("tenant_id")
+      .eq("id", user.id)
+      .single();
+    
+    // Try tenant-specific service account first (corporate), then fall back to platform default
+    const serviceAccountCreds = await credentialManager.getBestGoogleServiceAccount(
+      userData?.tenant_id || undefined
+    );
 
-    if (!googleServiceEmail || !googlePrivateKey) {
+    if (!serviceAccountCreds) {
       // #region agent log
       fetch("http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e", {
         method: "POST",
@@ -81,8 +94,7 @@ export async function POST(
           location: "src/app/api/categorization/jobs/[jobId]/export/google-sheets/route.ts:csvFallback",
           message: "Service account missing, returning CSV fallback",
           data: {
-            hasEmail: Boolean(googleServiceEmail),
-            hasKey: Boolean(googlePrivateKey),
+            hasServiceAccount: Boolean(serviceAccountCreds),
             transactionCount: transactions.length,
           },
           timestamp: Date.now(),
@@ -139,8 +151,8 @@ export async function POST(
         location: "src/app/api/categorization/jobs/[jobId]/export/google-sheets/route.ts:serviceAccountPresent",
         message: "Service account present, Google Sheets flow not implemented",
         data: {
-          hasEmail: Boolean(googleServiceEmail),
-          hasKey: Boolean(googlePrivateKey),
+          hasEmail: Boolean(serviceAccountCreds?.email),
+          hasKey: Boolean(serviceAccountCreds?.privateKey),
         },
         timestamp: Date.now(),
       }),

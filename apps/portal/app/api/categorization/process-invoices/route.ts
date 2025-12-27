@@ -99,6 +99,10 @@ export async function POST(request: NextRequest) {
         // Process OCR using the utility function
         const invoiceData = await processInvoiceOCR(fileData, fileName);
 
+        // Verify OCR source before updating
+        const { verifyOCRSource } = await import("@/lib/ocr/google-document-ai");
+        const ocrVerification = verifyOCRSource();
+        
         // Update document with extracted data
         await supabase
           .from("financial_documents")
@@ -111,6 +115,7 @@ export async function POST(request: NextRequest) {
             extracted_text: invoiceData.extracted_text || null,
             ocr_confidence_score: invoiceData.confidence_score || 0.5,
             ocr_status: "completed",
+            ocr_provider: ocrVerification.provider, // Explicitly set OCR provider
           })
           .eq("id", doc.id);
 
@@ -118,17 +123,28 @@ export async function POST(request: NextRequest) {
         const transactions = await invoiceToTransactions(invoiceData, jobId, supabase);
 
         // Insert transactions
+        let insertedTransactionIds: string[] = [];
         if (transactions.length > 0) {
-          const { error: txError } = await supabase
+          const { data: insertedTransactions, error: txError } = await supabase
             .from("categorized_transactions")
-            .insert(transactions);
+            .insert(transactions)
+            .select("id");
 
           if (txError) {
             console.error("Transaction insert error:", txError);
           } else {
+            insertedTransactionIds = insertedTransactions?.map((t: any) => t.id) || [];
             // Categorize the transactions (basic rule-based for now)
-            await categorizeInvoiceTransactions(transactions, user.id, supabase);
+            await categorizeInvoiceTransactions(insertedTransactions || transactions, user.id, supabase);
+            
+            // Attempt automatic reconciliation after transactions are created
+            if (insertedTransactionIds.length > 0) {
+              await reconcileInvoiceAfterProcessing(doc.id, insertedTransactionIds, user.id, supabase);
+            }
           }
+        } else {
+          // Even if no transactions were created, try to reconcile the invoice document
+          await reconcileInvoiceAfterProcessing(doc.id, [], user.id, supabase);
         }
 
         processedCount++;
@@ -280,4 +296,195 @@ async function categorizeInvoiceTransactions(
       })
       .eq("id", tx.id);
   }
+}
+
+/**
+ * Automatically attempt to reconcile invoice with existing transactions and documents
+ * after invoice processing is complete
+ */
+async function reconcileInvoiceAfterProcessing(
+  invoiceDocumentId: string,
+  invoiceTransactionIds: string[],
+  userId: string,
+  supabase: any
+): Promise<void> {
+  try {
+    // Get the invoice document details
+    const { data: invoiceDoc, error: docError } = await supabase
+      .from("financial_documents")
+      .select("*")
+      .eq("id", invoiceDocumentId)
+      .eq("user_id", userId)
+      .single();
+
+    if (docError || !invoiceDoc || invoiceDoc.reconciliation_status === "matched") {
+      return; // Already matched or not found
+    }
+
+    const invoiceAmount = invoiceDoc.total_amount || 0;
+    const invoiceDate = invoiceDoc.document_date;
+
+    if (!invoiceAmount || !invoiceDate) {
+      return; // Need amount and date for matching
+    }
+
+    let matchedCount = 0;
+
+    // 1. Try to match invoice document with existing bank transactions
+    // Get unreconciled transactions for this user
+    const { data: transactions, error: txError } = await supabase
+      .from("categorized_transactions")
+      .select(`
+        *,
+        job:categorization_jobs!inner(
+          id,
+          user_id
+        )
+      `)
+      .eq("job.user_id", userId)
+      .eq("reconciliation_status", "unreconciled")
+      .is("matched_document_id", null)
+      .neq("id", invoiceTransactionIds[0] || "") // Exclude transactions we just created
+      .order("date", { ascending: false });
+
+    if (!txError && transactions) {
+      for (const tx of transactions) {
+        if (tx.matched_document_id) continue;
+
+        const amountDiff = Math.abs((tx.amount || 0) - invoiceAmount);
+        const dateDiff = invoiceDate
+          ? Math.abs(
+              (new Date(tx.date).getTime() - new Date(invoiceDate).getTime()) /
+                (1000 * 60 * 60 * 24)
+            )
+          : 999;
+
+        // High confidence match: exact amount within 7 days
+        if (amountDiff < 0.01 && dateDiff <= 7) {
+          const descriptionScore = calculateDescriptionMatch(
+            tx.original_description,
+            invoiceDoc.vendor_name || invoiceDoc.original_filename
+          );
+
+          const totalScore =
+            (100 - amountDiff) * 0.5 + (100 - dateDiff) * 0.3 + descriptionScore * 0.2;
+
+          if (totalScore >= 80) {
+            // Attempt to match
+            const { error: matchError } = await supabase.rpc("match_transaction_with_document", {
+              p_transaction_id: tx.id,
+              p_document_id: invoiceDocumentId,
+            });
+
+            if (!matchError) {
+              matchedCount++;
+              break; // Invoice matched, no need to continue
+            }
+          }
+        }
+      }
+    }
+
+    // 2. Try to match invoice transactions with existing documents (receipts, other invoices)
+    if (invoiceTransactionIds.length > 0 && matchedCount === 0) {
+      const { data: documents, error: docMatchError } = await supabase
+        .from("financial_documents")
+        .select("*")
+        .eq("user_id", userId)
+        .eq("reconciliation_status", "unreconciled")
+        .is("matched_transaction_id", null)
+        .neq("id", invoiceDocumentId) // Exclude the invoice itself
+        .neq("file_type", "invoice") // Focus on receipts and other documents
+        .order("document_date", { ascending: false });
+
+      if (!docMatchError && documents) {
+        for (const txId of invoiceTransactionIds) {
+          const { data: tx, error: txFetchError } = await supabase
+            .from("categorized_transactions")
+            .select("*")
+            .eq("id", txId)
+            .single();
+
+          if (txFetchError || !tx || tx.matched_document_id) continue;
+
+          for (const doc of documents) {
+            if (doc.matched_transaction_id) continue;
+
+            const amountDiff = Math.abs((tx.amount || 0) - (doc.total_amount || 0));
+            const dateDiff = doc.document_date
+              ? Math.abs(
+                  (new Date(tx.date).getTime() - new Date(doc.document_date).getTime()) /
+                    (1000 * 60 * 60 * 24)
+                )
+              : 999;
+
+            if (amountDiff < 0.01 && dateDiff <= 7) {
+              const descriptionScore = calculateDescriptionMatch(
+                tx.original_description,
+                doc.vendor_name || doc.original_filename
+              );
+
+              const totalScore =
+                (100 - amountDiff) * 0.5 + (100 - dateDiff) * 0.3 + descriptionScore * 0.2;
+
+              if (totalScore >= 80) {
+                const { error: matchError } = await supabase.rpc(
+                  "match_transaction_with_document",
+                  {
+                    p_transaction_id: txId,
+                    p_document_id: doc.id,
+                  }
+                );
+
+                if (!matchError) {
+                  matchedCount++;
+                  break;
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+
+    if (matchedCount > 0) {
+      console.log(
+        `[Reconciliation] Auto-matched invoice ${invoiceDocumentId} with ${matchedCount} item(s)`
+      );
+    }
+  } catch (error: any) {
+    console.error("[Reconciliation] Error during auto-reconciliation:", error);
+    // Don't throw - reconciliation failure shouldn't fail invoice processing
+  }
+}
+
+// Helper function to calculate description similarity (same as in auto-match route)
+function calculateDescriptionMatch(description: string, vendor: string): number {
+  if (!description || !vendor) return 0;
+
+  const desc = description.toLowerCase();
+  const vend = vendor.toLowerCase();
+
+  // Check if vendor name appears in description
+  if (desc.includes(vend) || vend.includes(desc)) {
+    return 100;
+  }
+
+  // Check for word overlap
+  const descWords = desc.split(/\s+/).filter((w) => w.length > 3);
+  const vendWords = vend.split(/\s+/).filter((w) => w.length > 3);
+
+  let matchCount = 0;
+  for (const dw of descWords) {
+    for (const vw of vendWords) {
+      if (dw.includes(vw) || vw.includes(dw)) {
+        matchCount++;
+      }
+    }
+  }
+
+  const maxWords = Math.max(descWords.length, vendWords.length);
+  if (maxWords === 0) return 0;
+
+  return (matchCount / maxWords) * 100;
 }

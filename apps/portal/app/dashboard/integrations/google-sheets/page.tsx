@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, Suspense } from 'react'
+import { useState, useEffect, useCallback, Suspense } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import { Heading, Text, Button, Badge } from '@/components/catalyst'
 import { 
@@ -10,6 +10,49 @@ import {
   LinkIcon,
 } from '@heroicons/react/24/outline'
 
+function getErrorMessage(errorCode: string, errorDescription?: string | null, expectedRedirectUri?: string | null, usedRedirectUri?: string | null): string {
+  let baseMessage = '';
+  
+  switch (errorCode) {
+    case 'unauthorized':
+      return 'You must be signed in to connect Google Sheets.'
+    case 'invalid_state':
+      return 'Invalid security token. Please try again.'
+    case 'no_code':
+      return 'Authorization was cancelled or failed.'
+    case 'no_access_token':
+      return 'Failed to obtain access token from Google.'
+    case 'database_error':
+      return 'Failed to save connection. Please try again.'
+    case 'configuration_error':
+      return 'Server configuration error. Please contact support.'
+    case 'callback_failed':
+      return 'Connection callback failed. Please try again.'
+    case 'no_credentials':
+      return 'Google OAuth credentials are not configured. Please contact your administrator.'
+    case 'invalid_request':
+      baseMessage = errorDescription || 'OAuth request is invalid. This may be due to incorrect redirect URI configuration.';
+      if (expectedRedirectUri && usedRedirectUri) {
+        baseMessage += `\n\nExpected redirect URI: ${expectedRedirectUri}\nUsed redirect URI: ${usedRedirectUri}`;
+      }
+      return baseMessage;
+    case 'redirect_uri_mismatch':
+      baseMessage = 'The redirect URI does not match the configured value in Google Cloud Console.';
+      if (expectedRedirectUri && usedRedirectUri) {
+        baseMessage += `\n\nExpected: ${expectedRedirectUri}\nUsed: ${usedRedirectUri}`;
+      }
+      return baseMessage;
+    case 'preflight_redirect':
+      baseMessage = 'Before connecting, confirm your Google Cloud OAuth client allows this redirect URI.';
+      if (expectedRedirectUri) {
+        baseMessage += `\n\nRedirect URI: ${expectedRedirectUri}`;
+      }
+      return baseMessage;
+    default:
+      return errorDescription || 'An error occurred during connection.'
+  }
+}
+
 function GoogleSheetsIntegrationContent() {
   const searchParams = useSearchParams()
   const router = useRouter()
@@ -18,49 +61,115 @@ function GoogleSheetsIntegrationContent() {
   const [connecting, setConnecting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [providerEmail, setProviderEmail] = useState<string | null>(null)
+  const [copyStatus, setCopyStatus] = useState<string | null>(null)
+
+  const checkConnection = useCallback(async () => {
+    try {
+      setLoading(true)
+      const response = await fetch('/api/integrations/google-sheets/list')
+      
+      if (!response.ok) {
+        if (response.status === 401) {
+          // Unauthorized - user not logged in, but still show the page
+          setConnected(false)
+          setError(null)
+          setProviderEmail(null)
+          setLoading(false)
+          return
+        }
+        // Try to parse error response
+        try {
+          const errorData = await response.json()
+          if (errorData.error_code === 'NOT_CONNECTED') {
+            setConnected(false)
+            setError(null)
+            setProviderEmail(null)
+            setLoading(false)
+            return
+          }
+        } catch {
+          // If JSON parsing fails, continue with default error handling
+        }
+      }
+      
+      const data = await response.json()
+
+      if (response.ok && data.success) {
+        setConnected(true)
+        setError(null)
+        // Set provider email if available
+        if (data.connectedAccount) {
+          setProviderEmail(data.connectedAccount)
+        }
+      } else if (data.error_code === 'NOT_CONNECTED') {
+        setConnected(false)
+        setError(null)
+        setProviderEmail(null)
+      } else if (data.error_code === 'NOT_CONFIGURED') {
+        setConnected(false)
+        setError('Google Sheets integration is not configured. Please contact your administrator.')
+        setProviderEmail(null)
+      } else {
+        setConnected(false)
+        setError(data.error || 'Unable to check connection status')
+        setProviderEmail(null)
+      }
+    } catch (err: any) {
+      console.error('Error checking connection:', err)
+      setConnected(false)
+      setError('Failed to check connection status')
+      setProviderEmail(null)
+    } finally {
+      setLoading(false)
+    }
+  }, [])
 
   useEffect(() => {
-    checkConnection()
-    
-    // Check for query params
+    // Check for query params first
     const connectedParam = searchParams.get('connected')
     const errorParam = searchParams.get('error')
+    const errorDescription = searchParams.get('error_description')
+    const expectedRedirectUri = searchParams.get('expected_redirect_uri')
+    const usedRedirectUri = searchParams.get('used_redirect_uri')
+    const continueUrl = searchParams.get('continue_url')
     
     if (connectedParam === 'true') {
       setConnected(true)
       setError(null)
       checkConnection()
     } else if (errorParam) {
-      setError(getErrorMessage(errorParam))
+      setError(getErrorMessage(errorParam, errorDescription, expectedRedirectUri, usedRedirectUri))
       setConnected(false)
+      setLoading(false) // Stop loading spinner to show error
+    } else {
+      // Only check connection if not handling query params
+      checkConnection()
     }
-  }, [searchParams])
+  }, [searchParams, checkConnection])
 
-  const checkConnection = async () => {
+  const computedRedirectUri =
+    typeof window !== 'undefined'
+      ? `${window.location.origin}/api/integrations/google-sheets/callback`
+      : null
+
+  const expectedRedirectUri = searchParams.get('expected_redirect_uri') || computedRedirectUri
+  const usedRedirectUri = searchParams.get('used_redirect_uri') || null
+  const continueUrl = searchParams.get('continue_url') || null
+
+  const showRedirectFixPanel =
+    searchParams.get('error') === 'redirect_uri_mismatch' ||
+    searchParams.get('error') === 'invalid_request' ||
+    searchParams.get('error') === 'preflight_redirect'
+
+  const handleCopyRedirectUri = async () => {
+    if (!expectedRedirectUri) return
     try {
-      setLoading(true)
-      const response = await fetch('/api/integrations/google-sheets/list')
-      const data = await response.json()
-
-      if (response.ok && data.success) {
-        setConnected(true)
-        setError(null)
-      } else if (data.error_code === 'NOT_CONNECTED') {
-        setConnected(false)
-        setError(null)
-      } else if (data.error_code === 'NOT_CONFIGURED') {
-        setConnected(false)
-        setError('Google Sheets integration is not configured. Please contact your administrator.')
-      } else {
-        setConnected(false)
-        setError(data.error || 'Unable to check connection status')
-      }
-    } catch (err: any) {
-      console.error('Error checking connection:', err)
-      setConnected(false)
-      setError('Failed to check connection status')
-    } finally {
-      setLoading(false)
+      await navigator.clipboard.writeText(expectedRedirectUri)
+      setCopyStatus('Copied!')
+      setTimeout(() => setCopyStatus(null), 1500)
+    } catch {
+      setCopyStatus('Copy failed')
+      setTimeout(() => setCopyStatus(null), 1500)
     }
   }
 
@@ -77,12 +186,17 @@ function GoogleSheetsIntegrationContent() {
   }
 
   const handleDisconnect = async () => {
+    if (!confirm('Are you sure you want to disconnect your Google account? You will need to reconnect to export to Google Sheets.')) {
+      return
+    }
+
     try {
       const response = await fetch('/api/integrations/google-sheets/disconnect', {
         method: 'POST',
       })
       
       if (response.ok) {
+        const data = await response.json()
         setConnected(false)
         setProviderEmail(null)
         router.push('/dashboard/integrations/google-sheets?disconnected=true')
@@ -96,24 +210,29 @@ function GoogleSheetsIntegrationContent() {
     }
   }
 
-  const getErrorMessage = (errorCode: string): string => {
-    switch (errorCode) {
-      case 'unauthorized':
-        return 'You must be signed in to connect Google Sheets.'
-      case 'invalid_state':
-        return 'Invalid security token. Please try again.'
-      case 'no_code':
-        return 'Authorization was cancelled or failed.'
-      case 'no_access_token':
-        return 'Failed to obtain access token from Google.'
-      case 'database_error':
-        return 'Failed to save connection. Please try again.'
-      case 'configuration_error':
-        return 'Server configuration error. Please contact support.'
-      case 'callback_failed':
-        return 'Connection callback failed. Please try again.'
-      default:
-        return 'An error occurred during connection.'
+  const handleSwitchAccount = async () => {
+    if (!confirm('This will disconnect your current Google account and allow you to connect a different one. Continue?')) {
+      return
+    }
+
+    try {
+      // First disconnect
+      const disconnectResponse = await fetch('/api/integrations/google-sheets/disconnect', {
+        method: 'POST',
+      })
+      
+      if (disconnectResponse.ok) {
+        // Then immediately start new connection flow
+        setConnecting(true)
+        setError(null)
+        window.location.href = '/api/integrations/google-sheets/connect'
+      } else {
+        const data = await disconnectResponse.json()
+        setError(data.error || 'Failed to disconnect current account')
+      }
+    } catch (err: any) {
+      console.error('Error switching account:', err)
+      setError('Failed to switch account')
     }
   }
 
@@ -161,6 +280,61 @@ function GoogleSheetsIntegrationContent() {
             <p className="text-sm text-red-600 dark:text-red-300 mt-1">
               {error}
             </p>
+            {(error.includes('redirect URI') || error.includes('OAuth') || error.includes('invalid_request')) && (
+              <div className="mt-3">
+                <a
+                  href="https://console.cloud.google.com/apis/credentials"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-sm text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1"
+                >
+                  <LinkIcon className="h-4 w-4" />
+                  Open Google Cloud Console to fix OAuth configuration
+                </a>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {showRedirectFixPanel && expectedRedirectUri && (
+        <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg p-4">
+          <div className="flex items-start gap-3">
+            <ExclamationTriangleIcon className="h-5 w-5 text-amber-600 flex-shrink-0 mt-0.5" />
+            <div className="flex-1">
+              <p className="text-sm font-medium text-amber-900 dark:text-amber-200">
+                Fix Google OAuth Redirect URI
+              </p>
+              <p className="text-sm text-amber-800 dark:text-amber-300 mt-1">
+                Add this exact URL to your Google Cloud OAuth Client ID → Authorized redirect URIs:
+              </p>
+              <div className="mt-3 flex items-center gap-2 flex-wrap">
+                <code className="text-xs px-2 py-1 rounded bg-white/70 dark:bg-black/20 border border-amber-200 dark:border-amber-800">
+                  {expectedRedirectUri}
+                </code>
+                <Button onClick={handleCopyRedirectUri} outline className="gap-2">
+                  Copy
+                </Button>
+                {copyStatus && (
+                  <span className="text-xs text-amber-800 dark:text-amber-300">{copyStatus}</span>
+                )}
+              </div>
+              {usedRedirectUri && usedRedirectUri !== expectedRedirectUri && (
+                <p className="text-xs text-amber-800 dark:text-amber-300 mt-3">
+                  Current configured redirect URI: <code className="px-1">{usedRedirectUri}</code>
+                </p>
+              )}
+              {continueUrl && (
+                <div className="mt-4 flex items-center gap-3 flex-wrap">
+                  <Button onClick={() => (window.location.href = continueUrl)} className="gap-2">
+                    Continue anyway
+                  </Button>
+                  <Text className="text-xs text-amber-800 dark:text-amber-300">
+                    (You may still see an error until the redirect URI is added in Google Cloud Console.)
+                  </Text>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       )}
@@ -196,11 +370,13 @@ function GoogleSheetsIntegrationContent() {
                   Your Google account is connected and ready to use.
                 </p>
                 {providerEmail && (
-                  <p className="text-sm text-gray-600 dark:text-gray-300 mt-2">
-                    Connected as: <span className="font-medium">{providerEmail}</span>
+                  <div className="mt-2">
+                    <p className="text-sm text-gray-600 dark:text-gray-300">
+                      Connected as: <span className="font-medium text-gray-900 dark:text-white">{providerEmail}</span>
                   </p>
+                  </div>
                 )}
-                <div className="mt-4 flex items-center gap-4">
+                <div className="mt-4 flex items-center gap-4 flex-wrap">
                   <Badge color="green">Active</Badge>
                   <a
                     href="/dashboard/settings/spreadsheets"
@@ -212,12 +388,22 @@ function GoogleSheetsIntegrationContent() {
                 </div>
               </div>
             </div>
+            <div className="flex flex-col gap-2">
+              <Button
+                onClick={handleSwitchAccount}
+                outline
+                className="whitespace-nowrap"
+              >
+                Switch Account
+              </Button>
             <Button
               onClick={handleDisconnect}
               outline
+                className="whitespace-nowrap text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20"
             >
               Disconnect
             </Button>
+            </div>
           </div>
         </div>
       ) : (

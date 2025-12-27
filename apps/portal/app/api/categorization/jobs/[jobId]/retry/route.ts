@@ -47,21 +47,58 @@ export async function POST(
 
     // Verify the file still exists
     if (job.file_url) {
-      const fileName = job.file_url.split("/").pop() || "";
-      const filePath = `${user.id}/${fileName.split("-").slice(1).join("-")}`;
+      // Extract the file path from the public URL
+      // URL format: https://...supabase.co/storage/v1/object/public/categorization-uploads/{path}
+      const urlParts = job.file_url.split("/categorization-uploads/");
+      let filePath: string | null = null;
       
-      const { data: fileExists, error: fileError } = await supabase.storage
-        .from("categorization-uploads")
-        .list(user.id, {
-          limit: 1,
-          search: fileName.split("-").slice(1).join("-"),
-        });
+      if (urlParts.length > 1) {
+        // Extract the path after the bucket name and decode URL-encoded characters
+        // This handles filenames with spaces (%20), special chars, etc.
+        filePath = decodeURIComponent(urlParts[1].split("?")[0]);
+      } else {
+        // Fallback: try to construct path from URL
+        const fileName = job.file_url.split("/").pop() || "";
+        if (fileName) {
+          // Decode URL-encoded filename
+          filePath = `${user.id}/${decodeURIComponent(fileName.split("?")[0])}`;
+        }
+      }
 
-      if (fileError || !fileExists || fileExists.length === 0) {
-        return NextResponse.json(
-          { error: "Original file not found. Please upload the file again." },
-          { status: 404 }
-        );
+      if (filePath) {
+        // Try to download the file to verify it exists
+        const { data: fileData, error: downloadError } = await supabase.storage
+          .from("categorization-uploads")
+          .download(filePath);
+
+        if (downloadError || !fileData) {
+          // If download fails, try listing files in user's folder as fallback
+          const { data: files, error: listError } = await supabase.storage
+            .from("categorization-uploads")
+            .list(user.id, {
+              limit: 100,
+            });
+
+          // Get the expected filename for comparison (decoded)
+          const expectedFileName = filePath.split("/").pop() || "";
+          
+          // Check if any file matches the original filename
+          const fileExists = files?.some(
+            (f) => f.name === expectedFileName || 
+                   (job.original_filename && f.name.includes(job.original_filename))
+          );
+
+          if (!fileExists) {
+            return NextResponse.json(
+              { error: "Original file not found. Please upload the file again." },
+              { status: 404 }
+            );
+          }
+        }
+      } else {
+        // If we can't determine the file path, allow retry to proceed
+        // The background processor will handle the error if file is truly missing
+        console.warn(`Could not extract file path from URL: ${job.file_url}`);
       }
     }
 

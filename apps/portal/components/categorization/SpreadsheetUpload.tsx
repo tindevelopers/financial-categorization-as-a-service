@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useRef, useEffect } from "react";
 import { useDropzone } from "react-dropzone";
 import Link from "next/link";
 import { ArrowUpTrayIcon, DocumentIcon, CheckCircleIcon, XCircleIcon, ExclamationTriangleIcon, DocumentDuplicateIcon } from "@heroicons/react/24/outline";
@@ -59,9 +59,6 @@ export default function SpreadsheetUpload() {
   
   // Wrapper to ensure we always set a string value and log if something goes wrong
   const setSelectedBankAccountIdSafe = (value: any) => {
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'SpreadsheetUpload.tsx:59',message:'setSelectedBankAccountIdSafe called',data:{value,valueType:typeof value,isString:typeof value === 'string',isObject:typeof value === 'object',stringValue:String(value)},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'G'})}).catch(()=>{});
-    // #endregion
     
     if (typeof value === 'string') {
       setSelectedBankAccountId(value);
@@ -82,6 +79,29 @@ export default function SpreadsheetUpload() {
   const [profileReady, setProfileReady] = useState(false);
   const [profileLoading, setProfileLoading] = useState(true);
 
+  // Refs to always have current values for callbacks (avoids stale closure issues)
+  const selectedBankAccountIdRef = useRef(selectedBankAccountId);
+  const bankAccountsRef = useRef(bankAccounts);
+  const profileReadyRef = useRef(profileReady);
+  const profileLoadingRef = useRef(profileLoading);
+  
+  // Keep refs in sync with state
+  useEffect(() => {
+    selectedBankAccountIdRef.current = selectedBankAccountId;
+  }, [selectedBankAccountId]);
+  
+  useEffect(() => {
+    bankAccountsRef.current = bankAccounts;
+  }, [bankAccounts]);
+  
+  useEffect(() => {
+    profileReadyRef.current = profileReady;
+  }, [profileReady]);
+  
+  useEffect(() => {
+    profileLoadingRef.current = profileLoading;
+  }, [profileLoading]);
+
   // Fetch bank accounts on mount
   React.useEffect(() => {
     fetchBankAccounts();
@@ -89,27 +109,15 @@ export default function SpreadsheetUpload() {
   }, []);
 
   const fetchBankAccounts = async () => {
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'SpreadsheetUpload.tsx:69',message:'fetchBankAccounts start',data:{timestamp:Date.now()},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'F'})}).catch(()=>{});
-    // #endregion
     try {
       const response = await fetch("/api/bank-accounts");
       
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'SpreadsheetUpload.tsx:72',message:'fetchBankAccounts response received',data:{status:response.status,statusText:response.statusText,ok:response.ok,contentType:response.headers.get('content-type')},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'F'})}).catch(()=>{});
-      // #endregion
       
       const data = await response.json();
       
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'SpreadsheetUpload.tsx:75',message:'fetchBankAccounts data parsed',data:{hasSuccess:data.success,hasBankAccounts:!!data.bank_accounts,bankAccountsCount:data.bank_accounts?.length || 0,hasError:!!data.error,error:data.error || null,bankAccountIds:data.bank_accounts?.map((ba:any)=>ba.id) || []},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'F'})}).catch(()=>{});
-      // #endregion
       
       if (data.success && data.bank_accounts) {
         setBankAccounts(data.bank_accounts);
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'SpreadsheetUpload.tsx:79',message:'fetchBankAccounts - setting bank accounts',data:{bankAccountsCount:data.bank_accounts.length,willAutoSelect:data.bank_accounts.length === 1,autoSelectedId:data.bank_accounts.length === 1 ? data.bank_accounts[0].id : null},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'F'})}).catch(()=>{});
-        // #endregion
         // Auto-select first account if only one exists
         if (data.bank_accounts.length === 1 && data.bank_accounts[0].id) {
           // Ensure we set a string value - validate it's actually a string
@@ -122,20 +130,11 @@ export default function SpreadsheetUpload() {
           }
         }
       } else {
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'SpreadsheetUpload.tsx:85',message:'fetchBankAccounts - invalid response',data:{hasSuccess:data.success,hasBankAccounts:!!data.bank_accounts,error:data.error || null},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'F'})}).catch(()=>{});
-        // #endregion
       }
     } catch (error: any) {
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'SpreadsheetUpload.tsx:90',message:'fetchBankAccounts - exception',data:{errorMessage:error?.message || 'unknown',errorType:error?.constructor?.name || 'unknown',errorStack:error?.stack?.substring(0,200) || null},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'F'})}).catch(()=>{});
-      // #endregion
       console.error("Error fetching bank accounts:", error);
     } finally {
       setLoadingBankAccounts(false);
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'SpreadsheetUpload.tsx:95',message:'fetchBankAccounts - finally',data:{loadingBankAccounts:false},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'F'})}).catch(()=>{});
-      // #endregion
     }
   };
 
@@ -195,44 +194,42 @@ export default function SpreadsheetUpload() {
 
     // Upload file
     await handleUpload(file);
-  }, []);
+  }, [selectedBankAccountId, bankAccounts, profileReady, profileLoading]);
 
   const handleUpload = async (file: File) => {
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'SpreadsheetUpload.tsx:171',message:'handleUpload entry',data:{selectedBankAccountId,selectedBankAccountIdType:typeof selectedBankAccountId,isString:typeof selectedBankAccountId === 'string',isObject:typeof selectedBankAccountId === 'object',bankAccountsCount:bankAccounts.length},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'G'})}).catch(()=>{});
-    // #endregion
+    // Use refs to get current values (avoids stale closure issues)
+    const currentBankAccountId = selectedBankAccountIdRef.current;
+    const currentBankAccounts = bankAccountsRef.current;
+    const currentProfileReady = profileReadyRef.current;
+    const currentProfileLoading = profileLoadingRef.current;
+    const currentSelectedBankAccount = currentBankAccounts.find(acc => acc.id === currentBankAccountId);
+    
     
     // Gating checks
-    if (!profileReady && !profileLoading) {
+    if (!currentProfileReady && !currentProfileLoading) {
       setUploadState(prev => ({ ...prev, error: "Please complete your profile (individual/company name) before uploading." }));
       return;
     }
     // Validate bank account selection - check both empty string and falsy values
-    // Ensure selectedBankAccountId is a string and not an object
+    // Ensure currentBankAccountId is a string and not an object
     let bankAccountId: string = '';
-    if (typeof selectedBankAccountId === 'string') {
-      bankAccountId = selectedBankAccountId;
-    } else if (selectedBankAccountId && typeof selectedBankAccountId === 'object') {
+    if (typeof currentBankAccountId === 'string') {
+      bankAccountId = currentBankAccountId;
+    } else if (currentBankAccountId && typeof currentBankAccountId === 'object') {
       // If it's an object, try to extract an id property, otherwise log error
-      console.error('Bank account validation failed: selectedBankAccountId is an object:', selectedBankAccountId);
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'SpreadsheetUpload.tsx:186',message:'Bank account is object - validation failed',data:{selectedBankAccountId,selectedBankAccountIdType:typeof selectedBankAccountId,hasId:selectedBankAccountId && 'id' in selectedBankAccountId},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'G'})}).catch(()=>{});
-      // #endregion
+      console.error('Bank account validation failed: currentBankAccountId is an object:', currentBankAccountId);
       setUploadState(prev => ({ ...prev, error: "Please select a bank account before uploading." }));
       return;
     } else {
-      bankAccountId = String(selectedBankAccountId || '');
+      bankAccountId = String(currentBankAccountId || '');
     }
     
     if (!bankAccountId || bankAccountId.trim() === '' || bankAccountId === '[object Object]') {
-      console.error('Bank account validation failed:', { selectedBankAccountId, bankAccountId, bankAccountsCount: bankAccounts.length, type: typeof selectedBankAccountId, isObjectString: bankAccountId === '[object Object]' });
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'SpreadsheetUpload.tsx:194',message:'Bank account validation failed - empty or object string',data:{selectedBankAccountId,bankAccountId,isObjectString:bankAccountId === '[object Object]',bankAccountsCount:bankAccounts.length},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'G'})}).catch(()=>{});
-      // #endregion
+      console.error('Bank account validation failed:', { currentBankAccountId, bankAccountId, bankAccountsCount: currentBankAccounts.length, type: typeof currentBankAccountId, isObjectString: bankAccountId === '[object Object]' });
       setUploadState(prev => ({ ...prev, error: "Please select a bank account before uploading." }));
       return;
     }
-    if (selectedBankAccount && !selectedBankAccount.default_spreadsheet_id) {
+    if (currentSelectedBankAccount && !currentSelectedBankAccount.default_spreadsheet_id) {
       setUploadState(prev => ({ ...prev, error: "Please set a default spreadsheet for this bank account before uploading." }));
       return;
     }
@@ -240,38 +237,10 @@ export default function SpreadsheetUpload() {
     setUploadState(prev => ({ ...prev, uploading: true, progress: 0 }));
   const startTime = Date.now();
 
-  // #region agent log
-  fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'SpreadsheetUpload.tsx:67',message:'handleUpload start',data:{fileName:file.name,fileSize:file.size,fileType:file.type},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'A'})}).catch(()=>{});
-  // #endregion
 
     try {
-      // Validate bank account selection again (double-check)
-      // Ensure selectedBankAccountId is a string and not an object
-      let bankAccountId: string = '';
-      if (typeof selectedBankAccountId === 'string') {
-        bankAccountId = selectedBankAccountId;
-      } else if (selectedBankAccountId && typeof selectedBankAccountId === 'object') {
-        // If it's an object, try to extract an id property, otherwise log error
-        console.error('Bank account validation failed in try block: selectedBankAccountId is an object:', selectedBankAccountId);
-        setUploadState(prev => ({
-          ...prev,
-          uploading: false,
-          error: 'Please select a bank account before uploading',
-        }));
-        return;
-      } else {
-        bankAccountId = String(selectedBankAccountId || '');
-      }
-      
-      if (!bankAccountId || bankAccountId.trim() === '' || bankAccountId === '[object Object]') {
-        console.error('Bank account validation failed in try block:', { selectedBankAccountId, bankAccountId, type: typeof selectedBankAccountId, isObjectString: bankAccountId === '[object Object]' });
-        setUploadState(prev => ({
-          ...prev,
-          uploading: false,
-          error: 'Please select a bank account before uploading',
-        }));
-        return;
-      }
+      // Note: bankAccountId was already validated above using ref values
+      // No need to re-validate here since we're in the same function call
 
       console.log('Uploading with bank account:', bankAccountId);
       const formData = new FormData();
@@ -280,7 +249,7 @@ export default function SpreadsheetUpload() {
       
       // Add spreadsheet_id and spreadsheet_tab_id if bank account has defaults
       // Re-find selected bank account using the validated bankAccountId
-      const validatedSelectedBankAccount = bankAccounts.find(acc => acc.id === bankAccountId);
+      const validatedSelectedBankAccount = currentBankAccounts.find(acc => acc.id === bankAccountId);
       if (validatedSelectedBankAccount) {
         if (validatedSelectedBankAccount.default_spreadsheet_id) {
           formData.append('spreadsheet_id', validatedSelectedBankAccount.default_spreadsheet_id);
@@ -343,9 +312,6 @@ export default function SpreadsheetUpload() {
 
       const data = await uploadPromise;
 
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'SpreadsheetUpload.tsx:75',message:'handleUpload response',data:{status:200,ok:true,durationMs:Date.now()-startTime},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'A'})}).catch(()=>{});
-    // #endregion
 
       // Handle duplicate file detection (409 response)
       if (data.isDuplicateError) {
@@ -384,9 +350,6 @@ export default function SpreadsheetUpload() {
         }, 1500);
       }
   } catch (error: any) {
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'SpreadsheetUpload.tsx:96',message:'handleUpload error',data:{errorMessage:error?.message || 'unknown',durationMs:Date.now()-startTime},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'C'})}).catch(()=>{});
-    // #endregion
       // Try to extract error message from response
       let errorMessage = error.message || 'An error occurred during upload';
       try {
@@ -410,17 +373,24 @@ export default function SpreadsheetUpload() {
 
   const handleForceUpload = async () => {
     if (!pendingFile) return;
-    if (!profileReady && !profileLoading) {
+    
+    // Use refs to get current values (avoids stale closure issues)
+    const currentBankAccountId = selectedBankAccountIdRef.current;
+    const currentBankAccounts = bankAccountsRef.current;
+    const currentProfileReady = profileReadyRef.current;
+    const currentProfileLoading = profileLoadingRef.current;
+    
+    if (!currentProfileReady && !currentProfileLoading) {
       setUploadState(prev => ({ ...prev, error: "Please complete your profile (individual/company name) before uploading." }));
       return;
     }
-    // Ensure selectedBankAccountId is a string
-    const bankAccountId = typeof selectedBankAccountId === 'string' ? selectedBankAccountId : String(selectedBankAccountId || '');
+    // Ensure currentBankAccountId is a string
+    const bankAccountId = typeof currentBankAccountId === 'string' ? currentBankAccountId : String(currentBankAccountId || '');
     if (!bankAccountId || bankAccountId.trim() === '') {
       setUploadState(prev => ({ ...prev, error: "Please select a bank account before uploading." }));
       return;
     }
-    const validatedSelectedBankAccount = bankAccounts.find(acc => acc.id === bankAccountId);
+    const validatedSelectedBankAccount = currentBankAccounts.find(acc => acc.id === bankAccountId);
     if (validatedSelectedBankAccount && !validatedSelectedBankAccount.default_spreadsheet_id) {
       setUploadState(prev => ({ ...prev, error: "Please set a default spreadsheet for this bank account before uploading." }));
       return;
@@ -436,15 +406,6 @@ export default function SpreadsheetUpload() {
     }));
 
     try {
-      if (!bankAccountId || bankAccountId.trim() === '') {
-        setUploadState(prev => ({
-          ...prev,
-          uploading: false,
-          error: 'Please select a bank account before uploading',
-        }));
-        return;
-      }
-
       const formData = new FormData();
       formData.append('file', pendingFile);
       formData.append('force', 'true');
@@ -587,8 +548,31 @@ export default function SpreadsheetUpload() {
         </div>
       </div>
 
-      {/* Error Message */}
-      {uploadState.error && (
+      {/* Error Message - Profile Incomplete */}
+      {uploadState.error === 'PROFILE_INCOMPLETE' && (
+        <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg p-4">
+          <div className="flex items-start gap-3">
+            <ExclamationTriangleIcon className="h-5 w-5 text-amber-500 flex-shrink-0 mt-0.5" />
+            <div className="flex-1">
+              <p className="text-sm font-medium text-amber-800 dark:text-amber-200">
+                Profile Setup Required
+              </p>
+              <p className="text-sm text-amber-600 dark:text-amber-300 mt-1">
+                Please complete your company/individual profile before uploading bank statements.
+              </p>
+              <Link
+                href="/dashboard/setup"
+                className="inline-flex items-center gap-2 mt-3 px-4 py-2 text-sm font-medium rounded-lg bg-amber-600 text-white hover:bg-amber-700 transition-colors"
+              >
+                Complete Setup
+              </Link>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Error Message - Generic */}
+      {uploadState.error && uploadState.error !== 'PROFILE_INCOMPLETE' && (
         <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4 flex items-start gap-3">
           <XCircleIcon className="h-5 w-5 text-red-500 flex-shrink-0 mt-0.5" />
           <div>

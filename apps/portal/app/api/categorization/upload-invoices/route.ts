@@ -31,13 +31,19 @@ export async function POST(request: NextRequest) {
     const bankAccountId = formData.get("bank_account_id") as string | null;
 
     // Enforce profile/company name
-    const { data: profile } = await supabase
+    // Check if ANY profile has a company_name (matches frontend logic)
+    console.log('[DEBUG] Profile check start', { userId: user.id });
+    const { data: allProfiles, error: allProfilesError } = await supabase
       .from("company_profiles")
       .select("id, company_name")
-      .eq("user_id", user.id)
-      .maybeSingle();
+      .eq("user_id", user.id);
+    
+    const hasName = allProfiles?.some(p => p.company_name && p.company_name.trim() !== '');
+    console.log('[DEBUG] All profiles query result', { profileCount: allProfiles?.length, allProfiles, allProfilesError, hasName });
 
-    if (!profile || !profile.company_name) {
+    console.log('[DEBUG] Profile completeness check', { hasName, willFail: !hasName });
+    if (!hasName) {
+      console.log('[DEBUG] PROFILE_INCOMPLETE error returned', { allProfiles, hasName });
       return NextResponse.json(
         { error: "PROFILE_INCOMPLETE", error_code: "PROFILE_INCOMPLETE" },
         { status: 400 }

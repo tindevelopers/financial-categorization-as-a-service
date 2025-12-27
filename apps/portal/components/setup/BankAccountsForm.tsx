@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { Fieldset, Legend, Label, Input, Button, Text } from '@/components/catalyst'
+import { Fieldset, Legend, Field, Label, Input, Button, Text } from '@/components/catalyst'
 import { PlusIcon, TrashIcon } from '@heroicons/react/24/outline'
 
 interface BankAccount {
@@ -45,14 +45,11 @@ export function BankAccountsForm({ data, onChange }: BankAccountsFormProps) {
 
   return (
     <div className="space-y-6">
-      <div>
+      <Fieldset>
         <Legend>Bank Accounts (Optional)</Legend>
         <Text className="mt-2">
           Add your business bank accounts for easier reconciliation
         </Text>
-      </div>
-
-      <Fieldset>
         {/* Existing Bank Accounts */}
         {data.bankAccounts.length > 0 && (
           <div className="space-y-3 mb-6">
@@ -64,7 +61,7 @@ export function BankAccountsForm({ data, onChange }: BankAccountsFormProps) {
                 <div>
                   <div className="font-medium">{account.name}</div>
                   <div className="text-sm text-gray-500 dark:text-gray-400">
-                    {account.bank} • {account.sortCode || 'No sort code'} • ••••{account.accountNumber.slice(-4)}
+                    {account.bank} • {account.sortCode || 'No sort code'} • {account.accountNumber ? `••••${account.accountNumber.slice(-4)}` : 'No account number'}
                   </div>
                 </div>
                 <button
@@ -80,7 +77,7 @@ export function BankAccountsForm({ data, onChange }: BankAccountsFormProps) {
 
         {/* Add New Bank Account */}
         <div className="space-y-4">
-          <div>
+          <Field>
             <Label>Account Name</Label>
             <Input
               value={newAccount.name}
@@ -88,11 +85,10 @@ export function BankAccountsForm({ data, onChange }: BankAccountsFormProps) {
                 setNewAccount({ ...newAccount, name: e.target.value })
               }
               placeholder="e.g., Business Current Account"
-              className="mt-2"
             />
-          </div>
+          </Field>
 
-          <div>
+          <Field>
             <Label>Bank Name</Label>
             <Input
               value={newAccount.bank}
@@ -100,12 +96,11 @@ export function BankAccountsForm({ data, onChange }: BankAccountsFormProps) {
                 setNewAccount({ ...newAccount, bank: e.target.value })
               }
               placeholder="e.g., Barclays"
-              className="mt-2"
             />
-          </div>
+          </Field>
 
           <div className="grid grid-cols-2 gap-4">
-            <div>
+            <Field>
               <Label>Sort Code (Optional)</Label>
               <Input
                 value={newAccount.sortCode}
@@ -113,11 +108,10 @@ export function BankAccountsForm({ data, onChange }: BankAccountsFormProps) {
                   setNewAccount({ ...newAccount, sortCode: e.target.value })
                 }
                 placeholder="12-34-56"
-                className="mt-2"
               />
-            </div>
+            </Field>
 
-            <div>
+            <Field>
               <Label>Account Number (Optional)</Label>
               <Input
                 value={newAccount.accountNumber}
@@ -125,9 +119,8 @@ export function BankAccountsForm({ data, onChange }: BankAccountsFormProps) {
                   setNewAccount({ ...newAccount, accountNumber: e.target.value })
                 }
                 placeholder="12345678"
-                className="mt-2"
               />
-            </div>
+            </Field>
           </div>
 
           <Button

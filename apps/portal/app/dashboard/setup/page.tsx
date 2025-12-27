@@ -7,6 +7,7 @@ import { CompanyDetailsForm } from '@/components/setup/CompanyDetailsForm'
 import { TaxSettingsForm } from '@/components/setup/TaxSettingsForm'
 import { BankAccountsForm } from '@/components/setup/BankAccountsForm'
 import { CompletionStep } from '@/components/setup/CompletionStep'
+import { ErrorBoundary } from '@/components/ErrorBoundary'
 
 export default function SetupWizardPage() {
   const router = useRouter()
@@ -184,28 +185,36 @@ export default function SetupWizardPage() {
         {/* Form Steps */}
         <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-8">
           {currentStep === 1 && (
-            <CompanyDetailsForm
-              data={formData}
-              onChange={(updates) => setFormData({ ...formData, ...updates })}
-            />
+            <ErrorBoundary>
+              <CompanyDetailsForm
+                data={formData}
+                onChange={(updates) => setFormData({ ...formData, ...updates })}
+              />
+            </ErrorBoundary>
           )}
 
           {currentStep === 2 && (
-            <TaxSettingsForm
-              data={formData}
-              onChange={(updates) => setFormData({ ...formData, ...updates })}
-            />
+            <ErrorBoundary>
+              <TaxSettingsForm
+                data={formData}
+                onChange={(updates) => setFormData({ ...formData, ...updates })}
+              />
+            </ErrorBoundary>
           )}
 
           {currentStep === 3 && (
-            <BankAccountsForm
-              data={formData}
-              onChange={(updates) => setFormData({ ...formData, ...updates })}
-            />
+            <ErrorBoundary>
+              <BankAccountsForm
+                data={formData}
+                onChange={(updates) => setFormData({ ...formData, ...updates })}
+              />
+            </ErrorBoundary>
           )}
 
           {currentStep === 4 && (
-            <CompletionStep data={formData} />
+            <ErrorBoundary>
+              <CompletionStep data={formData} />
+            </ErrorBoundary>
           )}
 
           {/* Navigation Buttons */}

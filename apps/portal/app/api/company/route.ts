@@ -158,7 +158,16 @@ export async function PUT(request: NextRequest) {
 
     // Prepare update data
     const updatePayload: any = {}
-    if (updateData.companyName !== undefined) updatePayload.company_name = updateData.companyName
+    // Only update company_name if it's provided and not empty
+    if (updateData.companyName !== undefined && updateData.companyName && updateData.companyName.trim() !== '') {
+      updatePayload.company_name = updateData.companyName.trim()
+    } else if (updateData.companyName !== undefined && (!updateData.companyName || updateData.companyName.trim() === '')) {
+      // Reject empty company names
+      return NextResponse.json(
+        { error: 'Company name cannot be empty' },
+        { status: 400 }
+      )
+    }
     if (updateData.companyType !== undefined) updatePayload.company_type = updateData.companyType
     if (updateData.companyNumber !== undefined) updatePayload.company_number = updateData.companyNumber || null
     if (updateData.vatRegistered !== undefined) updatePayload.vat_registered = updateData.vatRegistered

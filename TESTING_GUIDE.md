@@ -1,184 +1,219 @@
-# Testing Guide - Phase 2 & 3
+# Testing Guide: Tenant OAuth Credentials
 
-## Quick Start Testing
+## Prerequisites
 
-### 1. Ensure Supabase is Running
+1. **Migrations Applied**: Ensure migrations are applied to your remote Supabase database
+   - Option 1: Via Supabase Dashboard SQL Editor (recommended)
+     - Go to: https://supabase.com/dashboard/project/firwcvlikjltikdrmejq/sql/new
+     - Copy contents of `supabase/migrations/APPLY_TENANT_OAUTH_MIGRATIONS.sql`
+     - Paste and run
+   
+   - Option 2: Via CLI
+     ```bash
+     supabase db push --linked --include-all
+     ```
 
-```bash
-# Check Supabase status
-supabase status
-
-# If not running, start it
-supabase start
-```
-
-### 2. Start Development Server
-
-```bash
-npm run dev
-```
-
-### 3. Test Signup Flow
-
-1. Navigate to: `http://localhost:3000/signup`
-2. Fill in the form:
-   - First Name: `John`
-   - Last Name: `Doe`
-   - Email: `john@example.com`
-   - Organization Name: `Acme Corp`
-   - Organization Domain: `acme.com` (optional)
-   - Password: `testpassword123`
-   - Check "Terms and Conditions"
-3. Click "Sign Up"
-4. Should redirect to `/saas/dashboard`
-
-**Expected Result**: 
-- ✅ Tenant created in database
-- ✅ User account created
-- ✅ User linked to tenant
-- ✅ User assigned "Workspace Admin" role
-- ✅ Redirected to dashboard
-
-### 4. Test Signin Flow
-
-1. Navigate to: `http://localhost:3000/signin`
-2. Enter credentials:
-   - Email: `john@example.com`
-   - Password: `testpassword123`
-3. Click "Sign In"
-4. Should redirect to `/saas/dashboard`
-
-**Expected Result**:
-- ✅ User authenticated
-- ✅ Session created
-- ✅ Tenant context loaded
-- ✅ Redirected to dashboard
-
-### 5. Test Tenant Isolation
-
-1. **Create Second Tenant**:
-   - Sign out
-   - Sign up with different email: `alice@techstart.io`
-   - Organization: `TechStart Inc`
-   - Domain: `techstart.io`
-
-2. **Verify Isolation**:
-   - Sign in as first user (`john@example.com`)
-   - Go to User Management (`/saas/admin/entity/user-management`)
-   - Should only see users from Acme Corp tenant
-   - Sign out
-   - Sign in as second user (`alice@techstart.io`)
-   - Go to User Management
-   - Should only see users from TechStart Inc tenant
-
-**Expected Result**:
-- ✅ Users can only see their own tenant's data
-- ✅ No cross-tenant data leakage
-- ✅ RLS policies working correctly
-
-### 6. Test Permissions
-
-1. **Check User Role**:
-   - Sign in as any user
-   - Check their role in the database or user management page
-   - Should have "Workspace Admin" role by default
-
-2. **Test Permission Checks**:
-   - Users with "Workspace Admin" should be able to:
-     - View users
-     - Create users
-     - Update users
-     - View tenants
-     - Update tenants
-   - Users with "Viewer" role should only be able to:
-     - View users
-     - View tenants
-     - View roles
-
-### 7. Database Verification
-
-Open Supabase Studio: `http://127.0.0.1:54323`
-
-1. **Check Tenants Table**:
-   ```sql
-   SELECT * FROM tenants;
+2. **Edge Functions Deployed**:
+   ```bash
+   supabase functions deploy get-tenant-credentials --linked
+   supabase functions deploy set-tenant-credentials --linked
    ```
-   Should show all created tenants.
 
-2. **Check Users Table**:
-   ```sql
-   SELECT * FROM users;
+3. **Dev Server Running**:
+   ```bash
+   pnpm dev
    ```
-   Should show all users with their tenant_id.
 
-3. **Test RLS Policies**:
-   - In Supabase Studio, try querying as different users
-   - Should only see data from their tenant
+## Testing Steps
 
-## Automated Testing
+### Step 1: Verify Migrations Applied
 
-Run the test script:
+Run this SQL in Supabase SQL Editor:
 
-```bash
-npx tsx test-multi-tenant.ts
+```sql
+-- Check if table exists
+SELECT EXISTS (
+  SELECT FROM information_schema.tables 
+  WHERE table_schema = 'public' 
+  AND table_name = 'tenant_oauth_credentials'
+) as table_exists;
+
+-- Check if functions exist
+SELECT routine_name 
+FROM information_schema.routines 
+WHERE routine_schema = 'public' 
+AND routine_name LIKE '%tenant_oauth%';
 ```
 
-This will:
-- Create test tenants
-- Create test users
-- Test tenant isolation
-- Test permissions
-- Verify RLS policies
+Expected: Should return `table_exists: true` and list of 5 functions.
 
-## Common Issues & Solutions
+### Step 2: Test RPC Functions
 
-### Issue: "Failed to sign up"
-**Solution**: 
-- Check Supabase is running: `supabase status`
-- Check `.env.local` has correct credentials
-- Check browser console for errors
+Run in Supabase SQL Editor (replace `YOUR_TENANT_ID`):
 
-### Issue: "User already exists"
-**Solution**: 
-- Use a different email
-- Or delete user from Supabase Studio
+```sql
+-- Test 1: Get metadata (should return empty if no credentials)
+SELECT * FROM get_tenant_oauth_credential_metadata(
+  'YOUR_TENANT_ID'::uuid,
+  'google',
+  'individual'
+);
 
-### Issue: "Can see other tenant's data"
-**Solution**: 
-- Verify RLS policies are applied: `supabase db reset`
-- Check user's tenant_id matches expected tenant
-- Verify middleware is setting tenant context
+-- Test 2: List credentials (should return empty array)
+SELECT * FROM list_tenant_oauth_credentials('YOUR_TENANT_ID'::uuid);
 
-### Issue: "Permission denied"
-**Solution**: 
-- Check user's role in database
-- Verify role has required permissions
-- Check RLS policies allow the operation
+-- Test 3: Get best credentials (should return has_tenant_credentials: false)
+SELECT * FROM get_best_tenant_oauth_credentials(
+  'YOUR_TENANT_ID'::uuid,
+  'google',
+  'individual'
+);
+```
 
-## Next Steps After Testing
+### Step 3: Test API Endpoints
 
-Once testing is complete:
+#### Test 1: List Credentials (GET)
 
-1. ✅ Verify all features work
-2. ✅ Document any issues found
-3. ✅ Test with multiple tenants
-4. ✅ Test edge cases
-5. ✅ Verify security (no data leakage)
+```bash
+# Get your auth token first (sign in via browser, get token from cookies/localStorage)
+curl -X GET "http://localhost:3001/api/tenant/credentials/oauth?tenant_id=YOUR_TENANT_ID" \
+  -H "Authorization: Bearer YOUR_AUTH_TOKEN" \
+  -H "Content-Type: application/json"
+```
 
-## Success Criteria
+Expected: `{"tenant_id": "...", "credentials": []}`
 
-- [ ] Can sign up new users
-- [ ] Can sign in existing users
-- [ ] Tenant isolation works (no cross-tenant data)
-- [ ] Permissions work correctly
-- [ ] RLS policies enforce isolation
-- [ ] User management shows correct data
-- [ ] Protected routes work
+#### Test 2: Test Credentials (POST)
 
-## Need Help?
+```bash
+curl -X POST "http://localhost:3001/api/tenant/credentials/test" \
+  -H "Authorization: Bearer YOUR_AUTH_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "tenant_id": "YOUR_TENANT_ID",
+    "provider": "google",
+    "credential_type": "individual"
+  }'
+```
 
-Check these files:
-- `PHASE_2_3_COMPLETE.md` - Implementation details
-- `MULTI_TENANT_PLAN.md` - Full plan
-- `LOCAL_SETUP.md` - Supabase setup guide
+Expected: `{"success": false, "error": "No tenant credentials found"}` (if no credentials set)
 
+### Step 4: Test Google Sheets Export
+
+1. Navigate to: http://localhost:3001
+2. Sign in
+3. Create or open a categorization job
+4. Try to export to Google Sheets
+5. Monitor browser console and network tab for:
+   - Credential retrieval
+   - Fallback to platform credentials
+   - Service account usage
+
+### Step 5: Test Setting Credentials (Full Flow)
+
+1. **Set secrets in Supabase** (via CLI):
+   ```bash
+   # Get a tenant ID first
+   supabase db query "SELECT id FROM tenants LIMIT 1;"
+   
+   # Set secrets (replace TENANT_ID with actual UUID)
+   supabase secrets set TENANT_TENANT_ID_GOOGLE_INDIVIDUAL_CLIENT_ID="test-client-id"
+   supabase secrets set TENANT_TENANT_ID_GOOGLE_INDIVIDUAL_CLIENT_SECRET="test-client-secret"
+   ```
+
+2. **Save credential metadata** (via API):
+   ```bash
+   curl -X POST "http://localhost:3001/api/tenant/credentials/oauth" \
+     -H "Authorization: Bearer YOUR_AUTH_TOKEN" \
+     -H "Content-Type: application/json" \
+     -d '{
+       "tenant_id": "YOUR_TENANT_ID",
+       "provider": "google",
+       "credential_type": "individual",
+       "client_id": "test-client-id",
+       "client_secret": "test-client-secret",
+       "redirect_uri": "https://example.com/callback"
+     }'
+   ```
+
+3. **Verify credentials are saved**:
+   ```bash
+   curl -X GET "http://localhost:3001/api/tenant/credentials/oauth?tenant_id=YOUR_TENANT_ID&provider=google&credential_type=individual" \
+     -H "Authorization: Bearer YOUR_AUTH_TOKEN"
+   ```
+
+4. **Test credential retrieval**:
+   - The system should now use tenant-specific credentials
+   - Test Google Sheets export again
+   - Should use tenant credentials instead of platform defaults
+
+## Monitoring Progress
+
+### Browser DevTools
+
+1. Open browser DevTools (F12)
+2. Go to Network tab
+3. Filter by "api/tenant" or "api/categorization"
+4. Monitor requests and responses
+
+### Server Logs
+
+Watch the dev server logs for:
+- Credential manager calls
+- Supabase Edge Function calls
+- Fallback messages
+- Error messages
+
+### Supabase Logs
+
+1. Go to Supabase Dashboard > Logs
+2. Check Edge Function logs
+3. Check Database logs for RPC function calls
+
+## Expected Behavior
+
+### Without Tenant Credentials
+- System falls back to Vercel env vars (`GOOGLE_CLIENT_ID`, etc.)
+- OAuth flows work with platform credentials
+- Google Sheets export uses platform service account
+
+### With Tenant Credentials
+- System uses tenant-specific credentials from Supabase Secrets
+- OAuth flows use tenant's OAuth app
+- Google Sheets export can use tenant's service account (if corporate)
+
+## Troubleshooting
+
+### "Table does not exist"
+**Solution**: Apply migrations via SQL Editor or CLI
+
+### "Function does not exist"
+**Solution**: Apply migration `20251228000001_create_tenant_oauth_rpc_functions.sql`
+
+### "Edge Function error"
+**Solution**: Deploy Edge Functions:
+```bash
+supabase functions deploy get-tenant-credentials --linked
+supabase functions deploy set-tenant-credentials --linked
+```
+
+### "Secrets not found"
+**Solution**: Set secrets via CLI before saving metadata:
+```bash
+supabase secrets set TENANT_{ID}_GOOGLE_INDIVIDUAL_CLIENT_ID="value"
+```
+
+### API returns 401 Unauthorized
+**Solution**: Sign in first, get auth token from browser DevTools > Application > Cookies
+
+## Quick Test Checklist
+
+- [ ] Migrations applied (table and functions exist)
+- [ ] Edge Functions deployed
+- [ ] Can list credentials (empty initially)
+- [ ] Can test credentials (returns "not found" initially)
+- [ ] Can set secrets via CLI
+- [ ] Can save credential metadata via API
+- [ ] Can retrieve credentials via API
+- [ ] Google Sheets export works (with fallback)
+- [ ] OAuth flows work (with fallback)
