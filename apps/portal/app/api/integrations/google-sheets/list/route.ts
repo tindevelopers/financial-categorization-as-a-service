@@ -33,12 +33,13 @@ export async function GET(request: NextRequest) {
     // Try both tables - user_integrations and cloud_storage_connections
     console.log("Checking Google Sheets connection for user:", user.id, "tenant_id:", tenantId || "none");
     
+    // Use maybeSingle() to handle cases where no rows exist (returns null instead of error)
     const { data: integration, error: integrationError } = await supabase
       .from("user_integrations")
       .select("access_token, refresh_token, provider_email, provider, token_expires_at")
       .eq("user_id", user.id)
       .eq("provider", "google_sheets")
-      .single();
+      .maybeSingle();
 
     console.log("user_integrations query result:", {
       hasIntegration: !!integration,
@@ -52,7 +53,7 @@ export async function GET(request: NextRequest) {
       .eq("user_id", user.id)
       .eq("provider", "google_sheets")
       .eq("is_active", true)
-      .single();
+      .maybeSingle();
 
     console.log("cloud_storage_connections query result:", {
       hasConnection: !!connection,
