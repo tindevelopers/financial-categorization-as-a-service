@@ -38,7 +38,7 @@ export async function GET(request: NextRequest) {
 
     const { data: connection, error: connectionError } = await supabase
       .from("cloud_storage_connections")
-      .select("access_token_encrypted, refresh_token_encrypted, provider, token_expires_at")
+      .select("access_token_encrypted, refresh_token_encrypted, provider, token_expires_at, is_active")
       .eq("user_id", user.id)
       .eq("provider", "google_sheets")
       .eq("is_active", true)
