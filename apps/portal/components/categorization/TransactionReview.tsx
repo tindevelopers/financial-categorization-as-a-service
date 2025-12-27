@@ -137,8 +137,27 @@ export default function TransactionReview({ jobId }: TransactionReviewProps) {
       if (!response.ok) {
         // Try to parse as JSON for error message
         try {
-          const error = await response.json();
-          throw new Error(error.error || error.message || "Export failed");
+          const errorData = await response.json();
+          const errorMessage = errorData.error || errorData.message || "Export failed";
+          const guidance = errorData.guidance;
+          const helpUrl = errorData.helpUrl;
+          
+          // Build a helpful error message
+          let fullMessage = errorMessage;
+          if (guidance) {
+            fullMessage += `\n\n${guidance}`;
+          }
+          
+          // If there's a help URL and it's an OAuth error, offer to redirect
+          if (helpUrl && errorData.error_code === "OAUTH_REQUIRED") {
+            const shouldRedirect = confirm(`${fullMessage}\n\nWould you like to connect your Google account now?`);
+            if (shouldRedirect) {
+              window.location.href = helpUrl;
+              return;
+            }
+          }
+          
+          throw new Error(fullMessage);
         } catch (jsonError) {
           // If JSON parsing fails, use status text
           throw new Error(`Export failed: ${response.statusText || response.status}`);
