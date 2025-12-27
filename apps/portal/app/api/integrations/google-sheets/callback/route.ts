@@ -42,7 +42,9 @@ export async function GET(request: NextRequest) {
     const { data: { user }, error: authError } = await supabase.auth.getUser();
 
     if (authError || !user) {
-      return NextResponse.redirect("/dashboard/integrations/google-sheets?error=unauthorized");
+      const unauthorizedUrl = new URL("/dashboard/integrations/google-sheets", request.url);
+      unauthorizedUrl.searchParams.set("error", "unauthorized");
+      return NextResponse.redirect(unauthorizedUrl.toString());
     }
 
     const searchParams = request.nextUrl.searchParams;
@@ -103,12 +105,16 @@ export async function GET(request: NextRequest) {
     // Verify state
     if (!state || state !== storedState) {
       console.error("OAuth state mismatch", { state, storedState });
-      return NextResponse.redirect("/dashboard/integrations/google-sheets?error=invalid_state");
+      const stateErrorUrl = new URL("/dashboard/integrations/google-sheets", request.url);
+      stateErrorUrl.searchParams.set("error", "invalid_state");
+      return NextResponse.redirect(stateErrorUrl.toString());
     }
 
     if (!code) {
       console.error("OAuth callback missing authorization code");
-      return NextResponse.redirect("/dashboard/integrations/google-sheets?error=no_code");
+      const codeErrorUrl = new URL("/dashboard/integrations/google-sheets", request.url);
+      codeErrorUrl.searchParams.set("error", "no_code");
+      return NextResponse.redirect(codeErrorUrl.toString());
     }
 
     // Get OAuth credentials from credential manager (prefers tenant-specific if available)
@@ -118,7 +124,9 @@ export async function GET(request: NextRequest) {
       console.error("OAuth callback: No credentials found", {
         tenantId: userData?.tenant_id || null,
       });
-      return NextResponse.redirect("/dashboard/integrations/google-sheets?error=no_credentials");
+      const noCredsUrl = new URL("/dashboard/integrations/google-sheets", request.url);
+      noCredsUrl.searchParams.set("error", "no_credentials");
+      return NextResponse.redirect(noCredsUrl.toString());
     }
 
     // Validate OAuth config for debugging
@@ -201,7 +209,9 @@ export async function GET(request: NextRequest) {
     
     if (!tokens.access_token) {
       console.error("No access token in token response");
-      return NextResponse.redirect("/dashboard/integrations/google-sheets?error=no_access_token");
+      const noTokenUrl = new URL("/dashboard/integrations/google-sheets", request.url);
+      noTokenUrl.searchParams.set("error", "no_access_token");
+      return NextResponse.redirect(noTokenUrl.toString());
     }
 
     // Get user info to get email and detect workspace domain
@@ -235,7 +245,9 @@ export async function GET(request: NextRequest) {
     const encryptionKey = process.env.ENCRYPTION_KEY;
     if (!encryptionKey) {
       console.error("ENCRYPTION_KEY not configured");
-      return NextResponse.redirect("/dashboard/integrations/google-sheets?error=configuration_error");
+      const configErrorUrl = new URL("/dashboard/integrations/google-sheets", request.url);
+      configErrorUrl.searchParams.set("error", "configuration_error");
+      return NextResponse.redirect(configErrorUrl.toString());
     }
     
     const encryptedAccessToken = encrypt(tokens.access_token, encryptionKey);
@@ -261,6 +273,8 @@ export async function GET(request: NextRequest) {
       accountType: finalAccountType,
     });
     
+    // Note: cloud_storage_connections table doesn't have account_type, workspace_domain, is_workspace_admin columns
+    // These would need a migration to add if needed in the future
     const { error: insertError1, data: insertData1 } = await supabase
       .from("cloud_storage_connections")
       .upsert({
@@ -271,9 +285,6 @@ export async function GET(request: NextRequest) {
         refresh_token_encrypted: encryptedRefreshToken,
         token_expires_at: expiresAt,
         is_active: true,
-        account_type: finalAccountType,
-        workspace_domain: workspaceDomain,
-        is_workspace_admin: isWorkspaceAccount,
         updated_at: new Date().toISOString(),
       }, {
         onConflict: "user_id,provider",
@@ -291,6 +302,7 @@ export async function GET(request: NextRequest) {
       provider_email: providerEmail,
     });
     
+    // Note: user_integrations uses token_expires_at not expires_at
     const { error: insertError2, data: insertData2 } = await supabase
       .from("user_integrations")
       .upsert({
@@ -299,7 +311,7 @@ export async function GET(request: NextRequest) {
         access_token: encryptedAccessToken,
         refresh_token: encryptedRefreshToken,
         provider_email: providerEmail,
-        expires_at: expiresAt,
+        token_expires_at: expiresAt,
         updated_at: new Date().toISOString(),
       }, {
         onConflict: "user_id,provider",
@@ -324,7 +336,9 @@ export async function GET(request: NextRequest) {
         cloud_storage_connections: insertError1,
         user_integrations: insertError2,
       });
-      return NextResponse.redirect("/dashboard/integrations/google-sheets?error=database_error");
+      const dbErrorUrl = new URL("/dashboard/integrations/google-sheets", request.url);
+      dbErrorUrl.searchParams.set("error", "database_error");
+      return NextResponse.redirect(dbErrorUrl.toString());
     }
 
     if (insertError1) {
@@ -336,7 +350,9 @@ export async function GET(request: NextRequest) {
     }
 
     // Clear state and account_type cookies
-    const response = NextResponse.redirect("/dashboard/integrations/google-sheets?connected=true");
+    const successUrl = new URL("/dashboard/integrations/google-sheets", request.url);
+    successUrl.searchParams.set("connected", "true");
+    const response = NextResponse.redirect(successUrl.toString());
     response.cookies.delete("google_sheets_oauth_state");
     response.cookies.delete("google_sheets_account_type");
     response.cookies.delete("google_sheets_redirect_uri");
@@ -344,6 +360,8 @@ export async function GET(request: NextRequest) {
     return response;
   } catch (error: any) {
     console.error("Google Sheets callback error:", error);
-    return NextResponse.redirect("/dashboard/integrations/google-sheets?error=callback_failed");
+    const callbackErrorUrl = new URL("/dashboard/integrations/google-sheets", request.url);
+    callbackErrorUrl.searchParams.set("error", "callback_failed");
+    return NextResponse.redirect(callbackErrorUrl.toString());
   }
 }
