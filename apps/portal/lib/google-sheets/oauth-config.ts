@@ -67,7 +67,7 @@ export async function validateOAuthConfig(tenantId?: string): Promise<OAuthConfi
     const defaultPort = process.env.PORT || '3002';
     const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 
       (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : `http://localhost:${defaultPort}`);
-    const expectedRedirectUri = `${baseUrl}/api/integrations/google-sheets/callback`;
+    const expectedRedirectUri = `${baseUrl}/api/integrations/google-sheets/callback`.trim();
 
     if (redirectUri && redirectUri !== expectedRedirectUri) {
       warnings.push(
