@@ -35,6 +35,12 @@ export async function GET(request: NextRequest) {
     const credentialManager = getCredentialManager();
     const oauthCreds = await credentialManager.getBestGoogleOAuth(tenantId);
 
+    // Compute redirect URI from request origin (same as connect route does)
+    const computedRedirectUri = new URL(
+      "/api/integrations/google-sheets/callback",
+      request.nextUrl.origin
+    ).toString();
+
     // Get environment info
     const envInfo = {
       NEXT_PUBLIC_APP_URL: process.env.NEXT_PUBLIC_APP_URL || "not set",
@@ -56,10 +62,18 @@ export async function GET(request: NextRequest) {
         redirectUri: oauthCreds?.redirectUri || null,
         hasRedirectUri: !!oauthCreds?.redirectUri,
       },
+      redirectUriAnalysis: {
+        requestOrigin: request.nextUrl.origin,
+        computedRedirectUri, // This is what will be sent to Google
+        credentialManagerRedirectUri: oauthCreds?.redirectUri || null, // This is what credential manager computed
+        redirectUriMatch: oauthCreds?.redirectUri === computedRedirectUri,
+        willUse: computedRedirectUri, // The connect route always uses computedRedirectUri
+        mismatch: oauthCreds?.redirectUri && oauthCreds.redirectUri !== computedRedirectUri,
+      },
       environment: envInfo,
       tenantId: tenantId || null,
       recommendation: configValidation.isValid 
-        ? "Configuration looks good! Make sure the redirect URI matches Google Cloud Console."
+        ? `Configuration looks good! Make sure this redirect URI is in Google Cloud Console: ${computedRedirectUri}`
         : "Configuration has errors. Check the errors array for details.",
     });
   } catch (error: any) {
