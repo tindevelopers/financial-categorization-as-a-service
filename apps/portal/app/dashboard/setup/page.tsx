@@ -88,6 +88,9 @@ export default function SetupWizardPage() {
   }
 
   const handleSubmit = async () => {
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'apps/portal/app/dashboard/setup/page.tsx:handleSubmit:entry',message:'handleSubmit called',data:{companyProfileId,hasCompanyProfileId:!!companyProfileId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+    // #endregion
     try {
       const method = companyProfileId ? 'PUT' : 'POST'
       const url = '/api/company'
@@ -103,23 +106,41 @@ export default function SetupWizardPage() {
             setupCompleted: true,
             setupStep: totalSteps,
           }
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'apps/portal/app/dashboard/setup/page.tsx:handleSubmit:beforeFetch',message:'About to send request',data:{method,url,bodySetupCompleted:body.setupCompleted,bodySetupStep:body.setupStep,bodyId:body.id},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+      // #endregion
 
       const response = await fetch(url, {
         method,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       })
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'apps/portal/app/dashboard/setup/page.tsx:handleSubmit:afterFetch',message:'Response received',data:{status:response.status,statusText:response.statusText,ok:response.ok},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+      // #endregion
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}))
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'apps/portal/app/dashboard/setup/page.tsx:handleSubmit:error',message:'Response not OK',data:{status:response.status,errorData},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+        // #endregion
         throw new Error(errorData.error || `Failed to ${companyProfileId ? 'update' : 'create'} company`)
       }
 
       const data = await response.json()
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'apps/portal/app/dashboard/setup/page.tsx:handleSubmit:success',message:'Response data received',data:{success:data.success,companySetupCompleted:data.company?.setup_completed,companyId:data.company?.id},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+      // #endregion
       
       // Redirect to dashboard
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'apps/portal/app/dashboard/setup/page.tsx:handleSubmit:beforeRedirect',message:'About to redirect',data:{timestamp:Date.now()},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+      // #endregion
       router.push('/dashboard')
     } catch (error: any) {
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'apps/portal/app/dashboard/setup/page.tsx:handleSubmit:catch',message:'Error caught',data:{errorMessage:error.message,errorStack:error.stack},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+      // #endregion
       console.error('Setup error:', error)
       alert(error.message || 'Failed to complete setup. Please try again.')
     }

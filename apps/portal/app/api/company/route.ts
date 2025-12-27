@@ -120,6 +120,9 @@ export async function GET(request: NextRequest) {
 }
 
 export async function PUT(request: NextRequest) {
+  // #region agent log
+  fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'apps/portal/app/api/company/route.ts:PUT:entry',message:'PUT handler called',data:{timestamp:Date.now()},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+  // #endregion
   try {
     const supabase = await createClient()
     const {
@@ -133,6 +136,9 @@ export async function PUT(request: NextRequest) {
 
     const body = await request.json()
     const { id, ...updateData } = body
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'apps/portal/app/api/company/route.ts:PUT:bodyParsed',message:'Request body parsed',data:{id,setupCompleted:updateData.setupCompleted,setupStep:updateData.setupStep,hasSetupCompleted:updateData.setupCompleted!==undefined},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+    // #endregion
 
     if (!id) {
       return NextResponse.json(
@@ -191,6 +197,9 @@ export async function PUT(request: NextRequest) {
     }
     if (updateData.setupCompleted !== undefined) updatePayload.setup_completed = updateData.setupCompleted
     if (updateData.setupStep !== undefined) updatePayload.setup_step = updateData.setupStep
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'apps/portal/app/api/company/route.ts:PUT:beforeUpdate',message:'Update payload constructed',data:{updatePayload,setupCompletedInPayload:updatePayload.setup_completed,setupStepInPayload:updatePayload.setup_step},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+    // #endregion
 
     // Update company profile
     const { data: company, error: updateError } = await supabase
@@ -200,6 +209,9 @@ export async function PUT(request: NextRequest) {
       .eq('user_id', user.id)
       .select()
       .single()
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'apps/portal/app/api/company/route.ts:PUT:afterUpdate',message:'Database update result',data:{hasError:!!updateError,errorMessage:updateError?.message,companySetupCompleted:company?.setup_completed,companyId:company?.id},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+    // #endregion
 
     if (updateError) {
       console.error('Company update error:', updateError)
@@ -219,6 +231,9 @@ export async function PUT(request: NextRequest) {
         bank: account.bank,
       })),
     } : company
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'apps/portal/app/api/company/route.ts:PUT:beforeReturn',message:'About to return response',data:{transformedCompanySetupCompleted:transformedCompany?.setup_completed,transformedCompanyId:transformedCompany?.id},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+    // #endregion
 
     return NextResponse.json({ success: true, company: transformedCompany }, { status: 200 })
   } catch (error) {

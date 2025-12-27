@@ -131,6 +131,9 @@ export async function middleware(request: NextRequest) {
               .eq('user_id', user.id)
               .order('created_at', { ascending: false })
               .limit(1);
+            // #region agent log
+            fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'apps/portal/middleware.ts:setupCheck',message:'Middleware checking setup status',data:{userId:user.id,pathname,hasError:!!error,errorMessage:error?.message,companiesCount:companies?.length,firstCompanySetupCompleted:companies?.[0]?.setup_completed,firstCompanyId:companies?.[0]?.id},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
+            // #endregion
 
             // If query fails, log error but allow access (fail open)
             if (error) {
@@ -139,6 +142,9 @@ export async function middleware(request: NextRequest) {
 
             // If no company or setup not completed, redirect to setup
             if (!companies || companies.length === 0 || !companies[0]?.setup_completed) {
+              // #region agent log
+              fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'apps/portal/middleware.ts:redirectToSetup',message:'Redirecting to setup',data:{reason:!companies?'no_companies':companies.length===0?'empty_companies':'setup_not_completed',firstCompanySetupCompleted:companies?.[0]?.setup_completed},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
+              // #endregion
               return NextResponse.redirect(new URL('/dashboard/setup', request.url));
             }
           } catch (error) {
