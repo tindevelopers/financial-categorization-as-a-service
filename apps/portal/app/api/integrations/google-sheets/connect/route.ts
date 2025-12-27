@@ -60,56 +60,16 @@ export async function GET(request: NextRequest) {
       return NextResponse.redirect("/dashboard/integrations/google-sheets?error=no_credentials");
     }
 
-    // Deterministic redirect URI: derive from the actual request origin so we never drift by port/env.
-    const requestOriginRaw = request.nextUrl.origin;
-    // #region agent log - Check request origin for whitespace
-    fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'apps/portal/app/api/integrations/google-sheets/connect/route.ts:computedRedirectUri',message:'Request origin before URL construction',data:{requestOriginRaw,requestOriginLength:requestOriginRaw.length,hasTrailingWs:requestOriginRaw[requestOriginRaw.length-1]===' '||requestOriginRaw[requestOriginRaw.length-1]==='\n'},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
-    // #endregion
-    const computedRedirectUri = new URL(
-      "/api/integrations/google-sheets/callback",
-      requestOriginRaw.trim()
-    ).toString().trim();
-    // #region agent log - Check computed redirect URI after URL construction
-    fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'apps/portal/app/api/integrations/google-sheets/connect/route.ts:computedRedirectUri:after',message:'Computed redirect URI after URL construction',data:{computedRedirectUri,computedRedirectUriLength:computedRedirectUri.length,hasTrailingWs:computedRedirectUri[computedRedirectUri.length-1]===' '||computedRedirectUri[computedRedirectUri.length-1]==='\n'},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
-    // #endregion
-
-    // In development, run a user-visible preflight once per click unless explicitly forced.
-    // This avoids repeatedly dumping users onto Google's opaque redirect_uri_mismatch error page.
-    if (!force && process.env.NODE_ENV !== "production") {
-      const url = new URL("/dashboard/integrations/google-sheets", request.url);
-      url.searchParams.set("error", "preflight_redirect");
-      url.searchParams.set("expected_redirect_uri", computedRedirectUri);
-      url.searchParams.set("continue_url", "/api/integrations/google-sheets/connect?force=1");
-      url.searchParams.set("help_url", "https://console.cloud.google.com/apis/credentials");
-      return NextResponse.redirect(url.toString());
-    }
-
-    // Preflight: if env/config redirect URI differs from the request-derived one, show the user
-    // exactly what to whitelist in Google Cloud Console (and offer a “continue anyway”).
-    if (!force && oauthCreds.redirectUri && oauthCreds.redirectUri !== computedRedirectUri) {
-      const url = new URL("/dashboard/integrations/google-sheets", request.url);
-      url.searchParams.set("error", "redirect_uri_mismatch");
-      url.searchParams.set("expected_redirect_uri", computedRedirectUri);
-      url.searchParams.set("used_redirect_uri", oauthCreds.redirectUri);
-      url.searchParams.set("continue_url", "/api/integrations/google-sheets/connect?force=1");
-      url.searchParams.set("help_url", "https://console.cloud.google.com/apis/credentials");
-      return NextResponse.redirect(url.toString());
-    }
-
-    // If env/config redirectUri differs, we proceed using the computed redirect URI.
-    // This avoids the “redirect_uri_mismatch” loop caused by 3000/3002/env drift.
-    if (oauthCreds.redirectUri && oauthCreds.redirectUri !== computedRedirectUri) {
-      console.warn("Google Sheets OAuth redirectUri differs from request-derived redirectUri. Using request-derived value.", {
-        configuredRedirectUri: oauthCreds.redirectUri,
-        computedRedirectUri,
-        tenantId: tenantId || "none",
-      });
-    }
+    // Use the redirect URI from credentials (which comes from GOOGLE_SHEETS_REDIRECT_URI env var)
+    // This matches what's configured in Google Cloud Console and what works in Vercel
+    // Fall back to computing from request origin only if not set in credentials
+    const redirectUriToUse = oauthCreds.redirectUri?.trim() || 
+      new URL("/api/integrations/google-sheets/callback", request.nextUrl.origin.trim()).toString().trim();
 
     // Log OAuth configuration for debugging
     console.log("Google Sheets OAuth Configuration:", {
       clientId: oauthCreds.clientId ? `${oauthCreds.clientId.substring(0, 20)}...` : "missing",
-      redirectUri: computedRedirectUri,
+      redirectUri: redirectUriToUse,
       expectedRedirectUri: configValidation.expectedRedirectUri,
       tenantId: tenantId || "none",
       hasTenantCredentials: !!tenantId,
@@ -124,7 +84,7 @@ export async function GET(request: NextRequest) {
     
     const authUrl = new URL("https://accounts.google.com/o/oauth2/v2/auth");
     const clientIdForAuth = oauthCreds.clientId?.trim();
-    const redirectUriForAuth = computedRedirectUri.trim();
+    const redirectUriForAuth = redirectUriToUse.trim();
     // #region agent log - Check values being sent to Google OAuth
     fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'apps/portal/app/api/integrations/google-sheets/connect/route.ts:authUrl:before',message:'Values being sent to Google OAuth',data:{clientIdForAuth,clientIdLength:clientIdForAuth?.length,clientIdHasTrailingWs:clientIdForAuth?.[clientIdForAuth.length-1]===' '||clientIdForAuth?.[clientIdForAuth.length-1]==='\n',redirectUriForAuth,redirectUriLength:redirectUriForAuth.length,redirectUriHasTrailingWs:redirectUriForAuth[redirectUriForAuth.length-1]===' '||redirectUriForAuth[redirectUriForAuth.length-1]==='\n',hasNewlineInMiddle:redirectUriForAuth.includes('\n')},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'F'})}).catch(()=>{});
     // #endregion
@@ -167,7 +127,7 @@ export async function GET(request: NextRequest) {
     });
 
     // Store the redirect URI we used so callback can exchange tokens with the same redirect URI.
-    response.cookies.set("google_sheets_redirect_uri", computedRedirectUri, {
+    response.cookies.set("google_sheets_redirect_uri", redirectUriToUse, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
       sameSite: "lax",

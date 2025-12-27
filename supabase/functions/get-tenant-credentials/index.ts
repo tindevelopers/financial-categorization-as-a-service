@@ -102,14 +102,16 @@ serve(async (req) => {
 
     // Retrieve actual secrets from Supabase Secrets via Deno.env.get()
     // Secret names follow format: TENANT_{tenantId}_{PROVIDER}_{TYPE}_{FIELD}
-    const clientId = Deno.env.get(meta.client_id_secret_name);
-    const clientSecret = Deno.env.get(meta.client_secret_secret_name);
+    // Always trim values to remove any trailing whitespace/newlines that may have been
+    // introduced during secret creation
+    const clientId = Deno.env.get(meta.client_id_secret_name)?.trim();
+    const clientSecret = Deno.env.get(meta.client_secret_secret_name)?.trim();
     let serviceAccountPrivateKey: string | null = null;
 
     if (meta.service_account_secret_name) {
       serviceAccountPrivateKey = Deno.env.get(
         meta.service_account_secret_name
-      );
+      )?.trim() || null;
     }
 
     // Validate we got the secrets
