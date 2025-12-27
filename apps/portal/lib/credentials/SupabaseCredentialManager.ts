@@ -127,11 +127,11 @@ export class SupabaseCredentialManager {
       }
 
       const credentials: TenantOAuthCredentials = {
-        clientId: result.credentials.client_id,
-        clientSecret: result.credentials.client_secret,
-        redirectUri: result.credentials.redirect_uri || undefined,
-        serviceAccountEmail: result.credentials.service_account_email || undefined,
-        serviceAccountPrivateKey: result.credentials.service_account_private_key || undefined,
+        clientId: result.credentials.client_id?.trim(),
+        clientSecret: result.credentials.client_secret?.trim(),
+        redirectUri: result.credentials.redirect_uri?.trim() || undefined,
+        serviceAccountEmail: result.credentials.service_account_email?.trim() || undefined,
+        serviceAccountPrivateKey: result.credentials.service_account_private_key?.trim() || undefined,
       };
 
       // Cache the result
