@@ -114,6 +114,14 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 <ArrowUpTrayIcon />
                 <SidebarLabel>Exports</SidebarLabel>
               </SidebarItem>
+
+              <SidebarItem
+                href="/dashboard/settings"
+                current={pathname.startsWith('/dashboard/settings')}
+              >
+                <Cog6ToothIcon />
+                <SidebarLabel>Settings</SidebarLabel>
+              </SidebarItem>
             </SidebarSection>
 
             <SidebarSection className="max-lg:hidden">
@@ -123,14 +131,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               >
                 <ChatBubbleLeftRightIcon />
                 <SidebarLabel>AI Assistant</SidebarLabel>
-              </SidebarItem>
-
-              <SidebarItem
-                href="/dashboard/settings"
-                current={pathname.startsWith('/dashboard/settings')}
-              >
-                <Cog6ToothIcon />
-                <SidebarLabel>Settings</SidebarLabel>
               </SidebarItem>
             </SidebarSection>
           </SidebarBody>
