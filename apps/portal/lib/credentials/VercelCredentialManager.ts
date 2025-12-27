@@ -240,24 +240,44 @@ export class VercelCredentialManager {
     tenantId?: string,
     credentialType: 'individual' | 'corporate' = 'individual'
   ): Promise<GoogleOAuthCredentials | null> {
+    // Construct default redirect URI (used if tenant doesn't have custom_redirect_uri)
+    const defaultPort = process.env.PORT || '3002';
+    const baseUrl = (process.env.NEXT_PUBLIC_APP_URL?.trim() || 
+      (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL.trim()}` : `http://localhost:${defaultPort}`)).trim();
+    const defaultRedirectUri = (process.env.GOOGLE_SHEETS_REDIRECT_URI?.trim() || 
+      process.env.GOOGLE_REDIRECT_URI?.trim() || 
+      `${baseUrl}/api/integrations/google-sheets/callback`).trim();
+
     // Try tenant-specific credentials first if tenantId is provided
     if (tenantId) {
       // Try corporate credentials first if requested
       if (credentialType === 'corporate') {
         const corporateCreds = await this.getTenantOAuth(tenantId, 'google', 'corporate');
         if (corporateCreds) {
-        // Portal app runs on port 3002 by default
-        const defaultPort = process.env.PORT || '3002';
-        const baseUrl = process.env.NEXT_PUBLIC_APP_URL?.trim() || 
-          (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL.trim()}` : `http://localhost:${defaultPort}`);
-        const redirectUri = (process.env.GOOGLE_SHEETS_REDIRECT_URI?.trim() || 
-          process.env.GOOGLE_REDIRECT_URI?.trim() || 
-          `${baseUrl}/api/integrations/google-sheets/callback`).trim();
+          // Check for custom_redirect_uri in database (similar to auth-url route)
+          let customRedirectUri: string | undefined;
+          try {
+            const { createClient } = await import('@/lib/database/server');
+            const supabase = await createClient();
+            const { data: tenantSettings } = await supabase
+              .from('tenant_integration_settings')
+              .select('custom_redirect_uri')
+              .eq('tenant_id', tenantId)
+              .eq('provider', 'google_sheets')
+              .eq('use_custom_credentials', true)
+              .single();
+            
+            if (tenantSettings?.custom_redirect_uri) {
+              customRedirectUri = tenantSettings.custom_redirect_uri.trim();
+            }
+          } catch (error) {
+            console.warn('Failed to get custom_redirect_uri from database, using default:', error);
+          }
 
           return {
             clientId: corporateCreds.clientId?.trim(),
             clientSecret: corporateCreds.clientSecret?.trim(),
-            redirectUri,
+            redirectUri: customRedirectUri || corporateCreds.redirectUri || defaultRedirectUri,
           };
         }
       }
@@ -265,18 +285,30 @@ export class VercelCredentialManager {
       // Try individual credentials
       const tenantCreds = await this.getTenantOAuth(tenantId, 'google', 'individual');
       if (tenantCreds) {
-        // Portal app runs on port 3002 by default
-        const defaultPort = process.env.PORT || '3002';
-        const baseUrl = process.env.NEXT_PUBLIC_APP_URL?.trim() || 
-          (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL.trim()}` : `http://localhost:${defaultPort}`);
-        const redirectUri = (process.env.GOOGLE_SHEETS_REDIRECT_URI?.trim() || 
-          process.env.GOOGLE_REDIRECT_URI?.trim() || 
-          `${baseUrl}/api/integrations/google-sheets/callback`).trim();
+        // Check for custom_redirect_uri in database (similar to auth-url route)
+        let customRedirectUri: string | undefined;
+        try {
+          const { createClient } = await import('@/lib/database/server');
+          const supabase = await createClient();
+          const { data: tenantSettings } = await supabase
+            .from('tenant_integration_settings')
+            .select('custom_redirect_uri')
+            .eq('tenant_id', tenantId)
+            .eq('provider', 'google_sheets')
+            .eq('use_custom_credentials', true)
+            .single();
+          
+          if (tenantSettings?.custom_redirect_uri) {
+            customRedirectUri = tenantSettings.custom_redirect_uri.trim();
+          }
+        } catch (error) {
+          console.warn('Failed to get custom_redirect_uri from database, using default:', error);
+        }
 
         return {
           clientId: tenantCreds.clientId?.trim(),
           clientSecret: tenantCreds.clientSecret?.trim(),
-          redirectUri,
+          redirectUri: customRedirectUri || tenantCreds.redirectUri || defaultRedirectUri,
         };
       }
     }
