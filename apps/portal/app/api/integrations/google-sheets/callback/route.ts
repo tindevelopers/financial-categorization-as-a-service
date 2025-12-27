@@ -251,7 +251,7 @@ export async function GET(request: NextRequest) {
     console.log("cloud_storage_connections insert result:", {
       error: insertError1,
       hasData: !!insertData1,
-    });
+      });
 
     // Also store in user_integrations for compatibility
     console.log("Storing connection in user_integrations...", {
@@ -286,7 +286,7 @@ export async function GET(request: NextRequest) {
       isWorkspaceAccount,
       insertError1: insertError1?.message || null,
       insertError2: insertError2?.message || null,
-    });
+      });
 
     if (insertError1 && insertError2) {
       console.error("Database insert errors:", {
@@ -295,7 +295,7 @@ export async function GET(request: NextRequest) {
       });
       return NextResponse.redirect("/dashboard/integrations/google-sheets?error=database_error");
     }
-    
+
     if (insertError1) {
       console.warn("cloud_storage_connections insert failed, but user_integrations succeeded:", insertError1);
     }

@@ -170,44 +170,44 @@ export class VercelCredentialManager {
 
       // Fallback to legacy database storage (for backward compatibility)
       try {
-        const { createClient } = await import('@/core/database/server');
-        const supabase = await createClient();
+      const { createClient } = await import('@/core/database/server');
+      const supabase = await createClient();
 
-        const { data: settings, error } = await supabase
-          .from('tenant_settings')
-          .select('google_client_id, google_client_secret')
-          .eq('tenant_id', tenantId)
-          .eq('use_custom_credentials', true)
-          .single();
+      const { data: settings, error } = await supabase
+        .from('tenant_settings')
+        .select('google_client_id, google_client_secret')
+        .eq('tenant_id', tenantId)
+        .eq('use_custom_credentials', true)
+        .single();
 
-        if (error || !settings) {
-          return null;
-        }
+      if (error || !settings) {
+        return null;
+      }
 
-        if (!settings.google_client_id || !settings.google_client_secret) {
-          return null;
-        }
+      if (!settings.google_client_id || !settings.google_client_secret) {
+        return null;
+      }
 
         // Decrypt credentials if needed
-        let clientId: string;
-        let clientSecret: string;
+      let clientId: string;
+      let clientSecret: string;
 
-        try {
-          const { decryptToken } = await import('@/lib/google-sheets/auth-helpers');
-          clientId = decryptToken(settings.google_client_id);
-          clientSecret = decryptToken(settings.google_client_secret);
-        } catch {
-          clientId = settings.google_client_id;
-          clientSecret = settings.google_client_secret;
-        }
+      try {
+        const { decryptToken } = await import('@/lib/google-sheets/auth-helpers');
+        clientId = decryptToken(settings.google_client_id);
+        clientSecret = decryptToken(settings.google_client_secret);
+      } catch {
+        clientId = settings.google_client_id;
+        clientSecret = settings.google_client_secret;
+      }
 
-        const credentials: TenantOAuthCredentials = {
-          clientId,
-          clientSecret,
-        };
+      const credentials: TenantOAuthCredentials = {
+        clientId,
+        clientSecret,
+      };
 
-        this.cache.set(cacheKey, credentials);
-        return credentials;
+      this.cache.set(cacheKey, credentials);
+      return credentials;
       } catch (legacyError) {
         console.error('Failed to get legacy tenant OAuth credentials:', legacyError);
         return null;

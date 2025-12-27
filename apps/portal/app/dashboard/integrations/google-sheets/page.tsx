@@ -372,7 +372,7 @@ function GoogleSheetsIntegrationContent() {
                   <div className="mt-2">
                     <p className="text-sm text-gray-600 dark:text-gray-300">
                       Connected as: <span className="font-medium text-gray-900 dark:text-white">{providerEmail}</span>
-                    </p>
+                  </p>
                   </div>
                 )}
                 <div className="mt-4 flex items-center gap-4 flex-wrap">
@@ -395,13 +395,13 @@ function GoogleSheetsIntegrationContent() {
               >
                 Switch Account
               </Button>
-              <Button
-                onClick={handleDisconnect}
-                outline
+            <Button
+              onClick={handleDisconnect}
+              outline
                 className="whitespace-nowrap text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20"
-              >
-                Disconnect
-              </Button>
+            >
+              Disconnect
+            </Button>
             </div>
           </div>
         </div>
