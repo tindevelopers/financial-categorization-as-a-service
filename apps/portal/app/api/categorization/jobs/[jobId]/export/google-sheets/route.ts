@@ -4,6 +4,7 @@ import { createAdminClient } from "@/lib/database/admin-client";
 import { google } from "googleapis";
 import { getUserOAuthTokens, createOAuthSheetsClient } from "@/lib/google-sheets/auth-helpers";
 import { detectUserAccountType, getRecommendedAuthMethod } from "@/lib/google-sheets/user-preference";
+import { VercelCredentialManager } from "@/lib/credentials/VercelCredentialManager";
 
 export async function POST(
   request: NextRequest,
@@ -75,25 +76,41 @@ export async function POST(
       }
     }
 
-    // Check for Google authentication credentials
-    // Option A: Corporate/Company level - Service Account (GOOGLE_SERVICE_ACCOUNT_EMAIL + GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY)
-    // Option B: Individual level - OAuth (requires user to connect their Google account)
-    const hasServiceAccount = !!(
-      process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL && 
-      process.env.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY
-    );
-    const hasOAuthCredentials = !!(
-      process.env.GOOGLE_CLIENT_ID && 
-      process.env.GOOGLE_CLIENT_SECRET
-    );
+    // Get tenant ID for tenant-specific credentials
+    const { data: userData } = await supabase
+      .from("users")
+      .select("tenant_id")
+      .eq("id", user.id)
+      .single();
+    
+    const tenantId = userData?.tenant_id || null;
+    
+    // Check for Google authentication credentials using credential manager
+    // Priority: Tenant-specific credentials > Platform credentials
+    const credentialManager = VercelCredentialManager.getInstance();
+    
+    // Option A: Corporate/Company level - Service Account
+    const serviceAccountCreds = await credentialManager.getBestGoogleServiceAccount(tenantId || undefined);
+    const hasServiceAccount = !!serviceAccountCreds;
+    
+    // Option B: Individual level - OAuth (tenant-specific or platform-level)
+    const tenantOAuthCreds = tenantId 
+      ? await credentialManager.getBestGoogleOAuth(tenantId)
+      : null;
+    const platformOAuthCreds = await credentialManager.getGoogleOAuth();
+    const hasOAuthCredentials = !!(tenantOAuthCreds || platformOAuthCreds);
 
     // Try to get user's OAuth tokens (Option B) using helper module
+    // Use tenant-specific OAuth credentials if available, otherwise platform credentials
     let userOAuthTokens = null;
     if (!hasServiceAccount && hasOAuthCredentials) {
       try {
         userOAuthTokens = await getUserOAuthTokens(user.id);
         if (userOAuthTokens) {
-          console.log("Google Sheets export: Found user OAuth connection (Option B)");
+          console.log("Google Sheets export: Found user OAuth connection (Option B)", {
+            usingTenantCredentials: !!tenantOAuthCreds,
+            tenantId: tenantId || "none",
+          });
         }
       } catch (error: any) {
         console.warn("Google Sheets export: Failed to get OAuth tokens:", error.message);
@@ -102,6 +119,10 @@ export async function POST(
 
     // Detect user account type for better error messages
     const accountType = await detectUserAccountType(user.id);
+    // Update accountType with actual tenantId if we have it (fixes null tenantId issue)
+    if (tenantId && accountType.tenantId === null) {
+      accountType.tenantId = tenantId;
+    }
     const recommendedMethod = await getRecommendedAuthMethod(user.id);
     
     // If neither service account nor OAuth tokens are available, provide helpful error
@@ -110,7 +131,13 @@ export async function POST(
         hasServiceAccount,
         hasOAuthCredentials,
         hasUserOAuthTokens: !!userOAuthTokens,
-        accountType,
+        hasTenantOAuthCredentials: !!tenantOAuthCreds,
+        hasPlatformOAuthCredentials: !!platformOAuthCreds,
+        tenantId: tenantId || accountType.tenantId || null,
+        accountType: {
+          ...accountType,
+          tenantId: tenantId || accountType.tenantId || null, // Ensure tenantId is set
+        },
         recommendedMethod,
       });
       
