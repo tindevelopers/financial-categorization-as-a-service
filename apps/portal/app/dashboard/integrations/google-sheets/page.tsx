@@ -140,6 +140,7 @@ function GoogleSheetsIntegrationContent() {
     } else if (errorParam) {
       setError(getErrorMessage(errorParam, errorDescription, expectedRedirectUri, usedRedirectUri))
       setConnected(false)
+      setLoading(false) // Stop loading spinner to show error
     } else {
       // Only check connection if not handling query params
       checkConnection()
