@@ -65,8 +65,8 @@ export async function validateOAuthConfig(tenantId?: string): Promise<OAuthConfi
     // Expected redirect URI for Google Sheets
     // Portal app runs on port 3002 by default
     const defaultPort = process.env.PORT || '3002';
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 
-      (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : `http://localhost:${defaultPort}`);
+    const baseUrl = (process.env.NEXT_PUBLIC_APP_URL?.trim() || 
+      (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL.trim()}` : `http://localhost:${defaultPort}`)).trim();
     const expectedRedirectUri = `${baseUrl}/api/integrations/google-sheets/callback`.trim();
 
     if (redirectUri && redirectUri !== expectedRedirectUri) {
@@ -112,9 +112,9 @@ export function getOAuthErrorGuidance(errorCode: string, errorDescription?: stri
   actionableSteps: string[];
   helpUrl?: string;
 } {
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 
-    (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3002');
-  const expectedRedirectUri = `${baseUrl}/api/integrations/google-sheets/callback`;
+  const baseUrl = (process.env.NEXT_PUBLIC_APP_URL?.trim() || 
+    (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL.trim()}` : 'http://localhost:3002')).trim();
+  const expectedRedirectUri = `${baseUrl}/api/integrations/google-sheets/callback`.trim();
 
   switch (errorCode) {
     case "invalid_request":
