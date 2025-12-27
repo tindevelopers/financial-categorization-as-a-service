@@ -13,9 +13,20 @@ async function getGoogleCredentials(supabase: any, userId: string): Promise<{
   redirectUri: string;
   source: 'tenant' | 'platform';
 }> {
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 
-    (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000')
-  const defaultRedirectUri = `${baseUrl}/api/integrations/google-sheets/callback`
+  // #region agent log - Check env vars for whitespace
+  const nextPublicAppUrlRaw = process.env.NEXT_PUBLIC_APP_URL;
+  const vercelUrlRaw = process.env.VERCEL_URL;
+  const googleRedirectUriRaw = process.env.GOOGLE_REDIRECT_URI;
+  fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'apps/portal/app/api/integrations/google-sheets/auth-url/route.ts:getGoogleCredentials:env',message:'Environment variables before trim',data:{nextPublicAppUrlRaw,nextPublicAppUrlLength:nextPublicAppUrlRaw?.length,nextPublicAppUrlHasTrailingWs:nextPublicAppUrlRaw?.[nextPublicAppUrlRaw.length-1]===' '||nextPublicAppUrlRaw?.[nextPublicAppUrlRaw.length-1]==='\n',vercelUrlRaw,googleRedirectUriRaw,googleRedirectUriLength:googleRedirectUriRaw?.length,googleRedirectUriHasTrailingWs:googleRedirectUriRaw?.[googleRedirectUriRaw?.length-1]===' '||googleRedirectUriRaw?.[googleRedirectUriRaw?.length-1]==='\n'},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+  // #endregion
+  
+  const baseUrl = (process.env.NEXT_PUBLIC_APP_URL?.trim() || 
+    (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL.trim()}` : 'http://localhost:3000')).trim()
+  const defaultRedirectUri = `${baseUrl}/api/integrations/google-sheets/callback`.trim()
+  
+  // #region agent log - Check constructed defaultRedirectUri
+  fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'apps/portal/app/api/integrations/google-sheets/auth-url/route.ts:getGoogleCredentials:defaultRedirectUri',message:'Default redirect URI after construction',data:{defaultRedirectUri,defaultRedirectUriLength:defaultRedirectUri.length,hasTrailingWs:defaultRedirectUri[defaultRedirectUri.length-1]===' '||defaultRedirectUri[defaultRedirectUri.length-1]==='\n',baseUrl,baseUrlLength:baseUrl.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+  // #endregion
 
   // Get user's tenant ID
   const { data: userData } = await supabase
@@ -47,6 +58,11 @@ async function getGoogleCredentials(supabase: any, userId: string): Promise<{
     // #endregion
 
     if (tenantSettings?.custom_client_id) {
+      // #region agent log - Check database custom_redirect_uri for whitespace
+      const customRedirectUriRaw = tenantSettings.custom_redirect_uri;
+      fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'apps/portal/app/api/integrations/google-sheets/auth-url/route.ts:getGoogleCredentials:customRedirectUri',message:'Database custom_redirect_uri before trim',data:{customRedirectUriRaw,customRedirectUriLength:customRedirectUriRaw?.length,customRedirectUriHasTrailingWs:customRedirectUriRaw?.[customRedirectUriRaw?.length-1]===' '||customRedirectUriRaw?.[customRedirectUriRaw?.length-1]==='\n',defaultRedirectUri},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+      // #endregion
+      
       let decryptedSecret = null
       
       // Try to get secret from vault first
@@ -79,10 +95,14 @@ async function getGoogleCredentials(supabase: any, userId: string): Promise<{
       }
 
       if (decryptedSecret) {
+        const finalRedirectUri = (tenantSettings.custom_redirect_uri?.trim() || defaultRedirectUri).trim()
+        // #region agent log - Check final redirect URI before return
+        fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'apps/portal/app/api/integrations/google-sheets/auth-url/route.ts:getGoogleCredentials:finalRedirectUri',message:'Final redirect URI before return (tenant)',data:{finalRedirectUri,finalRedirectUriLength:finalRedirectUri.length,hasTrailingWs:finalRedirectUri[finalRedirectUri.length-1]===' '||finalRedirectUri[finalRedirectUri.length-1]==='\n'},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+        // #endregion
         return {
           clientId: tenantSettings.custom_client_id,
           clientSecret: decryptedSecret,
-          redirectUri: tenantSettings.custom_redirect_uri || defaultRedirectUri,
+          redirectUri: finalRedirectUri,
           source: 'tenant',
         }
       }
@@ -90,10 +110,14 @@ async function getGoogleCredentials(supabase: any, userId: string): Promise<{
   }
 
   // Fall back to platform-level environment variables
+  const platformRedirectUri = (process.env.GOOGLE_REDIRECT_URI?.trim() || defaultRedirectUri).trim()
+  // #region agent log - Check platform redirect URI before return
+  fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'apps/portal/app/api/integrations/google-sheets/auth-url/route.ts:getGoogleCredentials:platformRedirectUri',message:'Final redirect URI before return (platform)',data:{platformRedirectUri,platformRedirectUriLength:platformRedirectUri.length,hasTrailingWs:platformRedirectUri[platformRedirectUri.length-1]===' '||platformRedirectUri[platformRedirectUri.length-1]==='\n',defaultRedirectUri},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+  // #endregion
   return {
     clientId: process.env.GOOGLE_CLIENT_ID || null,
     clientSecret: process.env.GOOGLE_CLIENT_SECRET || null,
-    redirectUri: process.env.GOOGLE_REDIRECT_URI || defaultRedirectUri,
+    redirectUri: platformRedirectUri,
     source: 'platform',
   }
 }

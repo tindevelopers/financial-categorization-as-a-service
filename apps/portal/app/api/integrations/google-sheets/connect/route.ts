@@ -61,10 +61,17 @@ export async function GET(request: NextRequest) {
     }
 
     // Deterministic redirect URI: derive from the actual request origin so we never drift by port/env.
+    const requestOriginRaw = request.nextUrl.origin;
+    // #region agent log - Check request origin for whitespace
+    fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'apps/portal/app/api/integrations/google-sheets/connect/route.ts:computedRedirectUri',message:'Request origin before URL construction',data:{requestOriginRaw,requestOriginLength:requestOriginRaw.length,hasTrailingWs:requestOriginRaw[requestOriginRaw.length-1]===' '||requestOriginRaw[requestOriginRaw.length-1]==='\n'},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+    // #endregion
     const computedRedirectUri = new URL(
       "/api/integrations/google-sheets/callback",
-      request.nextUrl.origin
-    ).toString();
+      requestOriginRaw.trim()
+    ).toString().trim();
+    // #region agent log - Check computed redirect URI after URL construction
+    fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'apps/portal/app/api/integrations/google-sheets/connect/route.ts:computedRedirectUri:after',message:'Computed redirect URI after URL construction',data:{computedRedirectUri,computedRedirectUriLength:computedRedirectUri.length,hasTrailingWs:computedRedirectUri[computedRedirectUri.length-1]===' '||computedRedirectUri[computedRedirectUri.length-1]==='\n'},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+    // #endregion
 
     // In development, run a user-visible preflight once per click unless explicitly forced.
     // This avoids repeatedly dumping users onto Google's opaque redirect_uri_mismatch error page.
