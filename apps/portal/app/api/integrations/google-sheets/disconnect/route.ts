@@ -13,6 +13,16 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Get connected account email before disconnecting (for logging and user feedback)
+    const { data: integration } = await supabase
+      .from("user_integrations")
+      .select("provider_email")
+      .eq("user_id", user.id)
+      .eq("provider", "google_sheets")
+      .single();
+
+    const connectedEmail = integration?.provider_email || null;
+
     // Disconnect from both tables for compatibility
     const { error: error1 } = await supabase
       .from("cloud_storage_connections")
@@ -34,7 +44,12 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    return NextResponse.json({ success: true });
+    console.log(`Google Sheets disconnected for user ${user.id}${connectedEmail ? ` (was connected as ${connectedEmail})` : ''}`);
+
+    return NextResponse.json({ 
+      success: true,
+      disconnectedAccount: connectedEmail 
+    });
   } catch (error: any) {
     console.error("Disconnect error:", error);
     return NextResponse.json(

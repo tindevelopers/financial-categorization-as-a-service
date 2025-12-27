@@ -73,8 +73,10 @@ export class VercelCredentialManager {
     }
 
     // Construct redirect URI
+    // Portal app runs on port 3002 by default
+    const defaultPort = process.env.PORT || '3002';
     const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 
-      (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000');
+      (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : `http://localhost:${defaultPort}`);
     const redirectUri = process.env.GOOGLE_SHEETS_REDIRECT_URI || 
       process.env.GOOGLE_REDIRECT_URI || 
       `${baseUrl}/api/integrations/google-sheets/callback`;
@@ -244,11 +246,13 @@ export class VercelCredentialManager {
       if (credentialType === 'corporate') {
         const corporateCreds = await this.getTenantOAuth(tenantId, 'google', 'corporate');
         if (corporateCreds) {
-          const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 
-            (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000');
-          const redirectUri = process.env.GOOGLE_SHEETS_REDIRECT_URI || 
-            process.env.GOOGLE_REDIRECT_URI || 
-            `${baseUrl}/api/integrations/google-sheets/callback`;
+        // Portal app runs on port 3002 by default
+        const defaultPort = process.env.PORT || '3002';
+        const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 
+          (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : `http://localhost:${defaultPort}`);
+        const redirectUri = process.env.GOOGLE_SHEETS_REDIRECT_URI || 
+          process.env.GOOGLE_REDIRECT_URI || 
+          `${baseUrl}/api/integrations/google-sheets/callback`;
 
           return {
             clientId: corporateCreds.clientId,
@@ -261,8 +265,10 @@ export class VercelCredentialManager {
       // Try individual credentials
       const tenantCreds = await this.getTenantOAuth(tenantId, 'google', 'individual');
       if (tenantCreds) {
+        // Portal app runs on port 3002 by default
+        const defaultPort = process.env.PORT || '3002';
         const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 
-          (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000');
+          (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : `http://localhost:${defaultPort}`);
         const redirectUri = process.env.GOOGLE_SHEETS_REDIRECT_URI || 
           process.env.GOOGLE_REDIRECT_URI || 
           `${baseUrl}/api/integrations/google-sheets/callback`;

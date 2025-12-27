@@ -5,6 +5,7 @@ import { google } from "googleapis";
 import { getUserOAuthTokens, createOAuthSheetsClient } from "@/lib/google-sheets/auth-helpers";
 import { detectUserAccountType, getRecommendedAuthMethod } from "@/lib/google-sheets/user-preference";
 import { VercelCredentialManager } from "@/lib/credentials/VercelCredentialManager";
+import { getWorkspaceAdminInfo, createWorkspaceAdminSheetsClient } from "@/lib/google-sheets/workspace-admin";
 
 export async function POST(
   request: NextRequest,
@@ -86,8 +87,12 @@ export async function POST(
     const tenantId = userData?.tenant_id || null;
     
     // Check for Google authentication credentials using credential manager
-    // Priority: Tenant-specific credentials > Platform credentials
+    // Priority: Workspace Admin > Service Account > User OAuth
     const credentialManager = VercelCredentialManager.getInstance();
+    
+    // Check for Workspace Admin account first
+    const workspaceAdminInfo = await getWorkspaceAdminInfo(user.id);
+    const isWorkspaceAdmin = workspaceAdminInfo?.isWorkspaceAdmin || false;
     
     // Option A: Corporate/Company level - Service Account
     const serviceAccountCreds = await credentialManager.getBestGoogleServiceAccount(tenantId || undefined);
@@ -110,6 +115,7 @@ export async function POST(
           console.log("Google Sheets export: Found user OAuth connection (Option B)", {
             usingTenantCredentials: !!tenantOAuthCreds,
             tenantId: tenantId || "none",
+            isWorkspaceAdmin,
           });
         }
       } catch (error: any) {
@@ -238,28 +244,54 @@ export async function POST(
     }
 
     // Initialize Google Sheets API
-    // Priority: Service Account (Option A) > User OAuth (Option B)
+    // Priority: Workspace Admin > Service Account (Option A) > User OAuth (Option B)
     let auth;
-    let authMethod: "service_account" | "oauth" = "service_account";
+    let authMethod: "workspace_admin" | "service_account" | "oauth" = "service_account";
+    let sheets: ReturnType<typeof google.sheets>;
     
     try {
-      if (hasServiceAccount) {
-        // Option A: Use service account (corporate/company-level)
+      // Priority 1: Try Workspace Admin with domain-wide delegation
+      if (isWorkspaceAdmin && hasServiceAccount) {
+        console.log("Google Sheets export: Attempting Workspace Admin with domain-wide delegation", {
+          workspaceDomain: workspaceAdminInfo?.workspaceDomain,
+        });
+        
+        try {
+          const workspaceClient = await createWorkspaceAdminSheetsClient(user.id);
+          if (workspaceClient) {
+            sheets = workspaceClient.sheets;
+            auth = workspaceClient.auth;
+            authMethod = "workspace_admin";
+            console.log("Google Sheets export: Using Workspace Admin account");
+          } else {
+            console.warn("Google Sheets export: Workspace Admin client creation failed, falling back to service account");
+            throw new Error("Workspace admin client creation failed");
+          }
+        } catch (workspaceError: any) {
+          console.warn("Google Sheets export: Workspace Admin failed, falling back:", workspaceError.message);
+          // Fall through to service account
+        }
+      }
+      
+      // Priority 2: Use service account (corporate/company-level)
+      if (!auth && hasServiceAccount) {
         console.log("Google Sheets export: Using service account (Option A)");
         auth = new google.auth.GoogleAuth({
           credentials: {
-            client_email: process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL,
-            private_key: process.env.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY?.replace(/\\n/g, "\n"),
+            client_email: serviceAccountCreds!.email,
+            private_key: serviceAccountCreds!.privateKey.replace(/\\n/g, "\n"),
           },
           scopes: ["https://www.googleapis.com/auth/spreadsheets"],
         });
         authMethod = "service_account";
-      } else if (userOAuthTokens) {
-        // Option B: Use user OAuth tokens (individual-level) via helper module
+        sheets = google.sheets({ version: "v4", auth });
+      } else if (!auth && userOAuthTokens) {
+        // Priority 3: Use user OAuth tokens (individual-level) via helper module
         console.log("Google Sheets export: Using user OAuth (Option B)");
         try {
-          const { auth: oauthAuth } = await createOAuthSheetsClient(user.id);
+          const { auth: oauthAuth, sheets: oauthSheets } = await createOAuthSheetsClient(user.id);
           auth = oauthAuth;
+          sheets = oauthSheets;
           authMethod = "oauth";
         } catch (oauthError: any) {
           // Enhanced error handling with guidance
@@ -313,7 +345,10 @@ export async function POST(
       );
     }
 
-    const sheets = google.sheets({ version: "v4", auth });
+    // Ensure sheets client is initialized (should be set above, but TypeScript needs this)
+    if (!sheets) {
+      sheets = google.sheets({ version: "v4", auth });
+    }
 
     // Check if job already has a spreadsheet_id
     let spreadsheetId: string | null = null;

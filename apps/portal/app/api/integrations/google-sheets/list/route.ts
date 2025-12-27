@@ -21,14 +21,22 @@ export async function GET(request: NextRequest) {
 
     // Check if user has Google Sheets integration
     // Try both tables - user_integrations and cloud_storage_connections
-    const { data: integration } = await supabase
+    console.log("Checking Google Sheets connection for user:", user.id);
+    
+    const { data: integration, error: integrationError } = await supabase
       .from("user_integrations")
       .select("access_token, refresh_token, provider_email, provider, expires_at")
       .eq("user_id", user.id)
       .eq("provider", "google_sheets")
       .single();
 
-    const { data: connection } = await supabase
+    console.log("user_integrations query result:", {
+      hasIntegration: !!integration,
+      error: integrationError?.message || null,
+      providerEmail: integration?.provider_email || null,
+    });
+
+    const { data: connection, error: connectionError } = await supabase
       .from("cloud_storage_connections")
       .select("access_token_encrypted, refresh_token_encrypted, provider, token_expires_at")
       .eq("user_id", user.id)
@@ -36,7 +44,14 @@ export async function GET(request: NextRequest) {
       .eq("is_active", true)
       .single();
 
+    console.log("cloud_storage_connections query result:", {
+      hasConnection: !!connection,
+      error: connectionError?.message || null,
+      isActive: connection?.is_active || false,
+    });
+
     if (!integration && !connection) {
+      console.log("No Google Sheets connection found for user:", user.id);
       return NextResponse.json(
         { 
           error: "Google Sheets not connected",
@@ -207,6 +222,7 @@ export async function GET(request: NextRequest) {
         success: true,
         spreadsheets: spreadsheetsWithTabs,
         count: spreadsheetsWithTabs.length,
+        connectedAccount: integration?.provider_email || null,
       });
     } catch (error: any) {
       console.error("Error listing Google Sheets:", error);
