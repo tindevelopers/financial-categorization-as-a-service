@@ -77,9 +77,9 @@ export class VercelCredentialManager {
     const defaultPort = process.env.PORT || '3002';
     const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 
       (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : `http://localhost:${defaultPort}`);
-    const redirectUri = process.env.GOOGLE_SHEETS_REDIRECT_URI || 
+    const redirectUri = (process.env.GOOGLE_SHEETS_REDIRECT_URI || 
       process.env.GOOGLE_REDIRECT_URI || 
-      `${baseUrl}/api/integrations/google-sheets/callback`;
+      `${baseUrl}/api/integrations/google-sheets/callback`).trim();
 
     const credentials: GoogleOAuthCredentials = {
       clientId,
@@ -250,9 +250,9 @@ export class VercelCredentialManager {
         const defaultPort = process.env.PORT || '3002';
         const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 
           (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : `http://localhost:${defaultPort}`);
-        const redirectUri = process.env.GOOGLE_SHEETS_REDIRECT_URI || 
+        const redirectUri = (process.env.GOOGLE_SHEETS_REDIRECT_URI || 
           process.env.GOOGLE_REDIRECT_URI || 
-          `${baseUrl}/api/integrations/google-sheets/callback`;
+          `${baseUrl}/api/integrations/google-sheets/callback`).trim();
 
           return {
             clientId: corporateCreds.clientId,
@@ -269,9 +269,9 @@ export class VercelCredentialManager {
         const defaultPort = process.env.PORT || '3002';
         const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 
           (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : `http://localhost:${defaultPort}`);
-        const redirectUri = process.env.GOOGLE_SHEETS_REDIRECT_URI || 
+        const redirectUri = (process.env.GOOGLE_SHEETS_REDIRECT_URI || 
           process.env.GOOGLE_REDIRECT_URI || 
-          `${baseUrl}/api/integrations/google-sheets/callback`;
+          `${baseUrl}/api/integrations/google-sheets/callback`).trim();
 
         return {
           clientId: tenantCreds.clientId,

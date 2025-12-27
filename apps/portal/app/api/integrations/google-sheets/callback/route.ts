@@ -136,10 +136,12 @@ export async function GET(request: NextRequest) {
 
     // Use the redirect URI we actually used in the authorize request (stored in cookie),
     // otherwise derive from this request origin (avoids env drift), and only then fall back.
-    const redirectUriForTokenExchange =
+    // Trim any whitespace/newlines that might have been introduced from env vars
+    const redirectUriForTokenExchange = (
       redirectUriCookie ||
       new URL("/api/integrations/google-sheets/callback", request.nextUrl.origin).toString() ||
-      oauthCreds.redirectUri;
+      oauthCreds.redirectUri
+    ).trim();
 
     // Exchange code for tokens using googleapis
     const oauth2Client = new google.auth.OAuth2(
