@@ -167,10 +167,16 @@ export async function GET(request: NextRequest) {
     });
 
     // Exchange code for tokens using googleapis
+    const clientIdForTokenExchange = oauthCreds.clientId?.trim();
+    const clientSecretForTokenExchange = oauthCreds.clientSecret?.trim();
+    const redirectUriForTokenExchangeFinal = redirectUriForTokenExchange.trim();
+    // #region agent log - Check values being sent to Google token exchange
+    fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'apps/portal/app/api/integrations/google-sheets/callback/route.ts:oauth2Client:before',message:'Values being sent to Google token exchange',data:{clientIdForTokenExchange,clientIdLength:clientIdForTokenExchange?.length,clientIdHasTrailingWs:clientIdForTokenExchange?.[clientIdForTokenExchange.length-1]===' '||clientIdForTokenExchange?.[clientIdForTokenExchange.length-1]==='\n',hasClientSecret:!!clientSecretForTokenExchange,clientSecretLength:clientSecretForTokenExchange?.length,redirectUriForTokenExchangeFinal,redirectUriLength:redirectUriForTokenExchangeFinal.length,redirectUriHasTrailingWs:redirectUriForTokenExchangeFinal[redirectUriForTokenExchangeFinal.length-1]===' '||redirectUriForTokenExchangeFinal[redirectUriForTokenExchangeFinal.length-1]==='\n',hasNewlineInMiddle:redirectUriForTokenExchangeFinal.includes('\n')},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'F'})}).catch(()=>{});
+    // #endregion
     const oauth2Client = new google.auth.OAuth2(
-      oauthCreds.clientId?.trim(),
-      oauthCreds.clientSecret?.trim(),
-      redirectUriForTokenExchange
+      clientIdForTokenExchange,
+      clientSecretForTokenExchange,
+      redirectUriForTokenExchangeFinal
     );
 
     let tokens;
