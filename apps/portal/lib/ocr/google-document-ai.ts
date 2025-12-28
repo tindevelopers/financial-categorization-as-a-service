@@ -18,9 +18,10 @@
 // Only used if @google-cloud/documentai is installed
 // Using dynamic import to handle optional dependency
 
-const PROJECT_ID = process.env.GOOGLE_CLOUD_PROJECT_ID;
-const LOCATION = process.env.GOOGLE_CLOUD_LOCATION || "us";
-const PROCESSOR_ID = process.env.GOOGLE_DOCUMENT_AI_PROCESSOR_ID;
+// Trim whitespace/newlines from environment variables
+const PROJECT_ID = process.env.GOOGLE_CLOUD_PROJECT_ID?.trim();
+const LOCATION = (process.env.GOOGLE_CLOUD_LOCATION || "us").trim();
+const PROCESSOR_ID = process.env.GOOGLE_DOCUMENT_AI_PROCESSOR_ID?.trim();
 
 export interface InvoiceData {
   vendor_name?: string;

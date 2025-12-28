@@ -454,11 +454,16 @@ async function categorizeInvoiceTransactions(
     let subcategory: string | undefined;
     let confidenceScore = 0.5;
 
+    // Skip if transaction doesn't have a description
+    if (!tx.original_description) {
+      continue;
+    }
+
     // Check user mappings first
     if (mappings && mappings.length > 0) {
       for (const mapping of mappings) {
-        const pattern = mapping.pattern.toLowerCase();
-        const description = tx.original_description.toLowerCase();
+        const pattern = (mapping.pattern || "").toLowerCase();
+        const description = (tx.original_description || "").toLowerCase();
         
         if (description.includes(pattern)) {
           category = mapping.category;
@@ -471,7 +476,7 @@ async function categorizeInvoiceTransactions(
 
     // If no mapping found, use basic keyword matching
     if (!category) {
-      const desc = tx.original_description.toLowerCase();
+      const desc = (tx.original_description || "").toLowerCase();
       
       if (desc.includes("office") || desc.includes("supplies")) {
         category = "Office Supplies";
