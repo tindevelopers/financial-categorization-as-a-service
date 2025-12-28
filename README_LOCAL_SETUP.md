@@ -80,6 +80,37 @@ Get these values by running:
 supabase status
 ```
 
+### Google Document AI (OCR) Configuration
+
+For receipt and invoice OCR processing, you need to configure Google Document AI:
+
+```env
+# Required for OCR
+GOOGLE_CLOUD_PROJECT_ID=your-gcp-project-id
+GOOGLE_DOCUMENT_AI_PROCESSOR_ID=your-processor-id
+GOOGLE_CLOUD_LOCATION=us
+
+# For local development - path to service account JSON file
+GOOGLE_APPLICATION_CREDENTIALS=/path/to/service-account.json
+
+# For Vercel/serverless - base64 encoded service account JSON
+GOOGLE_APPLICATION_CREDENTIALS_JSON=<base64-encoded-service-account-json>
+```
+
+**Setting up Google Document AI:**
+
+1. Create a Google Cloud project and enable the Document AI API
+2. Create a Document AI processor (Form Parser or Invoice Parser)
+3. Create a service account with Document AI User role
+4. Download the service account key JSON file
+5. For local development: set `GOOGLE_APPLICATION_CREDENTIALS` to the file path
+6. For Vercel: base64 encode the JSON file and set `GOOGLE_APPLICATION_CREDENTIALS_JSON`:
+   ```bash
+   base64 -i service-account.json | tr -d '\n'
+   ```
+
+**Note:** If OCR is not configured, receipt uploads will still work but will create placeholder transactions that require manual entry.
+
 ## Troubleshooting
 
 ### Supabase won't start

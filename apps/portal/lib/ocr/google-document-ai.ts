@@ -40,6 +40,10 @@ export interface InvoiceData {
   confidence_score?: number;
   fee_amount?: number;
   shipping_amount?: number;
+  // OCR status flags
+  ocr_configured?: boolean;
+  ocr_failed?: boolean;
+  ocr_error?: string;
 }
 
 /**
@@ -56,7 +60,10 @@ export function verifyOCRSource(): {
 } {
   const hasProjectId = !!PROJECT_ID;
   const hasProcessorId = !!PROCESSOR_ID;
-  const hasCredentials = !!process.env.GOOGLE_APPLICATION_CREDENTIALS;
+  const hasCredentials = !!(
+    process.env.GOOGLE_APPLICATION_CREDENTIALS ||
+    process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON
+  );
   
   const configured = hasProjectId && hasProcessorId && hasCredentials;
   
@@ -94,10 +101,13 @@ export async function processInvoiceOCR(
     // #region agent log
     fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'google-document-ai.ts:90',message:'OCR not configured, returning empty',data:{filename,error:verification.error},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H3'})}).catch(()=>{});
     // #endregion
-    // Return basic structure if Document AI not configured
+    // Return basic structure with ocr_configured flag if Document AI not configured
     return {
       extracted_text: "",
       confidence_score: 0,
+      ocr_configured: false,
+      ocr_failed: true,
+      ocr_error: verification.error,
     };
   }
 
@@ -105,9 +115,23 @@ export async function processInvoiceOCR(
   try {
     // @ts-ignore - Optional dependency, may not be installed
     const { DocumentProcessorServiceClient } = await import("@google-cloud/documentai");
-    const client = new DocumentProcessorServiceClient({
-      keyFilename: process.env.GOOGLE_APPLICATION_CREDENTIALS,
-    });
+    
+    // Check for JSON credentials (base64 encoded) first (for Vercel/serverless)
+    const credentialsJson = process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON;
+    const credentialsPath = process.env.GOOGLE_APPLICATION_CREDENTIALS;
+    
+    // Use JSON credentials if available (for Vercel/serverless), otherwise use file path
+    const clientOptions = credentialsJson
+      ? {
+          credentials: JSON.parse(
+            Buffer.from(credentialsJson, "base64").toString("utf-8")
+          ),
+        }
+      : {
+          keyFilename: credentialsPath,
+        };
+    
+    const client = new DocumentProcessorServiceClient(clientOptions);
     
     console.log("[DocumentAI] Processing invoice with Google Document AI", {
       projectId: PROJECT_ID,
@@ -145,13 +169,20 @@ export async function processInvoiceOCR(
     // Parse invoice data
     const invoiceData = parseInvoiceData(document);
 
+    // Mark as successfully processed
+    invoiceData.ocr_configured = true;
+    invoiceData.ocr_failed = false;
+
     return invoiceData;
   } catch (error: any) {
-    // SDK not available or error - return basic structure
+    // SDK not available or error - return basic structure with error info
     console.log("[DocumentAI] SDK not available or error:", error?.message || "Unknown error");
     return {
       extracted_text: "",
       confidence_score: 0,
+      ocr_configured: true, // Was configured but failed
+      ocr_failed: true,
+      ocr_error: error?.message || "OCR processing failed",
     };
   }
 }

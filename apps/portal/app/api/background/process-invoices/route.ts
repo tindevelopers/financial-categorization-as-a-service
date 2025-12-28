@@ -166,11 +166,25 @@ async function processInvoicesBatch(
       }
     }
 
+    // Check if any documents need manual review (OCR failed or no data extracted)
+    const { data: docsNeedingReview } = await supabase
+      .from("financial_documents")
+      .select("id")
+      .eq("job_id", jobId)
+      .eq("ocr_status", "needs_manual_review");
+    
+    const needsManualReviewCount = docsNeedingReview?.length || 0;
+
     // Mark job as complete
     const finalStatus = failedCount === documents.length ? "failed" : "reviewing";
-    const finalMessage = failedCount === documents.length 
+    let finalMessage = failedCount === documents.length 
       ? "Processing failed for all invoices"
       : `Processing complete. ${processedCount} invoice${processedCount !== 1 ? "s" : ""} ready for review.`;
+    
+    // Add note about manual review needed
+    if (needsManualReviewCount > 0 && finalStatus !== "failed") {
+      finalMessage += ` (${needsManualReviewCount} need${needsManualReviewCount === 1 ? "s" : ""} manual entry)`;
+    }
     
     if (finalStatus === "failed") {
       const errorResponse = createJobErrorResponse("PROCESSING_FAILED", "All invoices failed to process");
@@ -195,7 +209,7 @@ async function processInvoicesBatch(
         .eq("id", jobId);
     }
 
-    console.log(`Job ${jobId} completed: ${processedCount} processed, ${failedCount} failed`);
+    console.log(`Job ${jobId} completed: ${processedCount} processed, ${failedCount} failed, ${needsManualReviewCount} need manual review`);
   } catch (error: any) {
     console.error(`Error processing batch for job ${jobId}:`, error);
     const errorCode = mapErrorToCode(error);
@@ -249,6 +263,13 @@ async function processSingleInvoice(
     const { verifyOCRSource } = await import("@/lib/ocr/google-document-ai");
     const ocrVerification = verifyOCRSource();
 
+    // Determine OCR status based on result
+    // If OCR failed or returned no usable data, mark as needs_manual_review
+    const hasUsableData = !!(invoiceData.total || (invoiceData.line_items && invoiceData.line_items.length > 0));
+    const ocrStatus = invoiceData.ocr_failed 
+      ? "needs_manual_review" 
+      : (hasUsableData ? "completed" : "needs_manual_review");
+
     // Update document with extracted data in financial_documents table
     await supabase
       .from("financial_documents")
@@ -260,8 +281,9 @@ async function processSingleInvoice(
         currency: invoiceData.currency || "USD",
         extracted_text: invoiceData.extracted_text || null,
         ocr_confidence_score: invoiceData.confidence_score || 0.5,
-        ocr_status: "completed",
+        ocr_status: ocrStatus,
         ocr_provider: ocrVerification.provider,
+        ocr_error: invoiceData.ocr_error || null,
         // Store line items and breakdown
         subtotal_amount: invoiceData.subtotal || null,
         tax_amount: invoiceData.tax || null,
@@ -274,12 +296,14 @@ async function processSingleInvoice(
           total: invoiceData.total,
           fee_amount: invoiceData.fee_amount,
           shipping_amount: invoiceData.shipping_amount,
+          ocr_failed: invoiceData.ocr_failed,
+          ocr_configured: invoiceData.ocr_configured,
         },
       })
       .eq("id", doc.id);
 
-    // Convert invoice to transactions
-    const transactions = await invoiceToTransactions(invoiceData, jobId, supabase);
+    // Convert invoice to transactions (pass filename for fallback placeholder)
+    const transactions = await invoiceToTransactions(invoiceData, jobId, supabase, doc.original_filename);
     // #region agent log
     fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'process-invoices/route.ts:250',message:'Transactions created from invoice',data:{docId:doc.id,jobId,transactionsCount:transactions.length,transactionJobIds:transactions.map(t=>t.job_id)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H1,H2'})}).catch(()=>{});
     // #endregion
@@ -334,7 +358,8 @@ async function processSingleInvoice(
 async function invoiceToTransactions(
   invoiceData: any, 
   jobId: string,
-  supabase: any
+  supabase: any,
+  documentFilename?: string
 ): Promise<any[]> {
   // Get bank_account_id from job
   const { data: jobData } = await supabase
@@ -345,7 +370,7 @@ async function invoiceToTransactions(
 
   const bankAccountId = jobData?.bank_account_id || null;
   // #region agent log
-  fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'process-invoices/route.ts:305',message:'invoiceToTransactions called',data:{jobId,bankAccountId:bankAccountId?.substring(0,8)+'...',hasTotal:!!invoiceData.total,total:invoiceData.total,hasLineItems:!!invoiceData.line_items,lineItemsCount:invoiceData.line_items?.length||0},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H1'})}).catch(()=>{});
+  fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'process-invoices/route.ts:305',message:'invoiceToTransactions called',data:{jobId,bankAccountId:bankAccountId?.substring(0,8)+'...',hasTotal:!!invoiceData.total,total:invoiceData.total,hasLineItems:!!invoiceData.line_items,lineItemsCount:invoiceData.line_items?.length||0,ocrFailed:invoiceData.ocr_failed,ocrConfigured:invoiceData.ocr_configured},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H1'})}).catch(()=>{});
   // #endregion
   const transactions: any[] = [];
 
@@ -377,6 +402,32 @@ async function invoiceToTransactions(
           user_confirmed: false,
           bank_account_id: bankAccountId,
         });
+  }
+
+  // FALLBACK: If no transactions were created (OCR failed or returned no data),
+  // create a placeholder transaction for manual review
+  if (transactions.length === 0) {
+    const displayName = documentFilename 
+      ? documentFilename.replace(/^\d+-/, '').replace(/\.[^/.]+$/, '') // Remove timestamp prefix and extension
+      : "Uploaded receipt";
+    
+    const ocrStatus = invoiceData.ocr_failed 
+      ? (invoiceData.ocr_configured ? "OCR processing failed" : "OCR not configured")
+      : "No data extracted";
+
+    console.log(`[invoiceToTransactions] Creating placeholder transaction: ${ocrStatus}`);
+    
+    transactions.push({
+      job_id: jobId,
+      original_description: `${displayName} - needs manual review (${ocrStatus})`,
+      amount: 0, // User must enter manually
+      date: new Date().toISOString().split("T")[0],
+      category: "Uncategorized",
+      subcategory: null,
+      confidence_score: 0,
+      user_confirmed: false,
+      bank_account_id: bankAccountId,
+    });
   }
 
   return transactions;
