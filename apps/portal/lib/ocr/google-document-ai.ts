@@ -546,7 +546,7 @@ function parseInvoiceData(document: any): InvoiceData {
       
       // Scan text for all amount patterns
       for (const { pattern, type, priority } of amountPatterns) {
-        const matches = Array.from(text.matchAll(pattern));
+        const matches = Array.from(text.matchAll(pattern)) as RegExpMatchArray[];
         for (const match of matches) {
           const amountStr = match[1]?.trim();
           if (amountStr) {
@@ -609,7 +609,7 @@ function parseInvoiceData(document: any): InvoiceData {
       const amountRegex = /([£$€]?\s*\d{1,3}(?:[,\s]\d{3})*(?:[.,]\d{2})?)\s*[£$€]?/g;
       const allAmounts: Array<{ amount: number; context: string; position: number }> = [];
       
-      let match;
+      let match: RegExpExecArray | null;
       while ((match = amountRegex.exec(text)) !== null) {
         const amountStr = match[1]?.trim();
         if (amountStr) {
