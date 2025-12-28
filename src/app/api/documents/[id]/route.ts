@@ -188,8 +188,12 @@ export async function PATCH(
     // Build update object with allowed fields
     const updates: Record<string, unknown> = {};
 
+    // Basic document fields
     if (body.description !== undefined) {
       updates.description = body.description;
+    }
+    if (body.notes !== undefined) {
+      updates.notes = body.notes;
     }
     if (body.category !== undefined) {
       updates.category = body.category;
@@ -197,15 +201,77 @@ export async function PATCH(
     if (body.tags !== undefined && Array.isArray(body.tags)) {
       updates.tags = body.tags;
     }
+    if (body.file_type !== undefined) {
+      const validTypes = ["bank_statement", "receipt", "invoice", "tax_document", "other"];
+      if (!validTypes.includes(body.file_type)) {
+        return NextResponse.json(
+          { error: `Invalid file type. Must be one of: ${validTypes.join(", ")}` },
+          { status: 400 }
+        );
+      }
+      updates.file_type = body.file_type;
+    }
+
+    // Invoice identification fields
+    if (body.invoice_number !== undefined) {
+      updates.invoice_number = body.invoice_number;
+    }
+    if (body.po_number !== undefined) {
+      updates.po_number = body.po_number;
+    }
+    if (body.order_number !== undefined) {
+      updates.order_number = body.order_number;
+    }
+
+    // Date fields
     if (body.document_date !== undefined) {
       updates.document_date = body.document_date;
     }
+    if (body.delivery_date !== undefined) {
+      updates.delivery_date = body.delivery_date;
+    }
+    if (body.paid_date !== undefined) {
+      updates.paid_date = body.paid_date;
+    }
+
+    // Vendor/supplier fields
     if (body.vendor_name !== undefined) {
       updates.vendor_name = body.vendor_name;
     }
+
+    // Financial fields
+    if (body.subtotal_amount !== undefined) {
+      updates.subtotal_amount = body.subtotal_amount;
+    }
+    if (body.tax_amount !== undefined) {
+      updates.tax_amount = body.tax_amount;
+    }
+    if (body.fee_amount !== undefined) {
+      updates.fee_amount = body.fee_amount;
+    }
+    if (body.shipping_amount !== undefined) {
+      updates.shipping_amount = body.shipping_amount;
+    }
     if (body.total_amount !== undefined) {
       updates.total_amount = body.total_amount;
+      // Recalculate net_amount if total and tax are both provided
+      if (body.tax_amount !== undefined) {
+        updates.net_amount = body.total_amount - (body.tax_amount || 0);
+      }
     }
+    if (body.currency !== undefined) {
+      updates.currency = body.currency;
+    }
+
+    // Line items and payment
+    if (body.line_items !== undefined && Array.isArray(body.line_items)) {
+      updates.line_items = body.line_items;
+    }
+    if (body.payment_method !== undefined) {
+      updates.payment_method = body.payment_method;
+    }
+
+    // Entity relationship
     if (body.entity_id !== undefined) {
       // Verify entity exists and user has access
       if (body.entity_id) {
@@ -226,16 +292,6 @@ export async function PATCH(
     }
     if (body.is_verified !== undefined) {
       updates.is_verified = body.is_verified;
-    }
-    if (body.file_type !== undefined) {
-      const validTypes = ["bank_statement", "receipt", "invoice", "tax_document", "other"];
-      if (!validTypes.includes(body.file_type)) {
-        return NextResponse.json(
-          { error: `Invalid file type. Must be one of: ${validTypes.join(", ")}` },
-          { status: 400 }
-        );
-      }
-      updates.file_type = body.file_type;
     }
 
     if (Object.keys(updates).length === 0) {

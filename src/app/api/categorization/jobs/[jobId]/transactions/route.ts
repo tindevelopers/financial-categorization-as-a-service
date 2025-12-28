@@ -34,7 +34,7 @@ export async function GET(
       );
     }
 
-    // Get transactions with document and supplier information
+    // Get transactions with complete document information
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { data: transactions, error: transactionsError } = await (supabase as any)
       .from("categorized_transactions")
@@ -48,11 +48,25 @@ export async function GET(
           mime_type,
           vendor_name,
           invoice_number,
+          po_number,
+          order_number,
           document_date,
+          delivery_date,
+          paid_date,
           total_amount,
           tax_amount,
           subtotal_amount,
-          currency
+          fee_amount,
+          shipping_amount,
+          currency,
+          line_items,
+          payment_method,
+          extracted_data,
+          ocr_field_confidence,
+          ocr_extraction_methods,
+          ocr_needs_review,
+          ocr_confidence_score,
+          notes
         )
       `)
       .eq("job_id", jobId)
@@ -65,9 +79,19 @@ export async function GET(
       );
     }
 
+    // Map database column names to component-friendly names
+    const mappedTransactions = (transactions || []).map((tx: any) => {
+      if (tx.document) {
+        tx.document.field_confidence = tx.document.ocr_field_confidence;
+        tx.document.extraction_methods = tx.document.ocr_extraction_methods;
+        tx.document.needs_review = tx.document.ocr_needs_review;
+      }
+      return tx;
+    });
+
     return NextResponse.json({
       success: true,
-      transactions: transactions || [],
+      transactions: mappedTransactions,
     });
   } catch (error: unknown) {
     console.error("Error:", error);

@@ -133,17 +133,21 @@ export async function POST(request: NextRequest) {
         updateData.currency = invoiceData.currency;
       }
 
-      // Store additional metadata
+      // Store additional metadata (map to database column names)
       if (invoiceData.field_confidence) {
-        updateData.field_confidence = invoiceData.field_confidence;
+        updateData.ocr_field_confidence = invoiceData.field_confidence;
       }
 
       if (invoiceData.extraction_methods) {
-        updateData.extraction_methods = invoiceData.extraction_methods;
+        updateData.ocr_extraction_methods = invoiceData.extraction_methods;
       }
 
       if (invoiceData.needs_review !== undefined) {
-        updateData.needs_review = invoiceData.needs_review;
+        updateData.ocr_needs_review = invoiceData.needs_review;
+      }
+
+      if (invoiceData.shipping_amount !== undefined) {
+        updateData.shipping_amount = invoiceData.shipping_amount;
       }
 
       // Calculate net amount if not provided

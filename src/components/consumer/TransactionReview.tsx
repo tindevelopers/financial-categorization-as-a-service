@@ -1,14 +1,14 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { 
-  CheckCircleIcon, 
-  ArrowDownTrayIcon,
-  PencilIcon,
-  EyeIcon,
-  XMarkIcon,
-} from "@heroicons/react/24/outline";
-import InvoiceReview from "@/components/invoice/InvoiceReview";
+import { ArrowDownTrayIcon } from "@heroicons/react/24/outline";
+import ViewSwitcher, {
+  getStoredViewPreference,
+  type ViewType,
+} from "@/components/invoice/ViewSwitcher";
+import InvoiceCardView from "@/components/invoice/InvoiceCardView";
+import InvoiceSplitView from "@/components/invoice/InvoiceSplitView";
+import InvoiceTableView from "@/components/invoice/InvoiceTableView";
 
 interface Document {
   id: string;
@@ -18,11 +18,27 @@ interface Document {
   mime_type: string | null;
   vendor_name?: string | null;
   invoice_number?: string | null;
+  po_number?: string | null;
+  order_number?: string | null;
   document_date?: string | null;
+  delivery_date?: string | null;
+  paid_date?: string | null;
   total_amount?: number | null;
   tax_amount?: number | null;
   subtotal_amount?: number | null;
+  fee_amount?: number | null;
+  shipping_amount?: number | null;
   currency?: string | null;
+  line_items?: Array<{
+    description: string;
+    quantity?: number;
+    unit_price?: number;
+    total: number;
+  }> | null;
+  payment_method?: string | null;
+  notes?: string | null;
+  field_confidence?: Record<string, number> | null;
+  extraction_methods?: Record<string, string> | null;
 }
 
 interface Transaction {
@@ -48,12 +64,10 @@ export default function TransactionReview({ jobId }: TransactionReviewProps) {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [editCategory, setEditCategory] = useState("");
-  const [editSubcategory, setEditSubcategory] = useState("");
   const [exporting, setExporting] = useState(false);
-  const [viewingInvoiceId, setViewingInvoiceId] = useState<string | null>(null);
-  const [invoiceDocumentUrl, setInvoiceDocumentUrl] = useState<string | null>(null);
+  const [currentView, setCurrentView] = useState<ViewType>(getStoredViewPreference());
+  const [documentUrls, setDocumentUrls] = useState<Record<string, string>>({});
+  const [loadingUrls, setLoadingUrls] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     loadTransactions();
@@ -66,6 +80,47 @@ export default function TransactionReview({ jobId }: TransactionReviewProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [jobId]);
 
+  useEffect(() => {
+    // Load document URLs for all transactions with documents
+    const loadDocumentUrls = async () => {
+      const transactionsWithDocs = transactions.filter(
+        (tx) => tx.document_id && !documentUrls[tx.document_id]
+      );
+
+      if (transactionsWithDocs.length === 0) return;
+
+      const newUrls: Record<string, string> = {};
+      const newLoadingUrls = new Set(loadingUrls);
+
+      for (const tx of transactionsWithDocs) {
+        if (!tx.document_id || documentUrls[tx.document_id]) continue;
+
+        newLoadingUrls.add(tx.document_id);
+        try {
+          const response = await fetch(`/api/documents/${tx.document_id}/download`, {
+            credentials: "include",
+          });
+          if (response.ok) {
+            const data = await response.json();
+            if (data.downloadUrl) {
+              newUrls[tx.document_id] = data.downloadUrl;
+            }
+          }
+        } catch (err) {
+          console.error(`Error loading document URL for ${tx.document_id}:`, err);
+        } finally {
+          newLoadingUrls.delete(tx.document_id);
+        }
+      }
+
+      setDocumentUrls((prev) => ({ ...prev, ...newUrls }));
+      setLoadingUrls(newLoadingUrls);
+    };
+
+    loadDocumentUrls();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [transactions]);
+
   const loadTransactions = async () => {
     try {
       const response = await fetch(`/api/categorization/jobs/${jobId}/transactions`);
@@ -74,7 +129,7 @@ export default function TransactionReview({ jobId }: TransactionReviewProps) {
       }
       const data = await response.json();
       const newTransactions = data.transactions || [];
-      
+
       // Only update if we have transactions or if we're still loading
       if (newTransactions.length > 0 || loading) {
         setTransactions(newTransactions);
@@ -87,10 +142,11 @@ export default function TransactionReview({ jobId }: TransactionReviewProps) {
     }
   };
 
-  const handleConfirm = async (id: string) => {
+  const handleConfirm = async (transactionId: string) => {
     try {
-      const response = await fetch(`/api/categorization/transactions/${id}/confirm`, {
+      const response = await fetch(`/api/categorization/transactions/${transactionId}/confirm`, {
         method: "POST",
+        credentials: "include",
       });
       if (!response.ok) throw new Error("Failed to confirm");
       await loadTransactions();
@@ -99,72 +155,61 @@ export default function TransactionReview({ jobId }: TransactionReviewProps) {
     }
   };
 
-  const handleUpdateCategory = async (id: string) => {
+  const handleEdit = async (transactionId: string, updates: Partial<Document>) => {
+    const transaction = transactions.find((tx) => tx.id === transactionId);
+    if (!transaction?.document_id) {
+      throw new Error("Transaction or document not found");
+    }
+
     try {
-      const response = await fetch(`/api/categorization/transactions/${id}`, {
+      const response = await fetch(`/api/documents/${transaction.document_id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          category: editCategory,
-          subcategory: editSubcategory || null,
-        }),
+        credentials: "include",
+        body: JSON.stringify(updates),
       });
-      if (!response.ok) throw new Error("Failed to update");
-      setEditingId(null);
-      await loadTransactions();
-    } catch (err: any) {
-      setError(err.message);
-    }
-  };
 
-  const handleViewInvoice = async (documentId: string) => {
-    try {
-      const response = await fetch(`/api/documents/${documentId}/download`, {
-        credentials: 'include',
-      });
-      if (response.ok) {
-        const data = await response.json();
-        setInvoiceDocumentUrl(data.downloadUrl);
-        setViewingInvoiceId(documentId);
-      } else {
-        alert("Failed to load invoice document");
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || "Failed to update invoice");
       }
-    } catch (err) {
-      console.error("Error loading invoice:", err);
-      alert("Failed to load invoice document");
-    }
-  };
 
-  const handleConfirmInvoice = async (invoiceData: any) => {
-    // This will trigger commit and reconciliation
-    // For now, just close the modal - the actual commit logic should be handled by the parent
-    setViewingInvoiceId(null);
-    setInvoiceDocumentUrl(null);
-    await loadTransactions();
-  };
-
-  const handleEditInvoice = async (invoiceData: any) => {
-    // Update the document with edited fields
-    if (!viewingInvoiceId) return;
-    
-    try {
-      const response = await fetch(`/api/documents/${viewingInvoiceId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          invoice_number: invoiceData.invoice_number,
-          vendor_name: invoiceData.vendor_name,
-          document_date: invoiceData.document_date,
-          total_amount: invoiceData.total_amount,
-          tax_amount: invoiceData.tax_amount,
-          subtotal_amount: invoiceData.subtotal_amount,
-          currency: invoiceData.currency,
-        }),
-      });
-      if (!response.ok) throw new Error("Failed to update invoice");
       await loadTransactions();
     } catch (err: any) {
       throw new Error(err.message || "Failed to update invoice");
+    }
+  };
+
+  const handleDelete = async (transactionId: string, documentId: string) => {
+    try {
+      // Delete the document (this will cascade to transaction)
+      const response = await fetch(`/api/documents/${documentId}`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || "Failed to delete invoice");
+      }
+
+      // Remove from document URLs cache
+      setDocumentUrls((prev) => {
+        const newUrls = { ...prev };
+        delete newUrls[documentId];
+        return newUrls;
+      });
+
+      await loadTransactions();
+    } catch (err: any) {
+      throw new Error(err.message || "Failed to delete invoice");
+    }
+  };
+
+  const handleViewDocument = (documentId: string) => {
+    const url = documentUrls[documentId];
+    if (url) {
+      window.open(url, "_blank");
     }
   };
 
@@ -180,9 +225,9 @@ export default function TransactionReview({ jobId }: TransactionReviewProps) {
       // Check if response is CSV (fallback when Google Sheets API not configured)
       if (contentType.includes("text/csv") || contentType.includes("application/csv")) {
         const csvData = await response.text();
-        const blob = new Blob([csvData], { type: 'text/csv' });
+        const blob = new Blob([csvData], { type: "text/csv" });
         const url = window.URL.createObjectURL(blob);
-        const a = document.createElement('a');
+        const a = document.createElement("a");
         a.href = url;
         a.download = `transactions-${jobId}.csv`;
         document.body.appendChild(a);
@@ -194,23 +239,20 @@ export default function TransactionReview({ jobId }: TransactionReviewProps) {
       }
 
       if (!response.ok) {
-        // Try to parse as JSON for error message
         try {
           const error = await response.json();
           throw new Error(error.error || error.message || "Export failed");
         } catch (jsonError) {
-          // If JSON parsing fails, use status text
           throw new Error(`Export failed: ${response.statusText || response.status}`);
         }
       }
-      
+
       const data = await response.json();
-      
+
       if (data.sheetUrl) {
         window.open(data.sheetUrl, "_blank");
         alert("Google Sheet created successfully! Opening in new tab...");
       } else if (data.csvAvailable) {
-        // Server indicates CSV is available but not configured
         alert("Google Sheets export requires additional configuration. Please contact support.");
       }
     } catch (err: any) {
@@ -226,7 +268,9 @@ export default function TransactionReview({ jobId }: TransactionReviewProps) {
       <div className="flex flex-col items-center justify-center py-12">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mb-4"></div>
         <p className="text-gray-600 dark:text-gray-400">Processing your transactions...</p>
-        <p className="text-sm text-gray-500 dark:text-gray-500 mt-2">This may take a few moments</p>
+        <p className="text-sm text-gray-500 dark:text-gray-500 mt-2">
+          This may take a few moments
+        </p>
       </div>
     );
   }
@@ -235,8 +279,11 @@ export default function TransactionReview({ jobId }: TransactionReviewProps) {
     return (
       <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4">
         <p className="text-red-800 dark:text-red-200">{error}</p>
-        <button 
-          onClick={() => { setError(null); loadTransactions(); }}
+        <button
+          onClick={() => {
+            setError(null);
+            loadTransactions();
+          }}
           className="mt-2 text-sm text-red-600 hover:text-red-800 underline"
         >
           Try again
@@ -249,14 +296,40 @@ export default function TransactionReview({ jobId }: TransactionReviewProps) {
     return (
       <div className="flex flex-col items-center justify-center py-12">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mb-4"></div>
-        <p className="text-gray-600 dark:text-gray-400">Waiting for transactions to be processed...</p>
-        <p className="text-sm text-gray-500 dark:text-gray-500 mt-2">The AI is categorizing your transactions</p>
+        <p className="text-gray-600 dark:text-gray-400">
+          Waiting for transactions to be processed...
+        </p>
+        <p className="text-sm text-gray-500 dark:text-gray-500 mt-2">
+          The AI is categorizing your transactions
+        </p>
       </div>
     );
   }
 
-  const confirmedCount = transactions.filter(t => t.user_confirmed).length;
+  const confirmedCount = transactions.filter((t) => t.user_confirmed).length;
   const totalAmount = transactions.reduce((sum, t) => sum + Math.abs(t.amount), 0);
+
+  const renderView = () => {
+    const commonProps = {
+      transactions,
+      documentUrls,
+      onEdit: handleEdit,
+      onDelete: handleDelete,
+      onConfirm: handleConfirm,
+      onViewDocument: handleViewDocument,
+    };
+
+    switch (currentView) {
+      case "card":
+        return <InvoiceCardView {...commonProps} />;
+      case "split":
+        return <InvoiceSplitView {...commonProps} />;
+      case "table":
+        return <InvoiceTableView {...commonProps} />;
+      default:
+        return <InvoiceTableView {...commonProps} />;
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -284,8 +357,9 @@ export default function TransactionReview({ jobId }: TransactionReviewProps) {
         </div>
       </div>
 
-      {/* Export Button */}
-      <div className="flex justify-end">
+      {/* View Switcher and Export */}
+      <div className="flex items-center justify-between flex-wrap gap-4">
+        <ViewSwitcher currentView={currentView} onViewChange={setCurrentView} />
         <button
           onClick={handleExportToGoogleSheets}
           disabled={exporting || transactions.length === 0}
@@ -296,198 +370,8 @@ export default function TransactionReview({ jobId }: TransactionReviewProps) {
         </button>
       </div>
 
-      {/* Transactions Table */}
-      <div className="bg-white dark:bg-gray-800 rounded-lg shadow overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-            <thead className="bg-gray-50 dark:bg-gray-900">
-              <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                  Date
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                  Invoice #
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                  Supplier
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                  Description
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                  Amount
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                  VAT
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                  Category
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                  Confidence
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                  Actions
-                </th>
-              </tr>
-            </thead>
-            <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
-              {transactions.map((tx) => (
-                <tr
-                  key={tx.id}
-                  className={tx.user_confirmed ? "bg-green-50 dark:bg-green-900/20" : ""}
-                >
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
-                    {new Date(tx.date).toLocaleDateString()}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
-                    {tx.invoice_number || tx.document?.invoice_number || "-"}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
-                    {tx.document?.vendor_name || "-"}
-                  </td>
-                  <td className="px-6 py-4 text-sm text-gray-900 dark:text-white max-w-xs truncate">
-                    {tx.original_description}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-white">
-                    ${Math.abs(tx.amount).toFixed(2)}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
-                    {tx.document?.tax_amount !== undefined && tx.document?.tax_amount !== null
-                      ? `${tx.document.currency || "USD"} ${tx.document.tax_amount.toFixed(2)}`
-                      : "-"}
-                  </td>
-                  <td className="px-6 py-4 text-sm text-gray-900 dark:text-white">
-                    {editingId === tx.id ? (
-                      <div className="space-y-2">
-                        <input
-                          type="text"
-                          value={editCategory}
-                          onChange={(e) => setEditCategory(e.target.value)}
-                          placeholder="Category"
-                          className="w-full px-2 py-1 border rounded text-sm dark:bg-gray-700 dark:border-gray-600"
-                        />
-                        <input
-                          type="text"
-                          value={editSubcategory}
-                          onChange={(e) => setEditSubcategory(e.target.value)}
-                          placeholder="Subcategory (optional)"
-                          className="w-full px-2 py-1 border rounded text-sm dark:bg-gray-700 dark:border-gray-600"
-                        />
-                        <div className="flex gap-2">
-                          <button
-                            onClick={() => handleUpdateCategory(tx.id)}
-                            className="text-xs px-2 py-1 bg-blue-600 text-white rounded hover:bg-blue-700"
-                          >
-                            Save
-                          </button>
-                          <button
-                            onClick={() => {
-                              setEditingId(null);
-                              setEditCategory("");
-                              setEditSubcategory("");
-                            }}
-                            className="text-xs px-2 py-1 bg-gray-300 text-gray-700 rounded hover:bg-gray-400 dark:bg-gray-600 dark:text-gray-200"
-                          >
-                            Cancel
-                          </button>
-                        </div>
-                      </div>
-                    ) : (
-                      <div>
-                        <div className="font-medium">{tx.category || "Uncategorized"}</div>
-                        {tx.subcategory && (
-                          <div className="text-xs text-gray-500 dark:text-gray-400">
-                            {tx.subcategory}
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="flex items-center">
-                      <div
-                        className={`h-2 w-16 rounded-full ${
-                          tx.confidence_score >= 0.7
-                            ? "bg-green-500"
-                            : tx.confidence_score >= 0.5
-                            ? "bg-yellow-500"
-                            : "bg-red-500"
-                        }`}
-                      />
-                      <span className="ml-2 text-xs text-gray-500 dark:text-gray-400">
-                        {Math.round(tx.confidence_score * 100)}%
-                      </span>
-                    </div>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                    <div className="flex items-center gap-2">
-                      {tx.document_id && (
-                        <button
-                          onClick={() => handleViewInvoice(tx.document_id!)}
-                          className="text-blue-600 hover:text-blue-900 dark:text-blue-400 dark:hover:text-blue-300"
-                          title="View invoice"
-                        >
-                          <EyeIcon className="h-4 w-4" />
-                        </button>
-                      )}
-                      {!tx.user_confirmed && (
-                        <>
-                          <button
-                            onClick={() => {
-                              setEditingId(tx.id);
-                              setEditCategory(tx.category || "");
-                              setEditSubcategory(tx.subcategory || "");
-                            }}
-                            className="text-blue-600 hover:text-blue-900 dark:text-blue-400 dark:hover:text-blue-300"
-                            title="Edit category"
-                          >
-                            <PencilIcon className="h-4 w-4" />
-                          </button>
-                          <button
-                            onClick={() => handleConfirm(tx.id)}
-                            className="text-green-600 hover:text-green-900 dark:text-green-400 dark:hover:text-green-300"
-                            title="Confirm"
-                          >
-                            <CheckCircleIcon className="h-5 w-5" />
-                          </button>
-                        </>
-                      )}
-                      {tx.user_confirmed && (
-                        <CheckCircleIcon className="h-5 w-5 text-green-500" />
-                      )}
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {/* Invoice Review Modal */}
-      {viewingInvoiceId && invoiceDocumentUrl && transactions.find(tx => tx.document_id === viewingInvoiceId) && (
-        <InvoiceReview
-          invoiceData={{
-            id: viewingInvoiceId,
-            invoice_number: transactions.find(tx => tx.document_id === viewingInvoiceId)?.document?.invoice_number || 
-                           transactions.find(tx => tx.document_id === viewingInvoiceId)?.invoice_number || undefined,
-            vendor_name: transactions.find(tx => tx.document_id === viewingInvoiceId)?.document?.vendor_name || undefined,
-            document_date: transactions.find(tx => tx.document_id === viewingInvoiceId)?.document?.document_date || undefined,
-            total_amount: transactions.find(tx => tx.document_id === viewingInvoiceId)?.document?.total_amount || undefined,
-            tax_amount: transactions.find(tx => tx.document_id === viewingInvoiceId)?.document?.tax_amount || undefined,
-            subtotal_amount: transactions.find(tx => tx.document_id === viewingInvoiceId)?.document?.subtotal_amount || undefined,
-            currency: transactions.find(tx => tx.document_id === viewingInvoiceId)?.document?.currency || undefined,
-            documentUrl: invoiceDocumentUrl,
-          }}
-          onConfirm={handleConfirmInvoice}
-          onEdit={handleEditInvoice}
-          onClose={() => {
-            setViewingInvoiceId(null);
-            setInvoiceDocumentUrl(null);
-          }}
-        />
-      )}
+      {/* Selected View */}
+      {renderView()}
     </div>
   );
 }
