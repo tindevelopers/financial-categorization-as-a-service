@@ -184,12 +184,15 @@ export class VercelAICategorizationService implements AICategorizationService {
       "Utilities",
       "Office Supplies",
       "Software & Subscriptions",
+      "Professional Services",
       "Travel",
       "Entertainment",
       "Healthcare",
       "Education",
       "Business Services",
       "Financial Services",
+      "Cost of Goods Sold",
+      "Operating Expenses",
       "Uncategorized",
     ];
 
@@ -238,26 +241,41 @@ Common categories: ${commonCategories.join(", ")}
     const hasInvoiceIndicators = transactions.some(tx => 
       tx.original_description?.includes("Invoice #") || 
       tx.original_description?.includes(" - ") ||
-      tx.original_description?.match(/\b(amazon|screwfix|office|supplies|equipment|printer|software)\b/i)
+      tx.original_description?.match(/\b(amazon|screwfix|office|supplies|equipment|printer|software|lodgify|british gas|electricity|gas|subscription)\b/i)
     );
     
     if (hasInvoiceIndicators) {
       prompt += `\nINVOICE TRANSACTION GUIDANCE:
 These transactions appear to be from invoices. Pay special attention to:
-- Vendor names (e.g., "Amazon" → Shopping or Office Supplies depending on item)
-- Product descriptions in transaction descriptions (e.g., "HP OfficeJet Pro printer" → Office Supplies / Equipment)
+- Vendor names and what type of business they are
+- Product descriptions in transaction descriptions
 - Invoice numbers help identify the source document
-- Common invoice vendors and their typical categories:
-  * Amazon → Shopping (general items) or Office Supplies (if office/equipment mentioned)
-  * Screwfix, Toolstation → Office Supplies / Tools & Equipment
-  * Software vendors → Software & Subscriptions
-  * Office supply stores → Office Supplies
 
-Examples:
+VENDOR CATEGORY MAPPINGS:
+- SaaS/Subscription Services:
+  * Lodgify, Stripe, AWS, Google Cloud, Microsoft 365, Adobe, Dropbox, Slack, Zoom → Software & Subscriptions
+  * Monthly/yearly recurring charges are typically subscriptions
+- Utilities:
+  * British Gas, EDF, Scottish Power, Octopus Energy, SSE, E.ON → Utilities / Electricity or Gas
+  * Water companies → Utilities / Water
+  * BT, Virgin, Vodafone (business lines) → Utilities / Telecommunications
+- Construction & Trade:
+  * M&M Windows, glaziers, plumbers, electricians, builders → Professional Services / Construction
+  * Building materials suppliers → Office Supplies / Building Materials
+- Office & Equipment:
+  * Amazon (office items), Screwfix, Toolstation → Office Supplies
+  * Computer equipment, printers → Office Supplies / Equipment
+- Hospitality Specific:
+  * Linen suppliers, cleaning supplies → Operating Expenses / Housekeeping
+  * Food suppliers, wholesalers → Cost of Goods Sold / Food & Beverage
+
+CATEGORIZATION EXAMPLES:
+- "Lodgify - Starter Subscription - Invoice #LD-2024-1000105683" → Software & Subscriptions / SaaS
+- "Lodgify - Booking Fee - Invoice #LD-2024-1000122647" → Software & Subscriptions / Payment Processing
+- "British Gas - Electricity Bill - Invoice #827262908" → Utilities / Electricity
+- "M&M Windows (SW) Ltd - UPVC Door Installation - Invoice #SI-750" → Professional Services / Construction
 - "Amazon EU S.à r.l. - HP OfficeJet Pro printer - Invoice #203-7525121" → Office Supplies / Equipment
-- "Amazon - Wireless Mouse - Invoice #123" → Office Supplies / Computer Accessories
 - "Screwfix - Vapour Barrier Membrane - Invoice #LD-2024-1000105683" → Office Supplies / Building Materials
-- "Microsoft - Office 365 Subscription - Invoice #MS-12345" → Software & Subscriptions / Productivity Software
 
 \n`;
     }

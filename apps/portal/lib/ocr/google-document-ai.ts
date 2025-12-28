@@ -225,7 +225,43 @@ export async function processInvoiceOCR(
     }
 
     // Parse invoice data
-    const invoiceData = parseInvoiceData(document);
+    let invoiceData = parseInvoiceData(document);
+
+    // AI FALLBACK: If critical fields are still missing after all parsing attempts,
+    // use AI to extract them from the raw text
+    const hasCriticalFieldsMissing = 
+      (!invoiceData.total && !invoiceData.subtotal) || 
+      !invoiceData.vendor_name || 
+      !invoiceData.invoice_number;
+    
+    if (hasCriticalFieldsMissing && invoiceData.extracted_text && invoiceData.extracted_text.length > 50) {
+      console.log('[DocumentAI] Critical fields missing, attempting AI fallback extraction');
+      try {
+        const { extractFieldsWithAI, mergeWithExistingData } = await import('./ai-field-extraction');
+        const aiResult = await extractFieldsWithAI(invoiceData.extracted_text, {
+          vendor_name: invoiceData.vendor_name || undefined,
+          invoice_number: invoiceData.invoice_number || undefined,
+          invoice_date: invoiceData.invoice_date || undefined,
+          total_amount: invoiceData.total || undefined,
+          subtotal: invoiceData.subtotal || undefined,
+          tax_amount: invoiceData.tax || undefined,
+          currency: invoiceData.currency as "GBP" | "EUR" | "USD" | undefined,
+        });
+        
+        if (aiResult) {
+          invoiceData = mergeWithExistingData(invoiceData, aiResult);
+          console.log('[DocumentAI] AI fallback extraction completed', {
+            aiConfidence: aiResult.confidence,
+            filledVendor: !!aiResult.vendor_name,
+            filledTotal: aiResult.total_amount !== null,
+            filledInvoiceNumber: !!aiResult.invoice_number,
+          });
+        }
+      } catch (aiError: any) {
+        console.warn('[DocumentAI] AI fallback failed:', aiError.message);
+        // Continue without AI fallback - still use pattern-extracted data
+      }
+    }
 
     // Mark as successfully processed
     invoiceData.ocr_configured = true;
@@ -1098,6 +1134,237 @@ function parseInvoiceData(document: any): InvoiceData {
         data.invoice_number = data.order_number;
         data.field_confidence!['invoice_number'] = 0.8;
         data.extraction_methods!['invoice_number'] = 'pattern';
+      }
+    }
+    
+    // LODGIFY/SAAS INVOICE PARSING
+    // Detect SaaS subscription invoices (Lodgify, Stripe, etc.)
+    const isLodgifyInvoice = text.includes('LODGIFY') || 
+                            text.includes('Lodgify') ||
+                            text.match(/Invoice\s*#\s*LD-\d{4}-\d+/i);
+    
+    if (isLodgifyInvoice) {
+      console.log('[DocumentAI] Detected Lodgify/SaaS invoice format');
+      
+      // Extract Lodgify invoice number (format: LD-2024-1000105683)
+      if (!data.invoice_number) {
+        const lodgifyInvoicePattern = /Invoice\s*#\s*(LD-\d{4}-\d+)/i;
+        const invoiceMatch = text.match(lodgifyInvoicePattern);
+        if (invoiceMatch && invoiceMatch[1]) {
+          data.invoice_number = invoiceMatch[1].trim();
+          data.field_confidence!['invoice_number'] = 0.95;
+          data.extraction_methods!['invoice_number'] = 'pattern';
+        }
+      }
+      
+      // Extract Invoice Amount (format: "Invoice Amount €63.98 (EUR)")
+      if (!data.total) {
+        const invoiceAmountPatterns = [
+          /Invoice\s*Amount\s*([€£$]?\s*[\d,]+\.?\d*)\s*\(?(EUR|GBP|USD)?\)?/i,
+          /Invoice\s*Amount[:\s]+([€£$]?\s*[\d,]+\.?\d*)/i,
+        ];
+        for (const pattern of invoiceAmountPatterns) {
+          const match = text.match(pattern);
+          if (match && match[1]) {
+            const amount = parseAmount(match[1]);
+            if (amount !== undefined && amount > 0 && amount <= MAX_REASONABLE_AMOUNT) {
+              data.total = amount;
+              data.field_confidence!['total'] = 0.95;
+              data.extraction_methods!['total'] = 'pattern';
+              if (match[2]) {
+                data.currency = match[2].toUpperCase();
+              }
+              break;
+            }
+          }
+        }
+      }
+      
+      // Extract Invoice Date (format: "Invoice Date Aug 27, 2024" or "Invoice Date Oct 01, 2024")
+      if (!data.invoice_date) {
+        const lodgifyDatePattern = /Invoice\s*Date\s+(\w+\s+\d{1,2},?\s+\d{4})/i;
+        const dateMatch = text.match(lodgifyDatePattern);
+        if (dateMatch && dateMatch[1]) {
+          const parsedDate = parseDate(dateMatch[1]);
+          if (parsedDate) {
+            data.invoice_date = parsedDate;
+            data.field_confidence!['invoice_date'] = 0.95;
+            data.extraction_methods!['invoice_date'] = 'pattern';
+          }
+        }
+      }
+      
+      // Set vendor name to Lodgify
+      if (!data.vendor_name) {
+        data.vendor_name = 'Lodgify';
+        data.field_confidence!['vendor_name'] = 0.95;
+        data.extraction_methods!['vendor_name'] = 'pattern';
+        if (!data.supplier) data.supplier = {};
+        data.supplier.name = 'Lodgify';
+      }
+      
+      // Extract currency from EUR/GBP/USD patterns
+      if (!data.currency) {
+        if (text.includes('EUR') || text.includes('€')) data.currency = 'EUR';
+        else if (text.includes('GBP') || text.includes('£')) data.currency = 'GBP';
+        else data.currency = 'USD';
+      }
+    }
+    
+    // UTILITY BILL PARSING (British Gas, EDF, Scottish Power, etc.)
+    const isUtilityBill = text.match(/\b(British Gas|EDF|Scottish Power|Octopus|E\.ON|SSE|Npower|OVO)\b/i) ||
+                         text.match(/\b(electricity|gas|energy)\s+bill\b/i) ||
+                         text.match(/\bBill\s*(?:date|number)\b/i);
+    
+    if (isUtilityBill) {
+      console.log('[DocumentAI] Detected utility bill format');
+      
+      // Extract bill number (format: "Bill number: 827262908")
+      if (!data.invoice_number) {
+        const billNumberPatterns = [
+          /Bill\s*number[:\s]+(\d+)/i,
+          /Account\s*number[:\s]+(\d+)/i,
+        ];
+        for (const pattern of billNumberPatterns) {
+          const match = text.match(pattern);
+          if (match && match[1]) {
+            data.invoice_number = match[1].trim();
+            data.field_confidence!['invoice_number'] = 0.9;
+            data.extraction_methods!['invoice_number'] = 'pattern';
+            break;
+          }
+        }
+      }
+      
+      // Extract bill date (format: "Bill date: 20 October 2023")
+      if (!data.invoice_date) {
+        const billDatePatterns = [
+          /Bill\s*date[:\s]+(\d{1,2}\s+\w+\s+\d{4})/i,
+          /Bill\s*date[:\s]+(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4})/i,
+        ];
+        for (const pattern of billDatePatterns) {
+          const match = text.match(pattern);
+          if (match && match[1]) {
+            const parsedDate = parseDate(match[1]);
+            if (parsedDate) {
+              data.invoice_date = parsedDate;
+              data.field_confidence!['invoice_date'] = 0.9;
+              data.extraction_methods!['invoice_date'] = 'pattern';
+              break;
+            }
+          }
+        }
+      }
+      
+      // Extract total amount due (format: "Total amount due £1,429.22")
+      if (!data.total) {
+        const utilityTotalPatterns = [
+          /Total\s*amount\s*due[:\s]*([£$€]?\s*[\d,]+\.?\d*)/i,
+          /Amount\s*due[:\s]*([£$€]?\s*[\d,]+\.?\d*)/i,
+          /Please\s*pay\s*(?:this\s*)?(?:by[^£$€\d]*)?([£$€]\s*[\d,]+\.?\d*)/i,
+        ];
+        for (const pattern of utilityTotalPatterns) {
+          const match = text.match(pattern);
+          if (match && match[1]) {
+            const amount = parseAmount(match[1]);
+            if (amount !== undefined && amount > 0 && amount <= MAX_REASONABLE_AMOUNT) {
+              data.total = amount;
+              data.field_confidence!['total'] = 0.9;
+              data.extraction_methods!['total'] = 'pattern';
+              break;
+            }
+          }
+        }
+      }
+      
+      // Extract new charges (format: "Total new charges this bill inc VAT £310.61")
+      if (!data.subtotal) {
+        const newChargesPatterns = [
+          /(?:Total\s*)?new\s*charges\s*(?:this\s*bill\s*)?(?:inc\.?\s*VAT)?[:\s]*([£$€]?\s*[\d,]+\.?\d*)/i,
+          /Total\s*charges\s*exc\.?\s*VAT[:\s]*([£$€]?\s*[\d,]+\.?\d*)/i,
+        ];
+        for (const pattern of newChargesPatterns) {
+          const match = text.match(pattern);
+          if (match && match[1]) {
+            const amount = parseAmount(match[1]);
+            if (amount !== undefined && amount > 0 && amount <= MAX_REASONABLE_AMOUNT) {
+              data.subtotal = amount;
+              data.field_confidence!['subtotal'] = 0.85;
+              data.extraction_methods!['subtotal'] = 'pattern';
+              break;
+            }
+          }
+        }
+      }
+      
+      // Extract vendor name from utility provider
+      if (!data.vendor_name) {
+        const utilityVendorPatterns = [
+          /\b(British Gas)\b/i,
+          /\b(EDF Energy)\b/i,
+          /\b(Scottish Power)\b/i,
+          /\b(Octopus Energy)\b/i,
+          /\b(E\.ON)\b/i,
+          /\b(SSE)\b/i,
+          /\b(Npower)\b/i,
+          /\b(OVO Energy)\b/i,
+        ];
+        for (const pattern of utilityVendorPatterns) {
+          const match = text.match(pattern);
+          if (match && match[1]) {
+            data.vendor_name = match[1].trim();
+            data.field_confidence!['vendor_name'] = 0.95;
+            data.extraction_methods!['vendor_name'] = 'pattern';
+            if (!data.supplier) data.supplier = {};
+            data.supplier.name = data.vendor_name;
+            break;
+          }
+        }
+      }
+      
+      // Set currency to GBP for UK utility bills
+      if (!data.currency && text.includes('£')) {
+        data.currency = 'GBP';
+      }
+    }
+    
+    // GENERIC UK INVOICE PARSING
+    // For invoices with UK-specific formats (DD/MM/YYYY dates, £ currency)
+    const isUKInvoice = text.match(/\bVAT\s*(?:Registration\s*)?(?:Number|No\.?|#)?[:\s]+(?:GB)?\s*\d+/i) ||
+                       text.includes('£') ||
+                       text.match(/United\s*Kingdom/i);
+    
+    if (isUKInvoice && !data.currency) {
+      data.currency = 'GBP';
+    }
+    
+    // Try to parse DD/MM/YYYY format dates (UK format)
+    if (!data.invoice_date && isUKInvoice) {
+      const ukDatePatterns = [
+        /(?:Invoice\s*Date|Date)[:\s]+(\d{1,2}\/\d{1,2}\/\d{2,4})/i,
+        /(?:Invoice\s*Date|Date)[:\s]+(\d{1,2}-\d{1,2}-\d{2,4})/i,
+      ];
+      for (const pattern of ukDatePatterns) {
+        const match = text.match(pattern);
+        if (match && match[1]) {
+          // Parse UK format (DD/MM/YYYY)
+          const parts = match[1].split(/[\/\-]/);
+          if (parts.length === 3) {
+            const day = parts[0];
+            const month = parts[1];
+            let year = parts[2];
+            if (year.length === 2) {
+              year = '20' + year;
+            }
+            const dateStr = `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+            if (!isNaN(Date.parse(dateStr))) {
+              data.invoice_date = dateStr;
+              data.field_confidence!['invoice_date'] = 0.8;
+              data.extraction_methods!['invoice_date'] = 'pattern';
+              break;
+            }
+          }
+        }
       }
     }
     
