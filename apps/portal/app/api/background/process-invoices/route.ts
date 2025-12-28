@@ -440,6 +440,10 @@ async function processSingleInvoice(
 const MAX_AMOUNT = 99999999.99;
 const MIN_AMOUNT = -99999999.99;
 
+function clampAmount(amount: number): number {
+  return Math.min(Math.max(amount, MIN_AMOUNT), MAX_AMOUNT);
+}
+
 function validateAndClampAmount(amount: number | undefined | null, fieldName: string = 'amount'): number | null {
   if (amount === undefined || amount === null || isNaN(amount)) {
     return null;
@@ -466,7 +470,7 @@ async function invoiceToTransactions(
   supabase: any,
   documentFilename?: string,
   documentId?: string,
-  supplierId?: string
+  supplierId?: string | null
 ): Promise<any[]> {
   // Get bank_account_id from job
   const { data: jobData } = await supabase
