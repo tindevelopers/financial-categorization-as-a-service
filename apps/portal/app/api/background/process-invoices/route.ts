@@ -1,6 +1,7 @@
 import { waitUntil } from "@vercel/functions";
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/database/server";
+import { createAdminClient } from "@/lib/database/admin-client";
 import { createJobErrorResponse, mapErrorToCode } from "@/lib/errors/job-errors";
 
 export async function POST(request: NextRequest) {
@@ -80,6 +81,7 @@ async function processInvoicesBatch(
   userId: string,
   supabase: any
 ) {
+  const adminClient = createAdminClient();
   const BATCH_SIZE = 10; // Process 10 invoices at a time
   // #region agent log
   fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'process-invoices/route.ts:61',message:'processInvoicesBatch started',data:{jobId,userId:userId.substring(0,8)+'...'},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H5'})}).catch(()=>{});
@@ -136,7 +138,7 @@ async function processInvoicesBatch(
       
       // Process batch in parallel
       const results = await Promise.allSettled(
-        batch.map((doc: any) => processSingleInvoice(doc, jobId, userId, supabase))
+        batch.map((doc: any) => processSingleInvoice(doc, jobId, userId, supabase, adminClient))
       );
 
       // Count successes and failures
@@ -230,7 +232,8 @@ async function processSingleInvoice(
   doc: any,
   jobId: string,
   userId: string,
-  supabase: any
+  supabase: any,
+  adminClient: any
 ): Promise<void> {
   // Import OCR processing function
   const { processInvoiceOCR } = await import("@/lib/ocr/google-document-ai");
@@ -311,7 +314,7 @@ async function processSingleInvoice(
     // Insert transactions
     let insertedTransactionIds: string[] = [];
     if (transactions.length > 0) {
-      const { data: insertedTransactions, error: txError } = await supabase
+      const { data: insertedTransactions, error: txError } = await adminClient
         .from("categorized_transactions")
         .insert(transactions)
         .select("id");
@@ -321,22 +324,23 @@ async function processSingleInvoice(
         fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'process-invoices/route.ts:260',message:'Transaction insert error',data:{docId:doc.id,jobId,errorCode:txError.code,errorMessage:txError.message},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H4'})}).catch(()=>{});
         // #endregion
         console.error("Transaction insert error:", txError);
+        throw txError;
       } else {
         insertedTransactionIds = insertedTransactions?.map((t: any) => t.id) || [];
         // #region agent log
         fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'process-invoices/route.ts:263',message:'Transactions inserted successfully',data:{docId:doc.id,jobId,insertedCount:insertedTransactionIds.length,insertedIds:insertedTransactionIds.slice(0,3)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H2'})}).catch(()=>{});
         // #endregion
         // Categorize the transactions
-        await categorizeInvoiceTransactions(insertedTransactions || transactions, userId, supabase);
+        await categorizeInvoiceTransactions(insertedTransactions || transactions, userId, adminClient);
         
         // Attempt automatic reconciliation after transactions are created
         if (insertedTransactionIds.length > 0) {
-          await reconcileInvoiceAfterProcessing(doc.id, insertedTransactionIds, userId, jobId, supabase);
+          await reconcileInvoiceAfterProcessing(doc.id, insertedTransactionIds, userId, jobId, adminClient);
         }
       }
     } else {
       // Even if no transactions were created, try to reconcile the invoice document
-      await reconcileInvoiceAfterProcessing(doc.id, [], userId, jobId, supabase);
+      await reconcileInvoiceAfterProcessing(doc.id, [], userId, jobId, adminClient);
     }
   } catch (error: any) {
     console.error(`Error processing invoice ${doc.id}:`, error);
@@ -436,10 +440,10 @@ async function invoiceToTransactions(
 async function categorizeInvoiceTransactions(
   transactions: any[],
   userId: string,
-  supabase: any
+  adminClient: any
 ): Promise<void> {
   // Get user's category mappings
-  const { data: mappings } = await supabase
+  const { data: mappings } = await adminClient
     .from("user_category_mappings")
     .select("*")
     .eq("user_id", userId);
@@ -482,7 +486,7 @@ async function categorizeInvoiceTransactions(
     }
 
     // Update transaction with category
-    await supabase
+    await adminClient
       .from("categorized_transactions")
       .update({
         category,
@@ -502,11 +506,11 @@ async function reconcileInvoiceAfterProcessing(
   invoiceTransactionIds: string[],
   userId: string,
   jobId: string,
-  supabase: any
+  adminClient: any
 ): Promise<void> {
   try {
     // Get the invoice document details
-    const { data: invoiceDoc, error: docError } = await supabase
+    const { data: invoiceDoc, error: docError } = await adminClient
       .from("financial_documents")
       .select("*")
       .eq("id", invoiceDocumentId)
@@ -528,7 +532,7 @@ async function reconcileInvoiceAfterProcessing(
 
     // Try to match invoice document with existing bank transactions
     // Search across ALL account types (remove account filter)
-    const { data: transactions, error: txError } = await supabase
+    const { data: transactions, error: txError } = await adminClient
       .from("categorized_transactions")
       .select(`
         *,
@@ -567,7 +571,7 @@ async function reconcileInvoiceAfterProcessing(
 
           if (totalScore >= 80) {
             // Attempt to match - only match to ONE transaction
-            const { error: matchError } = await supabase.rpc("match_transaction_with_document", {
+            const { error: matchError } = await adminClient.rpc("match_transaction_with_document", {
               p_transaction_id: tx.id,
               p_document_id: invoiceDocumentId,
             });
@@ -575,7 +579,7 @@ async function reconcileInvoiceAfterProcessing(
             if (!matchError) {
               matchedCount++;
               // Create G/L breakdown entries for the matched receipt
-              await createGLBreakdownFromReceipt(invoiceDoc, tx.id, jobId, supabase);
+              await createGLBreakdownFromReceipt(invoiceDoc, tx.id, jobId, adminClient);
               break; // Match found, stop searching (one-to-one matching)
             }
           }
@@ -638,11 +642,11 @@ async function createGLBreakdownFromReceipt(
   receiptDoc: any,
   matchedTransactionId: string,
   jobId: string,
-  supabase: any
+  adminClient: any
 ): Promise<void> {
   try {
     // Get the matched transaction to inherit bank_account_id and other fields
-    const { data: parentTx, error: txError } = await supabase
+    const { data: parentTx, error: txError } = await adminClient
       .from("categorized_transactions")
       .select("*")
       .eq("id", matchedTransactionId)
@@ -740,7 +744,7 @@ async function createGLBreakdownFromReceipt(
 
     // Insert breakdown entries if any
     if (breakdownEntries.length > 0) {
-      const { error: insertError } = await supabase
+      const { error: insertError } = await adminClient
         .from("categorized_transactions")
         .insert(breakdownEntries);
 
