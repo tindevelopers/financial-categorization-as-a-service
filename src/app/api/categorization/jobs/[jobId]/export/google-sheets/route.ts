@@ -71,7 +71,8 @@ export async function POST(
     const credentialManager = getCredentialManager();
     
     // Get tenant_id for tenant-specific credentials
-    const { data: userData } = await supabase
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data: userData } = await (supabase as any)
       .from("users")
       .select("tenant_id")
       .eq("id", user.id)
@@ -79,7 +80,7 @@ export async function POST(
     
     // Try tenant-specific service account first (corporate), then fall back to platform default
     const serviceAccountCreds = await credentialManager.getBestGoogleServiceAccount(
-      userData?.tenant_id || undefined
+      (userData as { tenant_id?: string | null })?.tenant_id || undefined
     );
 
     if (!serviceAccountCreds) {
