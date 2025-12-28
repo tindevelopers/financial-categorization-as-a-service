@@ -258,8 +258,22 @@ async function processSingleInvoice(
 
     // Process OCR
     const invoiceData = await processInvoiceOCR(fileData, doc.original_filename);
+    
+    // Log extraction metrics
+    if (invoiceData.extraction_metrics) {
+      console.log("[OCR Metrics]", {
+        docId: doc.id,
+        filename: doc.original_filename,
+        fieldsExtracted: invoiceData.extraction_metrics.fields_extracted,
+        fieldsMissing: invoiceData.extraction_metrics.fields_missing,
+        averageConfidence: invoiceData.extraction_metrics.average_confidence,
+        methodDistribution: invoiceData.extraction_metrics.method_distribution,
+        needsReview: invoiceData.needs_review,
+      });
+    }
+    
     // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'process-invoices/route.ts:214',message:'OCR extraction result',data:{docId:doc.id,jobId,hasTotal:!!invoiceData.total,total:invoiceData.total,hasLineItems:!!invoiceData.line_items,lineItemsCount:invoiceData.line_items?.length||0},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H1'})}).catch(()=>{});
+    fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'process-invoices/route.ts:214',message:'OCR extraction result',data:{docId:doc.id,jobId,hasTotal:!!invoiceData.total,total:invoiceData.total,hasLineItems:!!invoiceData.line_items,lineItemsCount:invoiceData.line_items?.length||0,confidence:invoiceData.confidence_score,needsReview:invoiceData.needs_review,extractionMethods:invoiceData.extraction_methods},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H1'})}).catch(()=>{});
     // #endregion
 
     // Verify OCR source before updating
@@ -328,10 +342,16 @@ async function processSingleInvoice(
         ocr_provider: ocrVerification.provider,
         ocr_error: invoiceData.ocr_error || null,
         // Store line items and breakdown in dedicated columns
-        subtotal_amount: invoiceData.subtotal || null,
-        tax_amount: invoiceData.tax || null,
-        fee_amount: invoiceData.fee_amount || null,
+        subtotal_amount: invoiceData.subtotal !== undefined ? clampAmount(invoiceData.subtotal) : null,
+        tax_amount: invoiceData.tax !== undefined ? clampAmount(invoiceData.tax) : null,
+        fee_amount: invoiceData.fee_amount !== undefined ? clampAmount(invoiceData.fee_amount) : null,
         line_items: invoiceData.line_items || null,
+        // OCR metrics (stored in dedicated columns for querying)
+        ocr_field_confidence: invoiceData.field_confidence || {},
+        ocr_extraction_methods: invoiceData.extraction_methods || {},
+        ocr_validation_flags: invoiceData.validation_flags || {},
+        ocr_metrics: invoiceData.extraction_metrics || null,
+        ocr_needs_review: invoiceData.needs_review || false,
         // Also store in extracted_data JSONB for flexibility
         extracted_data: {
           line_items: invoiceData.line_items || [],
@@ -345,6 +365,12 @@ async function processSingleInvoice(
           supplier: invoiceData.supplier,
           order_number: invoiceData.order_number,
           delivery_date: invoiceData.delivery_date,
+          // OCR metrics and confidence
+          field_confidence: invoiceData.field_confidence || {},
+          extraction_methods: invoiceData.extraction_methods || {},
+          validation_flags: invoiceData.validation_flags || {},
+          extraction_metrics: invoiceData.extraction_metrics || null,
+          needs_review: invoiceData.needs_review || false,
         },
       })
       .eq("id", doc.id);

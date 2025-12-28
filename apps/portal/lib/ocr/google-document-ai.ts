@@ -26,6 +26,14 @@ const PROCESSOR_ID = process.env.GOOGLE_DOCUMENT_AI_PROCESSOR_ID?.trim();
 // Maximum reasonable amount for validation (matches DECIMAL(10,2) database limit)
 const MAX_REASONABLE_AMOUNT = 99999999.99;
 
+// Confidence thresholds
+const HIGH_CONFIDENCE = 0.8; // Trusted extraction
+const MEDIUM_CONFIDENCE = 0.5; // Review recommended
+const LOW_CONFIDENCE = 0.0; // Manual review required
+
+// Extraction method types
+type ExtractionMethod = 'entity' | 'table' | 'pattern' | 'fallback';
+
 export interface InvoiceData {
   vendor_name?: string;
   invoice_date?: string;
@@ -63,6 +71,17 @@ export interface InvoiceData {
   ocr_configured?: boolean;
   ocr_failed?: boolean;
   ocr_error?: string;
+  // Extraction metrics and confidence
+  field_confidence?: Record<string, number>; // Per-field confidence scores
+  extraction_methods?: Record<string, 'entity' | 'table' | 'pattern' | 'fallback'>; // Method used per field
+  validation_flags?: Record<string, boolean>; // Validation results per field
+  needs_review?: boolean; // Flag if any field needs manual review
+  extraction_metrics?: {
+    fields_extracted: number;
+    fields_missing: string[];
+    average_confidence: number;
+    method_distribution: Record<string, number>;
+  };
 }
 
 /**
@@ -75,7 +94,9 @@ export function verifyOCRSource(): {
   hasProjectId: boolean;
   hasProcessorId: boolean;
   hasCredentials: boolean;
+  processorType?: string;
   error?: string;
+  warning?: string;
 } {
   const hasProjectId = !!PROJECT_ID;
   const hasProcessorId = !!PROCESSOR_ID;
@@ -87,12 +108,23 @@ export function verifyOCRSource(): {
   const configured = hasProjectId && hasProcessorId && hasCredentials;
   
   let error: string | undefined;
+  let warning: string | undefined;
+  let processorType: string | undefined;
+  
   if (!configured) {
     const missing: string[] = [];
     if (!hasProjectId) missing.push("GOOGLE_CLOUD_PROJECT_ID");
     if (!hasProcessorId) missing.push("GOOGLE_DOCUMENT_AI_PROCESSOR_ID");
     if (!hasCredentials) missing.push("GOOGLE_APPLICATION_CREDENTIALS");
     error = `Missing required environment variables: ${missing.join(", ")}`;
+  } else {
+    // Note: Processor type detection would require API call to Document AI
+    // For now, we'll document recommended processor types
+    // INVOICE_PROCESSOR is preferred for invoice processing
+    // FORM_PARSER_PROCESSOR is generic form parser
+    // OCR_PROCESSOR is basic OCR only
+    processorType = "unknown"; // Would need API call to determine
+    warning = "Consider using INVOICE_PROCESSOR for best invoice extraction results";
   }
   
   return {
@@ -101,7 +133,9 @@ export function verifyOCRSource(): {
     hasProjectId,
     hasProcessorId,
     hasCredentials,
+    processorType,
     error,
+    warning,
   };
 }
 
@@ -182,7 +216,12 @@ export async function processInvoiceOCR(
 
     const document = result.document;
     if (!document) {
-      throw new Error("No document returned from OCR");
+      throw new Error("No document returned from Document AI API. Check processor configuration and document format.");
+    }
+
+    // Check if we got text content
+    if (!document.text || document.text.trim().length === 0) {
+      console.warn("[DocumentAI] Document returned but contains no text. Document may be image-only or corrupted.");
     }
 
     // Parse invoice data
@@ -191,6 +230,19 @@ export async function processInvoiceOCR(
     // Mark as successfully processed
     invoiceData.ocr_configured = true;
     invoiceData.ocr_failed = false;
+    
+    // Log extraction summary
+    console.log("[DocumentAI] Extraction completed", {
+      filename,
+      hasVendor: !!invoiceData.vendor_name,
+      hasInvoiceNumber: !!invoiceData.invoice_number,
+      hasDate: !!invoiceData.invoice_date,
+      hasTotal: invoiceData.total !== undefined,
+      hasLineItems: (invoiceData.line_items?.length || 0) > 0,
+      confidence: invoiceData.confidence_score,
+      needsReview: invoiceData.needs_review,
+      extractionMethods: invoiceData.extraction_methods,
+    });
 
     return invoiceData;
   } catch (error: any) {
@@ -209,42 +261,83 @@ export async function processInvoiceOCR(
 function parseInvoiceData(document: any): InvoiceData {
   const data: InvoiceData = {
     extracted_text: document.text || "",
-    confidence_score: 0.9, // Document AI is generally very accurate
+    field_confidence: {},
+    extraction_methods: {},
+    validation_flags: {},
   };
+
+  // Extract page-level confidence
+  let pageConfidences: number[] = [];
+  if (document.pages) {
+    document.pages.forEach((page: any) => {
+      if (page.confidence !== undefined && page.confidence !== null) {
+        pageConfidences.push(page.confidence);
+      }
+    });
+  }
 
   // Parse entities from Document AI response
   if (document.entities) {
     for (const entity of document.entities) {
       const type = entity.type?.toLowerCase();
       const value = entity.normalizedValue?.textValue || entity.mentionText;
+      const entityConfidence = entity.confidence !== undefined && entity.confidence !== null 
+        ? entity.confidence 
+        : (pageConfidences.length > 0 ? pageConfidences.reduce((a, b) => a + b, 0) / pageConfidences.length : 0.8);
 
       switch (type) {
         case "supplier_name":
         case "vendor_name":
         case "merchant_name":
           data.vendor_name = value;
+          data.field_confidence!['vendor_name'] = entityConfidence;
+          data.extraction_methods!['vendor_name'] = 'entity';
           break;
         case "invoice_date":
         case "receipt_date":
-          data.invoice_date = parseDate(value);
+          const parsedDate = parseDate(value);
+          if (parsedDate) {
+            data.invoice_date = parsedDate;
+            data.field_confidence!['invoice_date'] = entityConfidence;
+            data.extraction_methods!['invoice_date'] = 'entity';
+          }
           break;
         case "invoice_id":
         case "invoice_number":
           data.invoice_number = value;
+          data.field_confidence!['invoice_number'] = entityConfidence;
+          data.extraction_methods!['invoice_number'] = 'entity';
           break;
         case "net_amount":
         case "subtotal":
-          data.subtotal = parseAmount(value);
+          const parsedSubtotal = parseAmount(value);
+          if (parsedSubtotal !== undefined) {
+            data.subtotal = parsedSubtotal;
+            data.field_confidence!['subtotal'] = entityConfidence;
+            data.extraction_methods!['subtotal'] = 'entity';
+          }
           break;
         case "tax_amount":
-          data.tax = parseAmount(value);
+          const parsedTax = parseAmount(value);
+          if (parsedTax !== undefined) {
+            data.tax = parsedTax;
+            data.field_confidence!['tax'] = entityConfidence;
+            data.extraction_methods!['tax'] = 'entity';
+          }
           break;
         case "total_amount":
         case "total":
-          data.total = parseAmount(value);
+          const parsedTotal = parseAmount(value);
+          if (parsedTotal !== undefined) {
+            data.total = parsedTotal;
+            data.field_confidence!['total'] = entityConfidence;
+            data.extraction_methods!['total'] = 'entity';
+          }
           break;
         case "currency":
           data.currency = value?.toUpperCase() || "USD";
+          data.field_confidence!['currency'] = entityConfidence;
+          data.extraction_methods!['currency'] = 'entity';
           break;
       }
     }
@@ -253,8 +346,13 @@ function parseInvoiceData(document: any): InvoiceData {
   // Parse line items from tables if available
   if (document.pages && document.pages[0]?.tables) {
     data.line_items = [];
+    // Extract table confidence
+    let tableConfidences: number[] = [];
     // Extract line items from tables
     for (const table of document.pages[0].tables) {
+      if (table.confidence !== undefined && table.confidence !== null) {
+        tableConfidences.push(table.confidence);
+      }
       // Handle tables with or without explicit header rows
       const bodyRows = table.bodyRows || [];
       const headerRows = table.headerRows || [];
@@ -368,6 +466,14 @@ function parseInvoiceData(document: any): InvoiceData {
         }
       }
     }
+    // Track that line items came from tables
+    if (data.line_items && data.line_items.length > 0) {
+      const avgTableConfidence = tableConfidences.length > 0
+        ? tableConfidences.reduce((a, b) => a + b, 0) / tableConfidences.length
+        : 0.8;
+      data.field_confidence!['line_items'] = avgTableConfidence;
+      data.extraction_methods!['line_items'] = 'table';
+    }
   }
   
   // Also parse line items from plain text if not found in tables
@@ -376,6 +482,7 @@ function parseInvoiceData(document: any): InvoiceData {
     data.line_items = [];
     const text = document.text || "";
     const lines = text.split('\n');
+    let patternExtractedCount = 0;
     
     for (const line of lines) {
       const trimmedLine = line.trim();
@@ -405,6 +512,7 @@ function parseInvoiceData(document: any): InvoiceData {
               unit_price: quantity > 0 && total ? total / quantity : undefined,
               total,
             });
+            patternExtractedCount++;
             matched = true;
             break;
           }
@@ -434,15 +542,22 @@ function parseInvoiceData(document: any): InvoiceData {
                 unit_price: quantity > 0 && total ? total / quantity : undefined,
                 total,
               });
+              patternExtractedCount++;
             } else {
               data.line_items.push({
                 description,
                 total,
               });
+              patternExtractedCount++;
             }
           }
         }
       }
+    }
+    // Track that line items came from pattern matching
+    if (patternExtractedCount > 0) {
+      data.field_confidence!['line_items'] = 0.6; // Pattern-based, lower confidence
+      data.extraction_methods!['line_items'] = 'pattern';
     }
   }
 
@@ -577,20 +692,32 @@ function parseInvoiceData(document: any): InvoiceData {
       for (const found of foundAmounts) {
         if (found.type === 'total_inc_vat' && !data.total) {
           data.total = found.amount;
+          data.field_confidence!['total'] = 0.7; // Pattern-based extraction, moderate confidence
+          data.extraction_methods!['total'] = 'pattern';
         } else if (found.type === 'total_ex_vat' && !data.total) {
           data.total = found.amount;
-          // If we have total ex VAT, we might need to calculate VAT
-          // But we'll wait for VAT to be found separately
+          data.field_confidence!['total'] = 0.7;
+          data.extraction_methods!['total'] = 'pattern';
         } else if (found.type === 'total' && !data.total) {
           data.total = found.amount;
+          data.field_confidence!['total'] = 0.7;
+          data.extraction_methods!['total'] = 'pattern';
         } else if (found.type === 'subtotal_inc_vat' && !data.subtotal) {
           data.subtotal = found.amount;
+          data.field_confidence!['subtotal'] = 0.7;
+          data.extraction_methods!['subtotal'] = 'pattern';
         } else if (found.type === 'subtotal_ex_vat' && !data.subtotal) {
           data.subtotal = found.amount;
+          data.field_confidence!['subtotal'] = 0.7;
+          data.extraction_methods!['subtotal'] = 'pattern';
         } else if (found.type === 'subtotal' && !data.subtotal) {
           data.subtotal = found.amount;
+          data.field_confidence!['subtotal'] = 0.7;
+          data.extraction_methods!['subtotal'] = 'pattern';
         } else if (found.type === 'vat' && !data.tax) {
           data.tax = found.amount;
+          data.field_confidence!['tax'] = 0.7;
+          data.extraction_methods!['tax'] = 'pattern';
         }
       }
       
@@ -692,6 +819,8 @@ function parseInvoiceData(document: any): InvoiceData {
         const largestAmount = uniqueAmounts.find(a => a.amount >= 1);
         if (largestAmount) {
           data.total = largestAmount.amount;
+          data.field_confidence!['total'] = 0.5; // Fallback extraction, lower confidence
+          data.extraction_methods!['total'] = 'fallback';
         }
       }
       
@@ -714,6 +843,8 @@ function parseInvoiceData(document: any): InvoiceData {
         const match = text.match(pattern);
         if (match && match[1]) {
           data.invoice_number = match[1].trim();
+          data.field_confidence!['invoice_number'] = 0.7;
+          data.extraction_methods!['invoice_number'] = 'pattern';
           break;
         }
       }
@@ -730,8 +861,13 @@ function parseInvoiceData(document: any): InvoiceData {
       for (const pattern of invoiceDatePatterns) {
         const match = text.match(pattern);
         if (match && match[1]) {
-          data.invoice_date = parseDate(match[1]);
-          if (data.invoice_date) break;
+          const parsedDate = parseDate(match[1]);
+          if (parsedDate) {
+            data.invoice_date = parsedDate;
+            data.field_confidence!['invoice_date'] = 0.7;
+            data.extraction_methods!['invoice_date'] = 'pattern';
+            break;
+          }
         }
       }
     }
@@ -749,7 +885,10 @@ function parseInvoiceData(document: any): InvoiceData {
           const vendorName = match[1].trim();
           if (vendorName.length > 2 && vendorName.length < 100) {
             data.vendor_name = vendorName;
-            if (!data.supplier.name) {
+            data.field_confidence!['vendor_name'] = 0.6;
+            data.extraction_methods!['vendor_name'] = 'pattern';
+            if (!data.supplier?.name) {
+              if (!data.supplier) data.supplier = {};
               data.supplier.name = vendorName;
             }
             break;
@@ -897,6 +1036,56 @@ function parseInvoiceData(document: any): InvoiceData {
     }
   }
 
+  // Validate extracted data
+  validateExtractedData(data);
+  
+  // Calculate overall confidence from field confidences
+  const fieldConfidences = Object.values(data.field_confidence || {});
+  if (fieldConfidences.length > 0) {
+    data.confidence_score = fieldConfidences.reduce((a, b) => a + b, 0) / fieldConfidences.length;
+  } else {
+    // Fallback to page confidence or default
+    const avgPageConfidence = pageConfidences.length > 0 
+      ? pageConfidences.reduce((a, b) => a + b, 0) / pageConfidences.length 
+      : 0.7;
+    data.confidence_score = avgPageConfidence;
+  }
+  
+  // Calculate extraction metrics
+  const fieldsExtracted: string[] = [];
+  const fieldsMissing: string[] = [];
+  const methodDistribution: Record<string, number> = {};
+  
+  // Track extracted fields
+  if (data.vendor_name) fieldsExtracted.push('vendor_name');
+  else fieldsMissing.push('vendor_name');
+  if (data.invoice_date) fieldsExtracted.push('invoice_date');
+  else fieldsMissing.push('invoice_date');
+  if (data.invoice_number) fieldsExtracted.push('invoice_number');
+  else fieldsMissing.push('invoice_number');
+  if (data.total !== undefined) fieldsExtracted.push('total');
+  else fieldsMissing.push('total');
+  if (data.subtotal !== undefined) fieldsExtracted.push('subtotal');
+  if (data.tax !== undefined) fieldsExtracted.push('tax');
+  if (data.line_items && data.line_items.length > 0) fieldsExtracted.push('line_items');
+  
+  // Count extraction methods
+  Object.values(data.extraction_methods || {}).forEach(method => {
+    methodDistribution[method] = (methodDistribution[method] || 0) + 1;
+  });
+  
+  data.extraction_metrics = {
+    fields_extracted: fieldsExtracted.length,
+    fields_missing: fieldsMissing,
+    average_confidence: data.confidence_score,
+    method_distribution: methodDistribution,
+  };
+  
+  // Determine if review is needed
+  data.needs_review = Object.values(data.field_confidence || {}).some(conf => conf < MEDIUM_CONFIDENCE) ||
+                      fieldsMissing.length > 2 ||
+                      data.confidence_score! < MEDIUM_CONFIDENCE;
+  
   // Debug logging for extraction diagnostics
   const extractionSummary = {
     hasTotal: !!data.total,
@@ -914,6 +1103,9 @@ function parseInvoiceData(document: any): InvoiceData {
     hasSupplierEmail: !!data.supplier?.email,
     extractedTextLength: data.extracted_text?.length || 0,
     extractedTextPreview: data.extracted_text?.substring(0, 200) || '',
+    confidenceScore: data.confidence_score,
+    needsReview: data.needs_review,
+    extractionMetrics: data.extraction_metrics,
   };
   
   // Log if extraction seems incomplete
@@ -932,6 +1124,70 @@ function parseInvoiceData(document: any): InvoiceData {
   fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'google-document-ai.ts:308',message:'OCR processing completed',data:extractionSummary,timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H3'})}).catch(()=>{});
   // #endregion
   return data;
+}
+
+/**
+ * Validate extracted invoice data
+ */
+function validateExtractedData(data: InvoiceData): void {
+  if (!data.validation_flags) {
+    data.validation_flags = {};
+  }
+  
+  // Validate dates
+  if (data.invoice_date) {
+    const date = new Date(data.invoice_date);
+    const isValid = !isNaN(date.getTime()) && date.getFullYear() >= 2000 && date.getFullYear() <= 2100;
+    data.validation_flags['invoice_date'] = isValid;
+    if (!isValid) {
+      console.warn("[DocumentAI] Invalid invoice date:", data.invoice_date);
+    }
+  }
+  
+  if (data.delivery_date) {
+    const date = new Date(data.delivery_date);
+    const isValid = !isNaN(date.getTime()) && date.getFullYear() >= 2000 && date.getFullYear() <= 2100;
+    data.validation_flags['delivery_date'] = isValid;
+  }
+  
+  // Validate amounts
+  const validateAmount = (field: string, value: number | undefined) => {
+    if (value !== undefined) {
+      const isValid = value >= -MAX_REASONABLE_AMOUNT && value <= MAX_REASONABLE_AMOUNT && !isNaN(value);
+      data.validation_flags![field] = isValid;
+      if (!isValid) {
+        console.warn(`[DocumentAI] Invalid ${field}:`, value);
+      }
+    }
+  };
+  
+  validateAmount('total', data.total);
+  validateAmount('subtotal', data.subtotal);
+  validateAmount('tax', data.tax);
+  validateAmount('fee_amount', data.fee_amount);
+  validateAmount('shipping_amount', data.shipping_amount);
+  
+  // Validate invoice number format
+  if (data.invoice_number) {
+    // Invoice numbers should be alphanumeric with possible dashes/underscores
+    const isValid = /^[A-Z0-9\-_]+$/i.test(data.invoice_number) && data.invoice_number.length >= 3;
+    data.validation_flags!['invoice_number'] = isValid;
+    if (!isValid) {
+      console.warn("[DocumentAI] Suspicious invoice number format:", data.invoice_number);
+    }
+  }
+  
+  // Validate vendor name
+  if (data.vendor_name) {
+    const isValid = data.vendor_name.length >= 2 && data.vendor_name.length <= 200;
+    data.validation_flags!['vendor_name'] = isValid;
+  }
+  
+  // Validate currency
+  if (data.currency) {
+    const isValid = /^[A-Z]{3}$/.test(data.currency);
+    data.validation_flags!['currency'] = isValid;
+  }
 }
 
 function parseDate(value: string | undefined): string | undefined {
