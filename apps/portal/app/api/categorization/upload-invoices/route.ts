@@ -303,18 +303,32 @@ export async function POST(request: NextRequest) {
       .eq("id", jobData.id);
 
     // Queue for async processing (Vercel Background Functions)
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'upload-invoices/route.ts:306',message:'About to trigger background processing',data:{jobId:jobData.id,origin:request.nextUrl.origin},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H1'})}).catch(()=>{});
+    // #endregion
     try {
-      fetch(`${request.nextUrl.origin}/api/background/process-invoices`, {
+      const bgResponse = await fetch(`${request.nextUrl.origin}/api/background/process-invoices`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           Cookie: request.headers.get("cookie") || "",
         },
         body: JSON.stringify({ jobId: jobData.id }),
-      }).catch(err => {
-        console.error("Failed to queue background processing:", err);
       });
-    } catch (processError) {
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'upload-invoices/route.ts:314',message:'Background processing fetch response',data:{jobId:jobData.id,status:bgResponse.status,ok:bgResponse.ok},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H1'})}).catch(()=>{});
+      // #endregion
+      if (!bgResponse.ok) {
+        const errorText = await bgResponse.text().catch(() => 'Unknown error');
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'upload-invoices/route.ts:318',message:'Background processing fetch failed',data:{jobId:jobData.id,status:bgResponse.status,errorText},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H1'})}).catch(()=>{});
+        // #endregion
+        console.error("Failed to queue background processing:", bgResponse.status, errorText);
+      }
+    } catch (processError: any) {
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'upload-invoices/route.ts:323',message:'Background processing fetch exception',data:{jobId:jobData.id,errorMessage:processError?.message,errorStack:processError?.stack?.substring(0,200)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H1'})}).catch(()=>{});
+      // #endregion
       console.error("Failed to queue background processing:", processError);
     }
 

@@ -5,10 +5,16 @@ import { createJobErrorResponse, mapErrorToCode } from "@/lib/errors/job-errors"
 
 export async function POST(request: NextRequest) {
   try {
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'process-invoices/route.ts:6',message:'Background processing route called',data:{hasBody:!!request.body},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H1'})}).catch(()=>{});
+    // #endregion
     const supabase = await createClient();
     const { data: { user }, error: authError } = await supabase.auth.getUser();
 
     if (authError || !user) {
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'process-invoices/route.ts:12',message:'Background processing auth failed',data:{authError:authError?.message},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H1'})}).catch(()=>{});
+      // #endregion
       return NextResponse.json(
         { error: "Unauthorized" },
         { status: 401 }
@@ -16,6 +22,9 @@ export async function POST(request: NextRequest) {
     }
 
     const { jobId } = await request.json();
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'process-invoices/route.ts:18',message:'Background processing received jobId',data:{jobId,userId:user.id.substring(0,8)+'...'},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H1'})}).catch(()=>{});
+    // #endregion
 
     if (!jobId) {
       return NextResponse.json(
@@ -40,8 +49,16 @@ export async function POST(request: NextRequest) {
     }
 
     // Start background processing
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'process-invoices/route.ts:43',message:'Calling waitUntil for background processing',data:{jobId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H5'})}).catch(()=>{});
+    // #endregion
     waitUntil(
-      processInvoicesBatch(jobId, user.id, supabase)
+      processInvoicesBatch(jobId, user.id, supabase).catch((err) => {
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'process-invoices/route.ts:45',message:'Background batch processing error',data:{jobId,errorMessage:err?.message,errorStack:err?.stack?.substring(0,200)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H3'})}).catch(()=>{});
+        // #endregion
+        console.error("Background batch processing failed:", err);
+      })
     );
 
     return NextResponse.json({
@@ -64,6 +81,9 @@ async function processInvoicesBatch(
   supabase: any
 ) {
   const BATCH_SIZE = 10; // Process 10 invoices at a time
+  // #region agent log
+  fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'process-invoices/route.ts:61',message:'processInvoicesBatch started',data:{jobId,userId:userId.substring(0,8)+'...'},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H5'})}).catch(()=>{});
+  // #endregion
 
   try {
     // Update job status
@@ -77,14 +97,23 @@ async function processInvoicesBatch(
       .eq("id", jobId);
 
     // Get documents for this job from financial_documents table
-    const { data: documents } = await supabase
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'process-invoices/route.ts:79',message:'Querying documents for job',data:{jobId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H2'})}).catch(()=>{});
+    // #endregion
+    const { data: documents, error: docsError } = await supabase
       .from("financial_documents")
       .select("*")
       .eq("job_id", jobId)
       .in("ocr_status", ["pending", "failed"])
       .in("file_type", ["receipt", "invoice"]);
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'process-invoices/route.ts:85',message:'Documents query result',data:{jobId,documentsCount:documents?.length||0,hasError:!!docsError,errorMessage:docsError?.message,docIds:documents?.map(d=>d.id).slice(0,3)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H2,H4'})}).catch(()=>{});
+    // #endregion
 
     if (!documents || documents.length === 0) {
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'process-invoices/route.ts:87',message:'No documents found for job',data:{jobId,queryError:docsError?.message},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H2,H4'})}).catch(()=>{});
+      // #endregion
       const errorResponse = createJobErrorResponse("PROCESSING_FAILED", "No documents found");
       await supabase
         .from("categorization_jobs")
