@@ -331,7 +331,7 @@ async function reconcileInvoiceAfterProcessing(
     let matchedCount = 0;
 
     // 1. Try to match invoice document with existing bank transactions
-    // Get unreconciled transactions for this user
+    // Search across ALL account types (remove account filter)
     const { data: transactions, error: txError } = await supabase
       .from("categorized_transactions")
       .select(`
@@ -378,7 +378,9 @@ async function reconcileInvoiceAfterProcessing(
 
             if (!matchError) {
               matchedCount++;
-              break; // Invoice matched, no need to continue
+              // Create G/L breakdown entries for the matched receipt
+              await createGLBreakdownFromReceipt(invoiceDoc, tx.id, jobId, supabase);
+              break; // Match found, stop searching (one-to-one matching)
             }
           }
         }
@@ -447,9 +449,14 @@ async function reconcileInvoiceAfterProcessing(
       }
     }
 
+    // If no match found, leave as unreconciled (don't create dummy transaction)
     if (matchedCount > 0) {
       console.log(
-        `[Reconciliation] Auto-matched invoice ${invoiceDocumentId} with ${matchedCount} item(s)`
+        `[Reconciliation] Auto-matched invoice ${invoiceDocumentId} with ${matchedCount} transaction(s)`
+      );
+    } else {
+      console.log(
+        `[Reconciliation] No match found for invoice ${invoiceDocumentId}, keeping as unreconciled`
       );
     }
   } catch (error: any) {
@@ -487,4 +494,132 @@ function calculateDescriptionMatch(description: string, vendor: string): number 
   if (maxWords === 0) return 0;
 
   return (matchCount / maxWords) * 100;
+}
+
+/**
+ * Create G/L breakdown entries from receipt when matched to a transaction
+ * Creates separate transaction entries for subtotal, tax, fees, shipping
+ */
+async function createGLBreakdownFromReceipt(
+  receiptDoc: any,
+  matchedTransactionId: string,
+  jobId: string,
+  supabase: any
+): Promise<void> {
+  try {
+    // Get the matched transaction to inherit bank_account_id and other fields
+    const { data: parentTx, error: txError } = await supabase
+      .from("categorized_transactions")
+      .select("*")
+      .eq("id", matchedTransactionId)
+      .single();
+
+    if (txError || !parentTx) {
+      console.error("[G/L Breakdown] Failed to fetch parent transaction:", txError);
+      return;
+    }
+
+    const breakdownEntries: any[] = [];
+    const receiptDate = receiptDoc.document_date || parentTx.date;
+
+    // Create breakdown entry for subtotal (main expense)
+    if (receiptDoc.subtotal_amount && receiptDoc.subtotal_amount > 0) {
+      breakdownEntries.push({
+        job_id: jobId,
+        parent_transaction_id: matchedTransactionId,
+        is_breakdown_entry: true,
+        breakdown_type: "subtotal",
+        original_description: `${receiptDoc.vendor_name || "Vendor"} - Subtotal`,
+        amount: receiptDoc.subtotal_amount,
+        date: receiptDate,
+        category: parentTx.category || null,
+        subcategory: parentTx.subcategory || null,
+        confidence_score: 0.8,
+        user_confirmed: false,
+        bank_account_id: parentTx.bank_account_id,
+        reconciliation_status: "matched", // Inherit matched status
+        matched_document_id: receiptDoc.id,
+      });
+    }
+
+    // Create breakdown entry for tax
+    if (receiptDoc.tax_amount && receiptDoc.tax_amount > 0) {
+      breakdownEntries.push({
+        job_id: jobId,
+        parent_transaction_id: matchedTransactionId,
+        is_breakdown_entry: true,
+        breakdown_type: "tax",
+        original_description: `${receiptDoc.vendor_name || "Vendor"} - Tax`,
+        amount: receiptDoc.tax_amount,
+        date: receiptDate,
+        category: "Tax Expense", // Default tax category
+        subcategory: null,
+        confidence_score: 0.9,
+        user_confirmed: false,
+        bank_account_id: parentTx.bank_account_id,
+        reconciliation_status: "matched",
+        matched_document_id: receiptDoc.id,
+      });
+    }
+
+    // Create breakdown entry for fees
+    if (receiptDoc.fee_amount && receiptDoc.fee_amount > 0) {
+      breakdownEntries.push({
+        job_id: jobId,
+        parent_transaction_id: matchedTransactionId,
+        is_breakdown_entry: true,
+        breakdown_type: "fee",
+        original_description: `${receiptDoc.vendor_name || "Vendor"} - Fees`,
+        amount: receiptDoc.fee_amount,
+        date: receiptDate,
+        category: "Fees & Charges", // Default fee category
+        subcategory: null,
+        confidence_score: 0.8,
+        user_confirmed: false,
+        bank_account_id: parentTx.bank_account_id,
+        reconciliation_status: "matched",
+        matched_document_id: receiptDoc.id,
+      });
+    }
+
+    // Extract shipping from extracted_data if available
+    const extractedData = receiptDoc.extracted_data || {};
+    const shippingAmount = extractedData.shipping_amount || null;
+    if (shippingAmount && shippingAmount > 0) {
+      breakdownEntries.push({
+        job_id: jobId,
+        parent_transaction_id: matchedTransactionId,
+        is_breakdown_entry: true,
+        breakdown_type: "shipping",
+        original_description: `${receiptDoc.vendor_name || "Vendor"} - Shipping`,
+        amount: shippingAmount,
+        date: receiptDate,
+        category: "Shipping & Delivery", // Default shipping category
+        subcategory: null,
+        confidence_score: 0.8,
+        user_confirmed: false,
+        bank_account_id: parentTx.bank_account_id,
+        reconciliation_status: "matched",
+        matched_document_id: receiptDoc.id,
+      });
+    }
+
+    // Insert breakdown entries if any
+    if (breakdownEntries.length > 0) {
+      const { error: insertError } = await supabase
+        .from("categorized_transactions")
+        .insert(breakdownEntries);
+
+      if (insertError) {
+        console.error("[G/L Breakdown] Failed to insert breakdown entries:", insertError);
+      } else {
+        console.log(
+          `[G/L Breakdown] Created ${breakdownEntries.length} breakdown entries for transaction ${matchedTransactionId}`
+        );
+      }
+    }
+  } catch (error: any) {
+    console.error("[G/L Breakdown] Error creating breakdown entries:", error);
+    // Don't throw - breakdown failure shouldn't fail matching
+  }
 }

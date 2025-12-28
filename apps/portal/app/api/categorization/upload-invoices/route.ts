@@ -180,7 +180,14 @@ export async function POST(request: NextRequest) {
     });
 
     // Determine processing mode
-    const processingMode = fileCount >= 50 ? "async" : "sync";
+    // Receipts: Always use async mode (especially if > 1 file)
+    // Invoices: Use async if > 1 file, sync for single invoice
+    // Since this endpoint is used for receipts/uploads, default to async for receipts
+    // Check if files are receipts (receipts page uploads) vs invoices
+    const isReceiptUpload = true; // This endpoint is used for receipt uploads
+    const processingMode = isReceiptUpload 
+      ? (fileCount > 1 ? "async" : "async") // Always async for receipts
+      : (fileCount > 1 ? "async" : "sync"); // Async for multiple invoices, sync for single
 
     // Create categorization job
     const { data: jobData, error: jobError } = await supabase
@@ -188,7 +195,7 @@ export async function POST(request: NextRequest) {
       .insert({
         user_id: user.id,
         tenant_id: userData?.tenant_id || null,
-        job_type: fileCount === 1 ? "invoice" : "batch_invoice",
+        job_type: fileCount === 1 ? "receipt" : "batch_receipt",
         status: "received", // File received, will be queued for processing
         status_message: `${fileCount} file${fileCount > 1 ? "s" : ""} uploaded successfully`,
         processing_mode: processingMode,
@@ -213,13 +220,15 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Store document metadata for each invoice in financial_documents table
+    // Store document metadata for each receipt/invoice in financial_documents table
+    // Determine file type: receipts are uploaded via this endpoint
+    const fileType = "receipt"; // Receipts page uploads receipts
     const documentInserts = uploadedFiles.map((fileName, index) => ({
       user_id: user.id,
       tenant_id: userData?.tenant_id || null,
       job_id: jobData.id,
       original_filename: files[index].name,
-      file_type: "invoice",
+      file_type: fileType,
       mime_type: files[index].type,
       file_size_bytes: files[index].size,
       storage_tier: "hot",
@@ -251,58 +260,30 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // Trigger processing
-    if (processingMode === "sync") {
-      // Update status to processing for sync mode
-      await supabase
-        .from("categorization_jobs")
-        .update({ 
-          status: "processing",
-          status_message: "Processing files...",
-          started_at: new Date().toISOString(),
-        })
-        .eq("id", jobData.id);
+    // Trigger processing - receipts always use async mode
+    // Update status to queued before triggering background processing
+    await supabase
+      .from("categorization_jobs")
+      .update({ 
+        status: "queued",
+        status_message: "Waiting to start processing...",
+      })
+      .eq("id", jobData.id);
 
-      // Process synchronously (for small batches)
-      try {
-        fetch(`${request.nextUrl.origin}/api/categorization/process-invoices`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Cookie: request.headers.get("cookie") || "",
-          },
-          body: JSON.stringify({ jobId: jobData.id }),
-        }).catch(err => {
-          console.error("Failed to trigger processing:", err);
-        });
-      } catch (processError) {
-        console.error("Failed to trigger processing:", processError);
-      }
-    } else {
-      // Update status to queued before triggering background processing
-      await supabase
-        .from("categorization_jobs")
-        .update({ 
-          status: "queued",
-          status_message: "Waiting to start processing...",
-        })
-        .eq("id", jobData.id);
-
-      // Queue for async processing (Vercel Background Functions)
-      try {
-        fetch(`${request.nextUrl.origin}/api/background/process-invoices`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Cookie: request.headers.get("cookie") || "",
-          },
-          body: JSON.stringify({ jobId: jobData.id }),
-        }).catch(err => {
-          console.error("Failed to queue background processing:", err);
-        });
-      } catch (processError) {
-        console.error("Failed to queue background processing:", processError);
-      }
+    // Queue for async processing (Vercel Background Functions)
+    try {
+      fetch(`${request.nextUrl.origin}/api/background/process-invoices`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Cookie: request.headers.get("cookie") || "",
+        },
+        body: JSON.stringify({ jobId: jobData.id }),
+      }).catch(err => {
+        console.error("Failed to queue background processing:", err);
+      });
+    } catch (processError) {
+      console.error("Failed to queue background processing:", processError);
     }
 
     return NextResponse.json({
@@ -310,7 +291,7 @@ export async function POST(request: NextRequest) {
       jobId: jobData.id,
       status: "received",
       status_message: `${fileCount} file${fileCount > 1 ? "s" : ""} uploaded successfully`,
-      message: `${fileCount} invoice${fileCount > 1 ? "s" : ""} uploaded successfully`,
+      message: `${fileCount} receipt${fileCount > 1 ? "s" : ""} uploaded successfully`,
       processingMode,
     });
   } catch (error: any) {

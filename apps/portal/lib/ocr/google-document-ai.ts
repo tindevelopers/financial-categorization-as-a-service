@@ -38,6 +38,8 @@ export interface InvoiceData {
   currency?: string;
   extracted_text?: string;
   confidence_score?: number;
+  fee_amount?: number;
+  shipping_amount?: number;
 }
 
 /**
@@ -196,11 +198,103 @@ function parseInvoiceData(document: any): InvoiceData {
   if (document.pages && document.pages[0]?.tables) {
     data.line_items = [];
     // Extract line items from tables
-    // This is simplified - full implementation would parse table structure
     for (const table of document.pages[0].tables) {
       if (table.headerRows && table.bodyRows) {
-        // Parse table rows
-        // Implementation would extract item descriptions, quantities, prices
+        // Parse table rows to extract line items
+        for (const row of table.bodyRows) {
+          const cells = row.cells || [];
+          if (cells.length >= 2) {
+            // Try to extract description, quantity, unit price, and total
+            let description = "";
+            let quantity: number | undefined;
+            let unitPrice: number | undefined;
+            let total: number | undefined;
+
+            // Common table structures:
+            // [Description, Qty, Unit Price, Total]
+            // [Description, Amount]
+            // [Item, Price]
+            for (let i = 0; i < cells.length; i++) {
+              const cellText = cells[i]?.text || "";
+              const cellTextLower = cellText.toLowerCase();
+
+              // Description is usually the first column or contains text
+              if (i === 0 && cellText && !parseAmount(cellText)) {
+                description = cellText.trim();
+              }
+
+              // Try to identify amounts
+              const amount = parseAmount(cellText);
+              if (amount !== undefined) {
+                if (total === undefined) {
+                  total = amount;
+                } else if (unitPrice === undefined && cells.length > 2) {
+                  unitPrice = amount;
+                  total = amount; // Reassign if we find unit price
+                }
+              }
+
+              // Quantity is usually a small number
+              if (cellText.match(/^\d+$/) && parseFloat(cellText) < 1000) {
+                quantity = parseFloat(cellText);
+              }
+            }
+
+            if (description && total !== undefined) {
+              data.line_items!.push({
+                description,
+                quantity,
+                unit_price: unitPrice,
+                total,
+              });
+            }
+          }
+        }
+      }
+    }
+  }
+
+  // Also check for line items in entities
+  if (document.entities && !data.line_items) {
+    data.line_items = [];
+    const lineItemEntities = document.entities.filter((e: any) => 
+      e.type?.toLowerCase().includes("line_item") || 
+      e.type?.toLowerCase().includes("item")
+    );
+
+    for (const entity of lineItemEntities) {
+      const properties = entity.properties || {};
+      const description = properties.description?.textValue || properties.item?.textValue || "";
+      const quantity = parseAmount(properties.quantity?.textValue || properties.qty?.textValue);
+      const unitPrice = parseAmount(properties.unit_price?.textValue || properties.price?.textValue);
+      const total = parseAmount(properties.amount?.textValue || properties.total?.textValue);
+
+      if (description && total !== undefined) {
+        data.line_items.push({
+          description,
+          quantity,
+          unit_price: unitPrice,
+          total,
+        });
+      }
+    }
+  }
+
+  // Extract fees and shipping from entities if available
+  if (document.entities) {
+    for (const entity of document.entities) {
+      const type = entity.type?.toLowerCase();
+      const value = entity.normalizedValue?.textValue || entity.mentionText;
+      const amount = parseAmount(value);
+
+      if (amount !== undefined) {
+        if (type?.includes("fee") || type?.includes("service")) {
+          // Store fee amount (will be added to fee_amount field)
+          if (!data.fee_amount) data.fee_amount = amount;
+        } else if (type?.includes("shipping") || type?.includes("delivery")) {
+          // Store shipping amount
+          if (!data.shipping_amount) data.shipping_amount = amount;
+        }
       }
     }
   }

@@ -37,13 +37,16 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Get unreconciled documents for user
+    // Get unreconciled documents for user from financial_documents table
+    // Search across all account types (no account filter)
     const { data: documents, error: docError } = await supabase
-      .from('documents')
+      .from('financial_documents')
       .select('*')
       .eq('user_id', user.id)
       .eq('reconciliation_status', 'unreconciled')
-      .order('invoice_date', { ascending: false });
+      .is('matched_transaction_id', null)
+      .in('file_type', ['receipt', 'invoice'])
+      .order('document_date', { ascending: false });
 
     if (docError) {
       console.error('Error fetching documents:', docError);
@@ -70,9 +73,9 @@ export async function POST(request: NextRequest) {
         if (doc.matched_transaction_id) continue;
 
         const amountDiff = Math.abs((tx.amount || 0) - (doc.total_amount || 0));
-        const dateDiff = doc.invoice_date 
+        const dateDiff = doc.document_date 
           ? Math.abs(
-              (new Date(tx.date).getTime() - new Date(doc.invoice_date).getTime()) / 
+              (new Date(tx.date).getTime() - new Date(doc.document_date).getTime()) / 
               (1000 * 60 * 60 * 24)
             )
           : 999;

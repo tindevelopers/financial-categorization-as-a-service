@@ -23,6 +23,8 @@ export default function ReceiptsUploadPage() {
   const [progress, setProgress] = useState(0)
   const [error, setError] = useState<string | null>(null)
   const [jobId, setJobId] = useState<string | null>(null)
+  const [jobStatus, setJobStatus] = useState<string | null>(null)
+  const [statusMessage, setStatusMessage] = useState<string | null>(null)
   const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([])
   const [selectedBankAccountId, setSelectedBankAccountId] = useState<string>('')
   const [loadingBankAccounts, setLoadingBankAccounts] = useState(true)
@@ -82,6 +84,79 @@ export default function ReceiptsUploadPage() {
     } finally {
       setProfileLoading(false)
     }
+  }
+
+  const pollJobStatus = async (jobId: string) => {
+    const maxAttempts = 120 // 2 minutes max (1 second intervals)
+    let attempts = 0
+
+    const poll = async () => {
+      try {
+        const response = await fetch(`/api/categorization/jobs/${jobId}`)
+        if (!response.ok) {
+          throw new Error('Failed to fetch job status')
+        }
+
+        const data = await response.json()
+        const job = data.job
+
+        if (job) {
+          setJobStatus(job.status)
+          setStatusMessage(job.status_message || job.error_message)
+
+          // Update progress based on status
+          let newProgress = 0
+          if (job.status === 'received') {
+            newProgress = 10
+          } else if (job.status === 'queued') {
+            newProgress = 20
+          } else if (job.status === 'processing') {
+            // Calculate progress based on processed items
+            const total = job.total_items || 1
+            const processed = job.processed_items || 0
+            const failed = job.failed_items || 0
+            newProgress = Math.min(90, 20 + Math.floor(((processed + failed) / total) * 70))
+          } else if (job.status === 'reviewing' || job.status === 'completed') {
+            newProgress = 100
+            setUploading(false)
+            // Redirect after a short delay
+            setTimeout(() => {
+              window.location.href = '/dashboard/uploads'
+            }, 2000)
+            return // Stop polling
+          } else if (job.status === 'failed') {
+            newProgress = 100
+            setUploading(false)
+            setError(job.status_message || job.error_message || 'Processing failed')
+            return // Stop polling
+          }
+
+          setProgress(newProgress)
+
+          // Continue polling if not in final state
+          if (!['reviewing', 'completed', 'failed'].includes(job.status)) {
+            attempts++
+            if (attempts < maxAttempts) {
+              setTimeout(poll, 1000) // Poll every second
+            } else {
+              setUploading(false)
+              setError('Processing is taking longer than expected. Please check the uploads page.')
+            }
+          }
+        }
+      } catch (error: any) {
+        console.error('Error polling job status:', error)
+        attempts++
+        if (attempts < maxAttempts) {
+          setTimeout(poll, 1000)
+        } else {
+          setUploading(false)
+          setError('Failed to track processing status. Please check the uploads page.')
+        }
+      }
+    }
+
+    poll()
   }
 
   const onDrop = useCallback(async (acceptedFiles: File[]) => {
@@ -158,15 +233,16 @@ export default function ReceiptsUploadPage() {
 
       const data = await response.json()
       
-      setUploading(false)
-      setProgress(100)
       setJobId(data.jobId)
-
-      // Redirect to uploads page to see processing status
+      setJobStatus(data.status || 'received')
+      setStatusMessage(data.status_message || data.message)
+      
+      // Start polling for job status
       if (data.jobId) {
-        setTimeout(() => {
-          window.location.href = '/dashboard/uploads'
-        }, 1500)
+        pollJobStatus(data.jobId)
+      } else {
+        setUploading(false)
+        setProgress(100)
       }
     } catch (error: any) {
       // Try to extract error message from response
@@ -276,8 +352,19 @@ export default function ReceiptsUploadPage() {
               <>
                 <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mb-4"></div>
                 <p className="text-lg font-medium text-gray-900 dark:text-white mb-2">
-                  Uploading... {progress}%
+                  {statusMessage || `Uploading... ${progress}%`}
                 </p>
+                {jobStatus && (
+                  <p className="text-sm text-gray-500 dark:text-gray-400">
+                    Status: {jobStatus.charAt(0).toUpperCase() + jobStatus.slice(1)}
+                  </p>
+                )}
+                <div className="w-full max-w-xs mt-4 bg-gray-200 dark:bg-gray-700 rounded-full h-2">
+                  <div 
+                    className="bg-blue-500 h-2 rounded-full transition-all duration-300"
+                    style={{ width: `${progress}%` }}
+                  ></div>
+                </div>
               </>
             ) : files.length > 0 ? (
               <>
