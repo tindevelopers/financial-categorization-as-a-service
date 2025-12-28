@@ -88,9 +88,11 @@ export async function processDocument(
   }
 
   try {
-    const credentials = process.env.GOOGLE_APPLICATION_CREDENTIALS;
+    // Check for JSON credentials (base64 encoded) first (for Vercel/serverless)
+    const credentialsJson = process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON;
+    const credentialsPath = process.env.GOOGLE_APPLICATION_CREDENTIALS;
 
-    if (!credentials) {
+    if (!credentialsJson && !credentialsPath) {
       // Simulated OCR for development
       return simulatedOCR(fileBuffer, mimeType, documentType);
     }
@@ -103,9 +105,18 @@ export async function processDocument(
       ) as any;
       const { DocumentProcessorServiceClient } = documentaiModule;
 
-      const client = new DocumentProcessorServiceClient({
-        keyFilename: credentials,
-      });
+      // Use JSON credentials if available (for Vercel/serverless), otherwise use file path
+      const clientOptions = credentialsJson
+        ? {
+            credentials: JSON.parse(
+              Buffer.from(credentialsJson, "base64").toString("utf-8")
+            ),
+          }
+        : {
+            keyFilename: credentialsPath,
+          };
+
+      const client = new DocumentProcessorServiceClient(clientOptions);
 
       const name = `projects/${GCS_PROJECT_ID}/locations/${DOCUMENT_AI_LOCATION}/processors/${DOCUMENT_AI_PROCESSOR_ID}`;
 

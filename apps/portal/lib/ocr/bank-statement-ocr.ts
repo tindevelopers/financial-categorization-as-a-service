@@ -56,9 +56,23 @@ export async function processBankStatementOCR(
   try {
     // @ts-ignore - Optional dependency, may not be installed
     const { DocumentProcessorServiceClient } = await import("@google-cloud/documentai");
-    const client = new DocumentProcessorServiceClient({
-      keyFilename: process.env.GOOGLE_APPLICATION_CREDENTIALS,
-    });
+    
+    // Check for JSON credentials (base64 encoded) first (for Vercel/serverless)
+    const credentialsJson = process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON;
+    const credentialsPath = process.env.GOOGLE_APPLICATION_CREDENTIALS;
+    
+    // Use JSON credentials if available (for Vercel/serverless), otherwise use file path
+    const clientOptions = credentialsJson
+      ? {
+          credentials: JSON.parse(
+            Buffer.from(credentialsJson, "base64").toString("utf-8")
+          ),
+        }
+      : {
+          keyFilename: credentialsPath,
+        };
+    
+    const client = new DocumentProcessorServiceClient(clientOptions);
 
     const processorName = `projects/${PROJECT_ID}/locations/${LOCATION}/processors/${PROCESSOR_ID}`;
 

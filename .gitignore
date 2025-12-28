@@ -56,3 +56,4 @@ supabase/.temp
 # Turborepo
 .turbo/
 .cursor/
+.gcp/
