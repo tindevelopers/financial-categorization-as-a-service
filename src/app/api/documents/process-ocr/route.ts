@@ -1,10 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/core/database/server';
-import { processDocument } from '@/lib/ocr/document-ai';
+import { processInvoiceOCR } from '@/lib/ocr/google-document-ai';
+import { verifyOCRSource } from '@/lib/ocr/google-document-ai';
 
 /**
  * Process OCR for a document
  * Extracts text, entities, and tax breakdown from uploaded documents
+ * Uses the comprehensive invoice extraction system
  */
 
 export const maxDuration = 300; // 5 minutes for OCR processing
@@ -17,6 +19,7 @@ interface FinancialDocument {
   storage_path?: string;
   storage_bucket?: string;
   mime_type: string;
+  original_filename?: string;
   [key: string]: any;
 }
 
@@ -81,65 +84,76 @@ export async function POST(request: NextRequest) {
         throw new Error(`Failed to download file: ${downloadError?.message}`);
       }
 
-      // Convert Blob to Buffer
-      const arrayBuffer = await fileData.arrayBuffer();
-      const buffer = Buffer.from(arrayBuffer);
+      // Process with comprehensive invoice OCR
+      const fileName = document.original_filename || storagePath.split('/').pop() || 'invoice.pdf';
+      const invoiceData = await processInvoiceOCR(fileData, fileName);
 
-      // Process with OCR
-      const documentType = document.file_type || 'invoice';
-      const ocrResult = await processDocument(buffer, document.mime_type, documentType);
+      // Verify OCR source
+      const ocrVerification = verifyOCRSource();
 
-      if (!ocrResult.success || !ocrResult.extractedData) {
-        throw new Error(ocrResult.error || 'OCR processing failed');
-      }
-
-      // Extract tax breakdown
-      const extractedData = ocrResult.extractedData;
-
-      // Build update object
+      // Build update object with all extracted fields
       const updateData: Record<string, any> = {
-        ocr_status: 'completed',
+        ocr_status: invoiceData.ocr_failed ? 'failed' : 'completed',
         ocr_processed_at: new Date().toISOString(),
-        ocr_confidence: ocrResult.confidence || 0,
-        extracted_text: ocrResult.text || '',
+        ocr_confidence_score: invoiceData.confidence_score || 0,
+        ocr_provider: ocrVerification.provider,
+        extracted_text: invoiceData.extracted_text || '',
       };
 
-      // Add extracted fields if available
-      if (extractedData.vendorName) {
-        updateData.vendor_name = extractedData.vendorName;
+      // Map extracted fields correctly
+      if (invoiceData.vendor_name) {
+        updateData.vendor_name = invoiceData.vendor_name;
       }
 
-      if (extractedData.documentDate) {
-        updateData.document_date = extractedData.documentDate;
+      if (invoiceData.invoice_date) {
+        updateData.document_date = invoiceData.invoice_date;
       }
 
-      if (extractedData.totalAmount !== undefined) {
-        updateData.total_amount = extractedData.totalAmount;
+      if (invoiceData.invoice_number) {
+        updateData.invoice_number = invoiceData.invoice_number;
       }
 
-      if (extractedData.subtotal !== undefined) {
-        updateData.subtotal_amount = extractedData.subtotal;
+      if (invoiceData.total !== undefined) {
+        updateData.total_amount = invoiceData.total;
       }
 
-      if (extractedData.taxAmount !== undefined) {
-        updateData.tax_amount = extractedData.taxAmount;
+      if (invoiceData.subtotal !== undefined) {
+        updateData.subtotal_amount = invoiceData.subtotal;
       }
 
-      if (extractedData.lineItems && extractedData.lineItems.length > 0) {
-        updateData.line_items = extractedData.lineItems;
+      if (invoiceData.tax !== undefined) {
+        updateData.tax_amount = invoiceData.tax; // VAT total
       }
 
-      if (extractedData.currency) {
-        updateData.currency = extractedData.currency;
+      if (invoiceData.line_items && invoiceData.line_items.length > 0) {
+        updateData.line_items = invoiceData.line_items;
       }
 
-      if (extractedData.invoiceNumber) {
-        updateData.po_number = extractedData.invoiceNumber;
+      if (invoiceData.currency) {
+        updateData.currency = invoiceData.currency;
+      }
+
+      // Store additional metadata
+      if (invoiceData.field_confidence) {
+        updateData.field_confidence = invoiceData.field_confidence;
+      }
+
+      if (invoiceData.extraction_methods) {
+        updateData.extraction_methods = invoiceData.extraction_methods;
+      }
+
+      if (invoiceData.needs_review !== undefined) {
+        updateData.needs_review = invoiceData.needs_review;
       }
 
       // Calculate net amount if not provided
       if (updateData.total_amount && updateData.tax_amount !== undefined) {
         updateData.net_amount = updateData.total_amount - updateData.tax_amount;
+      }
+
+      // Handle OCR errors
+      if (invoiceData.ocr_error) {
+        updateData.ocr_error = invoiceData.ocr_error;
       }
 
       // Update document with extracted data
@@ -153,7 +167,7 @@ export async function POST(request: NextRequest) {
       }
 
       // Trigger auto-match with transactions
-      if (process.env.NEXT_PUBLIC_APP_URL) {
+      if (process.env.NEXT_PUBLIC_APP_URL && !invoiceData.ocr_failed) {
         fetch(`${process.env.NEXT_PUBLIC_APP_URL}/api/reconciliation/auto-match`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -165,12 +179,16 @@ export async function POST(request: NextRequest) {
         success: true,
         documentId,
         extracted: {
-          vendor: extractedData.vendorName,
-          date: extractedData.documentDate,
-          total: extractedData.totalAmount,
-          subtotal: extractedData.subtotal,
-          tax: extractedData.taxAmount,
-          lineItems: extractedData.lineItems?.length || 0,
+          vendor: invoiceData.vendor_name,
+          date: invoiceData.invoice_date,
+          invoiceNumber: invoiceData.invoice_number,
+          total: invoiceData.total,
+          subtotal: invoiceData.subtotal,
+          tax: invoiceData.tax,
+          currency: invoiceData.currency,
+          lineItems: invoiceData.line_items?.length || 0,
+          confidence: invoiceData.confidence_score,
+          needsReview: invoiceData.needs_review,
         },
       });
 

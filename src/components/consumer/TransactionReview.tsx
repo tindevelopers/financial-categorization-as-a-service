@@ -5,7 +5,25 @@ import {
   CheckCircleIcon, 
   ArrowDownTrayIcon,
   PencilIcon,
+  EyeIcon,
+  XMarkIcon,
 } from "@heroicons/react/24/outline";
+import InvoiceReview from "@/components/invoice/InvoiceReview";
+
+interface Document {
+  id: string;
+  original_filename: string;
+  supabase_path: string | null;
+  storage_tier: string;
+  mime_type: string | null;
+  vendor_name?: string | null;
+  invoice_number?: string | null;
+  document_date?: string | null;
+  total_amount?: number | null;
+  tax_amount?: number | null;
+  subtotal_amount?: number | null;
+  currency?: string | null;
+}
 
 interface Transaction {
   id: string;
@@ -17,6 +35,9 @@ interface Transaction {
   confidence_score: number;
   user_confirmed: boolean;
   user_notes: string | null;
+  invoice_number: string | null;
+  document_id: string | null;
+  document?: Document | null;
 }
 
 interface TransactionReviewProps {
@@ -31,6 +52,8 @@ export default function TransactionReview({ jobId }: TransactionReviewProps) {
   const [editCategory, setEditCategory] = useState("");
   const [editSubcategory, setEditSubcategory] = useState("");
   const [exporting, setExporting] = useState(false);
+  const [viewingInvoiceId, setViewingInvoiceId] = useState<string | null>(null);
+  const [invoiceDocumentUrl, setInvoiceDocumentUrl] = useState<string | null>(null);
 
   useEffect(() => {
     loadTransactions();
@@ -91,6 +114,57 @@ export default function TransactionReview({ jobId }: TransactionReviewProps) {
       await loadTransactions();
     } catch (err: any) {
       setError(err.message);
+    }
+  };
+
+  const handleViewInvoice = async (documentId: string) => {
+    try {
+      const response = await fetch(`/api/documents/${documentId}/download`, {
+        credentials: 'include',
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setInvoiceDocumentUrl(data.downloadUrl);
+        setViewingInvoiceId(documentId);
+      } else {
+        alert("Failed to load invoice document");
+      }
+    } catch (err) {
+      console.error("Error loading invoice:", err);
+      alert("Failed to load invoice document");
+    }
+  };
+
+  const handleConfirmInvoice = async (invoiceData: any) => {
+    // This will trigger commit and reconciliation
+    // For now, just close the modal - the actual commit logic should be handled by the parent
+    setViewingInvoiceId(null);
+    setInvoiceDocumentUrl(null);
+    await loadTransactions();
+  };
+
+  const handleEditInvoice = async (invoiceData: any) => {
+    // Update the document with edited fields
+    if (!viewingInvoiceId) return;
+    
+    try {
+      const response = await fetch(`/api/documents/${viewingInvoiceId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          invoice_number: invoiceData.invoice_number,
+          vendor_name: invoiceData.vendor_name,
+          document_date: invoiceData.document_date,
+          total_amount: invoiceData.total_amount,
+          tax_amount: invoiceData.tax_amount,
+          subtotal_amount: invoiceData.subtotal_amount,
+          currency: invoiceData.currency,
+        }),
+      });
+      if (!response.ok) throw new Error("Failed to update invoice");
+      await loadTransactions();
+    } catch (err: any) {
+      throw new Error(err.message || "Failed to update invoice");
     }
   };
 
@@ -232,10 +306,19 @@ export default function TransactionReview({ jobId }: TransactionReviewProps) {
                   Date
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                  Invoice #
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                  Supplier
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                   Description
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                   Amount
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                  VAT
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                   Category
@@ -257,11 +340,22 @@ export default function TransactionReview({ jobId }: TransactionReviewProps) {
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
                     {new Date(tx.date).toLocaleDateString()}
                   </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
+                    {tx.invoice_number || tx.document?.invoice_number || "-"}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
+                    {tx.document?.vendor_name || "-"}
+                  </td>
                   <td className="px-6 py-4 text-sm text-gray-900 dark:text-white max-w-xs truncate">
                     {tx.original_description}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-white">
                     ${Math.abs(tx.amount).toFixed(2)}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
+                    {tx.document?.tax_amount !== undefined && tx.document?.tax_amount !== null
+                      ? `${tx.document.currency || "USD"} ${tx.document.tax_amount.toFixed(2)}`
+                      : "-"}
                   </td>
                   <td className="px-6 py-4 text-sm text-gray-900 dark:text-white">
                     {editingId === tx.id ? (
@@ -328,6 +422,15 @@ export default function TransactionReview({ jobId }: TransactionReviewProps) {
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                     <div className="flex items-center gap-2">
+                      {tx.document_id && (
+                        <button
+                          onClick={() => handleViewInvoice(tx.document_id!)}
+                          className="text-blue-600 hover:text-blue-900 dark:text-blue-400 dark:hover:text-blue-300"
+                          title="View invoice"
+                        >
+                          <EyeIcon className="h-4 w-4" />
+                        </button>
+                      )}
                       {!tx.user_confirmed && (
                         <>
                           <button
@@ -361,6 +464,30 @@ export default function TransactionReview({ jobId }: TransactionReviewProps) {
           </table>
         </div>
       </div>
+
+      {/* Invoice Review Modal */}
+      {viewingInvoiceId && invoiceDocumentUrl && transactions.find(tx => tx.document_id === viewingInvoiceId) && (
+        <InvoiceReview
+          invoiceData={{
+            id: viewingInvoiceId,
+            invoice_number: transactions.find(tx => tx.document_id === viewingInvoiceId)?.document?.invoice_number || 
+                           transactions.find(tx => tx.document_id === viewingInvoiceId)?.invoice_number || undefined,
+            vendor_name: transactions.find(tx => tx.document_id === viewingInvoiceId)?.document?.vendor_name || undefined,
+            document_date: transactions.find(tx => tx.document_id === viewingInvoiceId)?.document?.document_date || undefined,
+            total_amount: transactions.find(tx => tx.document_id === viewingInvoiceId)?.document?.total_amount || undefined,
+            tax_amount: transactions.find(tx => tx.document_id === viewingInvoiceId)?.document?.tax_amount || undefined,
+            subtotal_amount: transactions.find(tx => tx.document_id === viewingInvoiceId)?.document?.subtotal_amount || undefined,
+            currency: transactions.find(tx => tx.document_id === viewingInvoiceId)?.document?.currency || undefined,
+            documentUrl: invoiceDocumentUrl,
+          }}
+          onConfirm={handleConfirmInvoice}
+          onEdit={handleEditInvoice}
+          onClose={() => {
+            setViewingInvoiceId(null);
+            setInvoiceDocumentUrl(null);
+          }}
+        />
+      )}
     </div>
   );
 }

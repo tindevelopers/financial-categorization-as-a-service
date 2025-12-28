@@ -34,11 +34,27 @@ export async function GET(
       );
     }
 
-    // Get transactions
+    // Get transactions with document and supplier information
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { data: transactions, error: transactionsError } = await (supabase as any)
       .from("categorized_transactions")
-      .select("*")
+      .select(`
+        *,
+        document:financial_documents!document_id (
+          id,
+          original_filename,
+          supabase_path,
+          storage_tier,
+          mime_type,
+          vendor_name,
+          invoice_number,
+          document_date,
+          total_amount,
+          tax_amount,
+          subtotal_amount,
+          currency
+        )
+      `)
       .eq("job_id", jobId)
       .order("date", { ascending: false });
 
