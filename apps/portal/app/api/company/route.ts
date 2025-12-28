@@ -39,6 +39,7 @@ export async function POST(request: NextRequest) {
         company_name: body.companyName,
         company_type: body.companyType,
         company_number: body.companyNumber || null,
+        default_currency: body.currency || 'GBP',
         vat_registered: body.vatRegistered || false,
         vat_number: body.vatNumber || null,
         vat_scheme: body.vatScheme || null,
@@ -176,6 +177,7 @@ export async function PUT(request: NextRequest) {
     }
     if (updateData.companyType !== undefined) updatePayload.company_type = updateData.companyType
     if (updateData.companyNumber !== undefined) updatePayload.company_number = updateData.companyNumber || null
+    if (updateData.currency !== undefined) updatePayload.default_currency = updateData.currency || 'GBP'
     if (updateData.vatRegistered !== undefined) updatePayload.vat_registered = updateData.vatRegistered
     if (updateData.vatNumber !== undefined) updatePayload.vat_number = updateData.vatNumber || null
     if (updateData.vatScheme !== undefined) updatePayload.vat_scheme = updateData.vatScheme || null

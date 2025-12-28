@@ -252,78 +252,116 @@ function parseInvoiceData(document: any): InvoiceData {
     data.line_items = [];
     // Extract line items from tables
     for (const table of document.pages[0].tables) {
-      if (table.headerRows && table.bodyRows) {
-        // Parse table rows to extract line items
-        for (const row of table.bodyRows) {
-          const cells = row.cells || [];
-          if (cells.length >= 2) {
-            // Try to extract description, quantity, unit price, and total
-            let description = "";
-            let quantity: number | undefined;
-            let unitPrice: number | undefined;
-            let total: number | undefined;
+      // Handle tables with or without explicit header rows
+      const bodyRows = table.bodyRows || [];
+      const headerRows = table.headerRows || [];
+      const allRows = [...headerRows, ...bodyRows];
+      
+      // Skip header rows when processing
+      const rowsToProcess = headerRows.length > 0 ? bodyRows : allRows;
+      
+      for (const row of rowsToProcess) {
+        const cells = row.cells || [];
+        if (cells.length < 2) continue;
+        
+        // Skip summary rows (contain "total", "subtotal", "vat", etc.)
+        const rowText = cells.map((c: any) => c?.text || '').join(' ').toLowerCase();
+        if (rowText.match(/\b(total|subtotal|vat|tax|sub\s*total|delivery|shipping)\b/)) {
+          continue;
+        }
+        
+        // Try to extract description, quantity, unit price, and total
+        let description = "";
+        let quantity: number | undefined;
+        let unitPrice: number | undefined;
+        let total: number | undefined;
 
-            // Common table structures:
-            // [Description, Qty, Unit Price, Total]
-            // [Description, Amount]
-            // [Item, Price]
-            // [Quantity x Description - Price] (Screwfix format)
-            for (let i = 0; i < cells.length; i++) {
-              const cellText = cells[i]?.text || "";
-              const cellTextLower = cellText.toLowerCase();
+        // Common table structures:
+        // [Description, Qty, Unit Price, Total]
+        // [Description, Amount]
+        // [Item, Price]
+        // [Quantity x Description - Price] (Screwfix format)
+        for (let i = 0; i < cells.length; i++) {
+          const cellText = (cells[i]?.text || "").trim();
+          if (!cellText) continue;
+          
+          const cellTextLower = cellText.toLowerCase();
 
-              // Check for Screwfix format: "4 x Vapour Barrier Membrane 10m x 2m - £59.96"
-              const screwfixPattern = /^(\d+)\s*x\s+(.+?)\s*[-–]\s*([£$€]?\s*\d+[\d.,]*)/i;
-              const screwfixMatch = cellText.match(screwfixPattern);
-              if (screwfixMatch) {
-                quantity = parseFloat(screwfixMatch[1]);
-                description = screwfixMatch[2].trim();
-                total = parseAmount(screwfixMatch[3]);
-                if (total !== undefined && quantity > 0) {
-                  unitPrice = total / quantity;
-                }
-                break; // Found complete line item, move to next row
+          // Check for Screwfix format variations in cell:
+          // "4 x Vapour Barrier Membrane 10m x 2m - £59.96"
+          // "4 x Vapour Barrier Membrane 10m x 2m £59.96"
+          const screwfixPatterns = [
+            /^(\d+)\s*x\s+(.+?)\s*[-–]\s*([£$€]?\s*\d+[\d.,]*)/i,
+            /^(\d+)\s*x\s+(.+?)\s+([£$€]\s*\d+[\d.,]*)/i,
+          ];
+          
+          for (const pattern of screwfixPatterns) {
+            const screwfixMatch = cellText.match(pattern);
+            if (screwfixMatch) {
+              quantity = parseFloat(screwfixMatch[1]);
+              description = screwfixMatch[2].trim();
+              total = parseAmount(screwfixMatch[3]);
+              if (total !== undefined && quantity > 0 && description.length > 3) {
+                unitPrice = total / quantity;
+                break; // Found complete line item in this cell
               }
-
-              // Description is usually the first column or contains text
-              if (i === 0 && cellText && !parseAmount(cellText)) {
-                description = cellText.trim();
-                
-                // Also check if description contains quantity pattern: "4 x Item Name"
-                const qtyPattern = /^(\d+)\s*x\s+(.+)/i;
-                const qtyMatch = description.match(qtyPattern);
-                if (qtyMatch) {
-                  quantity = parseFloat(qtyMatch[1]);
-                  description = qtyMatch[2].trim();
-                }
-              }
-
-              // Try to identify amounts
-              const amount = parseAmount(cellText);
-              if (amount !== undefined) {
-                if (total === undefined) {
-                  total = amount;
-                } else if (unitPrice === undefined && cells.length > 2) {
-                  unitPrice = amount;
-                  total = amount; // Reassign if we find unit price
-                }
-              }
-
-              // Quantity is usually a small number
-              if (cellText.match(/^\d+$/) && parseFloat(cellText) < 1000) {
-                quantity = parseFloat(cellText);
-              }
-            }
-
-            if (description && total !== undefined) {
-              data.line_items!.push({
-                description,
-                quantity,
-                unit_price: unitPrice,
-                total,
-              });
             }
           }
+          
+          if (description && total !== undefined) break; // Already found complete item
+
+          // Description is usually the first column or contains text (not just numbers)
+          if (i === 0 && cellText && !parseAmount(cellText)) {
+            description = cellText.trim();
+            
+            // Check if description contains quantity pattern: "4 x Item Name"
+            const qtyPattern = /^(\d+)\s*x\s+(.+)/i;
+            const qtyMatch = description.match(qtyPattern);
+            if (qtyMatch) {
+              quantity = parseFloat(qtyMatch[1]);
+              description = qtyMatch[2].trim();
+            }
+          }
+
+          // Try to identify amounts (monetary values)
+          const amount = parseAmount(cellText);
+          if (amount !== undefined && amount > 0) {
+            // If this looks like a quantity (small integer), don't treat as amount
+            if (cellText.match(/^\d+$/) && amount < 1000 && amount === Math.floor(amount)) {
+              quantity = amount;
+            } else {
+              // This is likely a monetary amount
+              if (total === undefined) {
+                total = amount;
+              } else if (unitPrice === undefined && cells.length > 2) {
+                // If we already have a total and there are multiple amount columns,
+                // the smaller one might be unit price
+                if (amount < total) {
+                  unitPrice = amount;
+                } else {
+                  total = amount; // Use the larger amount as total
+                }
+              }
+            }
+          }
+
+          // Quantity is usually a small integer in its own cell
+          if (cellText.match(/^\d+$/) && parseFloat(cellText) < 1000 && parseFloat(cellText) > 0) {
+            const qtyValue = parseFloat(cellText);
+            if (qtyValue === Math.floor(qtyValue)) {
+              quantity = qtyValue;
+            }
+          }
+        }
+
+        // Only add if we have at least description and total
+        if (description && description.length > 3 && total !== undefined && total > 0) {
+          data.line_items!.push({
+            description,
+            quantity,
+            unit_price: unitPrice,
+            total,
+          });
         }
       }
     }
@@ -337,20 +375,69 @@ function parseInvoiceData(document: any): InvoiceData {
     const lines = text.split('\n');
     
     for (const line of lines) {
-      // Screwfix format: "4 x Vapour Barrier Membrane 10m x 2m - £59.96"
-      const screwfixPattern = /^(\d+)\s*x\s+(.+?)\s*[-–]\s*([£$€]?\s*\d+[\d.,]*)/i;
-      const match = line.match(screwfixPattern);
-      if (match) {
-        const quantity = parseFloat(match[1]);
-        const description = match[2].trim();
-        const total = parseAmount(match[3]);
-        if (total !== undefined && description.length > 3) {
-          data.line_items.push({
-            description,
-            quantity: quantity > 0 ? quantity : undefined,
-            unit_price: quantity > 0 && total ? total / quantity : undefined,
-            total,
-          });
+      const trimmedLine = line.trim();
+      if (!trimmedLine) continue;
+      
+      // Screwfix format variations:
+      // "4 x Vapour Barrier Membrane 10m x 2m - £59.96"
+      // "4 x Vapour Barrier Membrane 10m x 2m £59.96" (no dash)
+      // "4 x Vapour Barrier Membrane 10m x 2m" followed by amount on same or next line
+      const screwfixPatterns = [
+        /^(\d+)\s*x\s+(.+?)\s*[-–]\s*([£$€]?\s*\d+[\d.,]*)/i, // With dash
+        /^(\d+)\s*x\s+(.+?)\s+([£$€]\s*\d+[\d.,]*)/i, // Without dash, currency symbol
+        /^(\d+)\s*x\s+(.+?)\s+(\d+[\d.,]*)\s*[£$€]?/i, // Amount at end
+      ];
+      
+      let matched = false;
+      for (const pattern of screwfixPatterns) {
+        const match = trimmedLine.match(pattern);
+        if (match) {
+          const quantity = parseFloat(match[1]);
+          const description = match[2].trim();
+          const total = parseAmount(match[3]);
+          if (total !== undefined && description.length > 3 && total > 0) {
+            data.line_items.push({
+              description,
+              quantity: quantity > 0 ? quantity : undefined,
+              unit_price: quantity > 0 && total ? total / quantity : undefined,
+              total,
+            });
+            matched = true;
+            break;
+          }
+        }
+      }
+      
+      // If no Screwfix pattern matched, try generic line item patterns
+      if (!matched) {
+        // Pattern: Description followed by amount
+        // Look for lines that have text followed by a monetary amount
+        const genericPattern = /^(.+?)\s+([£$€]?\s*\d+[\d.,]*)\s*$/i;
+        const genericMatch = trimmedLine.match(genericPattern);
+        if (genericMatch) {
+          const description = genericMatch[1].trim();
+          const total = parseAmount(genericMatch[2]);
+          // Skip if it looks like a header or summary line
+          const isSummaryLine = /^(total|subtotal|vat|tax|sub\s*total|delivery|shipping)/i.test(description);
+          if (!isSummaryLine && total !== undefined && total > 0 && description.length > 3) {
+            // Check if description contains quantity
+            const qtyMatch = description.match(/^(\d+)\s*x\s+(.+)/i);
+            if (qtyMatch) {
+              const quantity = parseFloat(qtyMatch[1]);
+              const itemDescription = qtyMatch[2].trim();
+              data.line_items.push({
+                description: itemDescription,
+                quantity: quantity > 0 ? quantity : undefined,
+                unit_price: quantity > 0 && total ? total / quantity : undefined,
+                total,
+              });
+            } else {
+              data.line_items.push({
+                description,
+                total,
+              });
+            }
+          }
         }
       }
     }
@@ -405,6 +492,202 @@ function parseInvoiceData(document: any): InvoiceData {
   // This helps extract data that Document AI might miss
   if (document.text) {
     const text = document.text;
+    
+    // Extract amounts from text patterns (fallback if entities don't work)
+    // This is critical for PDFs where structured extraction fails
+    if (!data.total || !data.subtotal || !data.tax) {
+      const foundAmounts: Array<{ type: string; amount: number; line: string }> = [];
+      
+      // Common patterns for totals, subtotals, VAT, etc.
+      const amountPatterns = [
+        // Total (inc. VAT): £59.96 or Total (inc. VAT) | £59.96
+        {
+          pattern: /total\s*\(inc\.?\s*vat\)[:\s|]*([£$€]?\s*\d+[\d.,]*)/gi,
+          type: 'total_inc_vat',
+          priority: 1
+        },
+        // Total (ex. VAT): £49.97
+        {
+          pattern: /total\s*\(ex\.?\s*vat\)[:\s|]*([£$€]?\s*\d+[\d.,]*)/gi,
+          type: 'total_ex_vat',
+          priority: 2
+        },
+        // Sub total (inc. VAT): £59.96
+        {
+          pattern: /sub\s*total\s*\(inc\.?\s*vat\)[:\s|]*([£$€]?\s*\d+[\d.,]*)/gi,
+          type: 'subtotal_inc_vat',
+          priority: 3
+        },
+        // Sub total (ex. VAT): £49.97
+        {
+          pattern: /sub\s*total\s*\(ex\.?\s*vat\)[:\s|]*([£$€]?\s*\d+[\d.,]*)/gi,
+          type: 'subtotal_ex_vat',
+          priority: 4
+        },
+        // Sub total: £59.96
+        {
+          pattern: /sub\s*total[:\s|]+([£$€]?\s*\d+[\d.,]*)/gi,
+          type: 'subtotal',
+          priority: 5
+        },
+        // VAT: £9.99 or Tax: £9.99
+        {
+          pattern: /(?:vat|tax)\s*[:\s|]+([£$€]?\s*\d+[\d.,]*)/gi,
+          type: 'vat',
+          priority: 6
+        },
+        // Total: £59.96 (generic fallback)
+        {
+          pattern: /^total[:\s|]+([£$€]?\s*\d+[\d.,]*)/gim,
+          type: 'total',
+          priority: 7
+        },
+      ];
+      
+      // Scan text for all amount patterns
+      for (const { pattern, type, priority } of amountPatterns) {
+        const matches = Array.from(text.matchAll(pattern));
+        for (const match of matches) {
+          const amountStr = match[1]?.trim();
+          if (amountStr) {
+            const amount = parseAmount(amountStr);
+            if (amount !== undefined && amount > 0) {
+              foundAmounts.push({
+                type,
+                amount,
+                line: match[0] || ''
+              });
+            }
+          }
+        }
+      }
+      
+      // Process found amounts based on priority and type
+      // Sort by priority (lower number = higher priority)
+      foundAmounts.sort((a, b) => {
+        const aPriority = amountPatterns.find(p => p.type === a.type)?.priority || 999;
+        const bPriority = amountPatterns.find(p => p.type === b.type)?.priority || 999;
+        return aPriority - bPriority;
+      });
+      
+      // Assign amounts based on what we found
+      for (const found of foundAmounts) {
+        if (found.type === 'total_inc_vat' && !data.total) {
+          data.total = found.amount;
+        } else if (found.type === 'total_ex_vat' && !data.total) {
+          data.total = found.amount;
+          // If we have total ex VAT, we might need to calculate VAT
+          // But we'll wait for VAT to be found separately
+        } else if (found.type === 'total' && !data.total) {
+          data.total = found.amount;
+        } else if (found.type === 'subtotal_inc_vat' && !data.subtotal) {
+          data.subtotal = found.amount;
+        } else if (found.type === 'subtotal_ex_vat' && !data.subtotal) {
+          data.subtotal = found.amount;
+        } else if (found.type === 'subtotal' && !data.subtotal) {
+          data.subtotal = found.amount;
+        } else if (found.type === 'vat' && !data.tax) {
+          data.tax = found.amount;
+        }
+      }
+      
+      // If we found total but not subtotal, and we have VAT, calculate subtotal
+      if (data.total && data.tax && !data.subtotal) {
+        data.subtotal = data.total - data.tax;
+      }
+      
+      // If we found subtotal and VAT but not total, calculate total
+      if (data.subtotal && data.tax && !data.total) {
+        data.total = data.subtotal + data.tax;
+      }
+    }
+    
+    // Fallback: If structured extraction failed, scan entire text for amounts
+    // This is a last resort when entities and patterns don't work
+    if (!data.total && !data.subtotal && !data.tax && text) {
+      // Find all monetary amounts in the text
+      const amountRegex = /([£$€]?\s*\d{1,3}(?:[,\s]\d{3})*(?:[.,]\d{2})?)\s*[£$€]?/g;
+      const allAmounts: Array<{ amount: number; context: string; position: number }> = [];
+      
+      let match;
+      while ((match = amountRegex.exec(text)) !== null) {
+        const amountStr = match[1]?.trim();
+        if (amountStr) {
+          const amount = parseAmount(amountStr);
+          if (amount !== undefined && amount > 0) {
+            // Get context around the amount (50 chars before and after)
+            const start = Math.max(0, match.index - 50);
+            const end = Math.min(text.length, match.index + match[0].length + 50);
+            const context = text.substring(start, end).toLowerCase();
+            
+            allAmounts.push({
+              amount,
+              context,
+              position: match.index
+            });
+          }
+        }
+      }
+      
+      // Remove duplicates (same amount appearing multiple times)
+      const uniqueAmounts = Array.from(
+        new Map(allAmounts.map(item => [item.amount, item])).values()
+      );
+      
+      // Sort by amount (descending) - largest is likely the total
+      uniqueAmounts.sort((a, b) => b.amount - a.amount);
+      
+      // Try to identify amounts based on context keywords
+      for (const item of uniqueAmounts) {
+        const context = item.context;
+        
+        // Check for total keywords
+        if (!data.total && (
+          context.includes('total') ||
+          context.includes('grand total') ||
+          context.includes('amount due') ||
+          context.includes('balance')
+        )) {
+          data.total = item.amount;
+          continue;
+        }
+        
+        // Check for subtotal keywords
+        if (!data.subtotal && (
+          context.includes('subtotal') ||
+          context.includes('sub total') ||
+          context.includes('net amount')
+        )) {
+          data.subtotal = item.amount;
+          continue;
+        }
+        
+        // Check for VAT/tax keywords
+        if (!data.tax && (
+          context.includes('vat') ||
+          context.includes('tax') ||
+          context.includes('gst') ||
+          context.includes('sales tax')
+        )) {
+          data.tax = item.amount;
+          continue;
+        }
+      }
+      
+      // If we still don't have a total but have amounts, use the largest
+      if (!data.total && uniqueAmounts.length > 0) {
+        // Use the largest amount as total, but avoid very small amounts (< 1)
+        const largestAmount = uniqueAmounts.find(a => a.amount >= 1);
+        if (largestAmount) {
+          data.total = largestAmount.amount;
+        }
+      }
+      
+      // If we have total but not subtotal, and we found VAT, calculate subtotal
+      if (data.total && data.tax && !data.subtotal) {
+        data.subtotal = data.total - data.tax;
+      }
+    }
     
     // Extract order number (common patterns: "Order Number:", "Order #", "PO Number:", etc.)
     if (!data.order_number) {
@@ -545,8 +828,39 @@ function parseInvoiceData(document: any): InvoiceData {
     }
   }
 
+  // Debug logging for extraction diagnostics
+  const extractionSummary = {
+    hasTotal: !!data.total,
+    total: data.total,
+    hasSubtotal: !!data.subtotal,
+    subtotal: data.subtotal,
+    hasTax: !!data.tax,
+    tax: data.tax,
+    hasLineItems: !!data.line_items,
+    lineItemsCount: data.line_items?.length || 0,
+    vendorName: data.vendor_name,
+    hasDate: !!data.invoice_date,
+    hasOrderNumber: !!data.order_number,
+    hasSupplier: !!data.supplier,
+    hasSupplierEmail: !!data.supplier?.email,
+    extractedTextLength: data.extracted_text?.length || 0,
+    extractedTextPreview: data.extracted_text?.substring(0, 200) || '',
+  };
+  
+  // Log if extraction seems incomplete
+  if (!data.total && !data.subtotal && data.extracted_text && data.extracted_text.length > 0) {
+    console.warn("[DocumentAI] Amount extraction failed - no totals found", {
+      textLength: data.extracted_text.length,
+      textPreview: data.extracted_text.substring(0, 500),
+      hasEntities: !!document.entities,
+      entitiesCount: document.entities?.length || 0,
+      hasTables: !!(document.pages && document.pages[0]?.tables),
+      tablesCount: document.pages?.[0]?.tables?.length || 0,
+    });
+  }
+  
   // #region agent log
-  fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'google-document-ai.ts:308',message:'OCR processing completed',data:{hasTotal:!!data.total,total:data.total,hasLineItems:!!data.line_items,lineItemsCount:data.line_items?.length||0,vendorName:data.vendor_name,hasDate:!!data.invoice_date,hasOrderNumber:!!data.order_number,hasSupplier:!!data.supplier,hasSupplierEmail:!!data.supplier?.email},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H3'})}).catch(()=>{});
+  fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'google-document-ai.ts:308',message:'OCR processing completed',data:extractionSummary,timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H3'})}).catch(()=>{});
   // #endregion
   return data;
 }
@@ -566,9 +880,63 @@ function parseDate(value: string | undefined): string | undefined {
 function parseAmount(value: string | undefined): number | undefined {
   if (!value) return undefined;
   
-  // Remove currency symbols and parse number
-  const cleaned = value.replace(/[^0-9.-]/g, "");
+  // Handle negative amounts (credit/refund)
+  let isNegative = /^[-–—]/.test(value.trim()) || /\(.*\)/.test(value);
+  
+  // Remove currency symbols, spaces, and parse number
+  // Handle both comma and period as decimal separators
+  // First, normalize: remove currency symbols, spaces, but keep digits, dots, commas, and minus signs
+  let cleaned = value.replace(/[£$€¥₹]/g, "").trim();
+  
+  // Handle parentheses notation for negative: (123.45) = -123.45
+  if (/^\(.*\)$/.test(cleaned)) {
+    cleaned = cleaned.replace(/[()]/g, "");
+    isNegative = true;
+  }
+  
+  // Determine decimal separator: if comma appears after period, comma is thousands separator
+  // If comma appears before period or alone, it might be decimal separator (European format)
+  const hasComma = cleaned.includes(',');
+  const hasPeriod = cleaned.includes('.');
+  
+  if (hasComma && hasPeriod) {
+    // Both present: determine which is decimal separator
+    const commaPos = cleaned.lastIndexOf(',');
+    const periodPos = cleaned.lastIndexOf('.');
+    if (commaPos > periodPos) {
+      // Comma is decimal separator (European format: 1.234,56)
+      cleaned = cleaned.replace(/\./g, "").replace(",", ".");
+    } else {
+      // Period is decimal separator (US format: 1,234.56)
+      cleaned = cleaned.replace(/,/g, "");
+    }
+  } else if (hasComma && !hasPeriod) {
+    // Only comma: could be decimal separator (European) or thousands separator
+    // If comma is followed by exactly 2 digits, it's likely decimal separator
+    const commaMatch = cleaned.match(/,(\d{2})$/);
+    if (commaMatch) {
+      cleaned = cleaned.replace(/,/g, ".");
+    } else {
+      // Otherwise treat as thousands separator
+      cleaned = cleaned.replace(/,/g, "");
+    }
+  } else {
+    // Only period or neither: standard format
+    cleaned = cleaned.replace(/,/g, "");
+  }
+  
+  // Remove all non-numeric characters except decimal point and minus sign
+  cleaned = cleaned.replace(/[^0-9.-]/g, "");
+  
+  // Remove multiple decimal points (keep only the last one)
+  const parts = cleaned.split('.');
+  if (parts.length > 2) {
+    cleaned = parts.slice(0, -1).join('') + '.' + parts[parts.length - 1];
+  }
+  
   const amount = parseFloat(cleaned);
   
-  return isNaN(amount) ? undefined : amount;
+  if (isNaN(amount)) return undefined;
+  
+  return isNegative ? -Math.abs(amount) : amount;
 }

@@ -20,6 +20,7 @@ export default function SetupWizardPage() {
     companyName: '',
     companyType: 'sole_trader' as 'sole_trader' | 'limited_company' | 'partnership' | 'individual',
     companyNumber: '',
+    currency: 'GBP',
     
     // Tax Settings
     vatRegistered: false,
@@ -59,6 +60,7 @@ export default function SetupWizardPage() {
               companyName: company.company_name || '',
               companyType: company.company_type || 'sole_trader',
               companyNumber: company.company_number || '',
+              currency: company.default_currency || 'GBP',
               vatRegistered: company.vat_registered || false,
               vatNumber: company.vat_number || '',
               vatScheme: company.vat_scheme || 'standard',
@@ -298,6 +300,7 @@ type FormData = {
   companyName: string
   companyType: 'sole_trader' | 'limited_company' | 'partnership' | 'individual'
   companyNumber: string
+  currency: string
   vatRegistered: boolean
   vatNumber: string
   vatScheme: 'standard' | 'flat_rate' | 'cash_accounting'
