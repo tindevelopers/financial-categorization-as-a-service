@@ -514,7 +514,7 @@ function parseInvoiceData(document: any): InvoiceData {
         // Try to extract address lines before postcode
         const postcodeIndex = text.indexOf(postcodeMatch[1]);
         const addressSection = text.substring(Math.max(0, postcodeIndex - 200), postcodeIndex);
-        const addressLines = addressSection.split('\n').filter(line => line.trim()).slice(-4);
+        const addressLines: string[] = addressSection.split('\n').filter((line: string) => line.trim()).slice(-4);
         
         // Extract street, city, country
         for (let i = addressLines.length - 1; i >= 0; i--) {
@@ -536,7 +536,7 @@ function parseInvoiceData(document: any): InvoiceData {
       const urls = text.match(urlPattern);
       if (urls && urls.length > 0) {
         // Prefer www. or main domain, not email links
-        const website = urls.find(url => 
+        const website = urls.find((url: string) => 
           !url.includes('mailto:') && 
           (url.includes('www.') || url.match(/https?:\/\/([^\/]+)/))
         ) || urls[0];

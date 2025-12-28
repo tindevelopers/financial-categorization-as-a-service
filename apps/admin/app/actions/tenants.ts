@@ -305,7 +305,7 @@ export async function createTenant(data: CreateTenantData): Promise<Tenant> {
  * Generate a unique tenant domain for individual users
  * Format: individual-{uuid}
  */
-export function generateIndividualTenantDomain(): string {
+export async function generateIndividualTenantDomain(): Promise<string> {
   const uuid = randomUUID();
   return `individual-${uuid}`;
 }

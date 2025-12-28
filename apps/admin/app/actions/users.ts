@@ -480,7 +480,7 @@ export async function createIndividualUser(
 
     // Generate unique domain for individual tenant
     const { generateIndividualTenantDomain } = await import("./tenants");
-    const tenantDomain = generateIndividualTenantDomain();
+    const tenantDomain = await generateIndividualTenantDomain();
 
     // Get Individual Admin role
     const { data: roleData, error: roleError } = await adminClient
@@ -493,6 +493,9 @@ export async function createIndividualUser(
       console.error("[createIndividualUser] Error fetching Individual Admin role:", roleError);
       throw new Error("Individual Admin role not found. Please ensure the migration has been run.");
     }
+    
+    // Type assertion for TypeScript narrowing - roleData is guaranteed to exist after the check above
+    const roleId: string = (roleData as { id: string }).id;
 
     // Create tenant first
     console.log("[createIndividualUser] Creating tenant:", { domain: tenantDomain });
@@ -533,10 +536,15 @@ export async function createIndividualUser(
         console.error("[createIndividualUser] Failed to cleanup tenant:", cleanupError);
       }
       
-      if (authError?.message?.includes("already registered") || authError?.message?.includes("already exists")) {
+      const errorMessage = authError instanceof Error 
+        ? authError.message 
+        : (authError && typeof authError === 'object' && 'message' in authError)
+          ? String((authError as { message?: unknown }).message)
+          : "Unknown error";
+      if (errorMessage.includes("already registered") || errorMessage.includes("already exists")) {
         throw new Error(`User with email "${data.email}" already exists`);
       }
-      throw authError || new Error(`Failed to create user in Auth: ${authError?.message || "Unknown error"}`);
+      throw authError instanceof Error ? authError : new Error(`Failed to create user in Auth: ${errorMessage}`);
     }
 
     console.log("[createIndividualUser] Auth user created:", authData.user.id);
@@ -548,7 +556,7 @@ export async function createIndividualUser(
         email: data.email,
         full_name: data.full_name,
         tenant_id: tenant.id,
-        role_id: roleData.id,
+        role_id: roleId,
         plan: data.plan || "starter",
         status: data.status || "active",
       })
@@ -666,6 +674,9 @@ export async function createCompanyUser(
       console.error("[createCompanyUser] Error fetching Organization Admin role:", roleError);
       throw new Error("Organization Admin role not found");
     }
+    
+    // Type assertion for TypeScript narrowing - roleData is guaranteed to exist after the check above
+    const roleId: string = (roleData as { id: string }).id;
 
     // Create tenant
     console.log("[createCompanyUser] Creating tenant:", { domain: data.domain });
@@ -706,10 +717,15 @@ export async function createCompanyUser(
         console.error("[createCompanyUser] Failed to cleanup tenant:", cleanupError);
       }
       
-      if (authError?.message?.includes("already registered") || authError?.message?.includes("already exists")) {
+      const errorMessage = authError instanceof Error 
+        ? authError.message 
+        : (authError && typeof authError === 'object' && 'message' in authError)
+          ? String((authError as { message?: unknown }).message)
+          : "Unknown error";
+      if (errorMessage.includes("already registered") || errorMessage.includes("already exists")) {
         throw new Error(`User with email "${data.adminEmail}" already exists`);
       }
-      throw authError || new Error(`Failed to create user in Auth: ${authError?.message || "Unknown error"}`);
+      throw authError instanceof Error ? authError : new Error(`Failed to create user in Auth: ${errorMessage}`);
     }
 
     console.log("[createCompanyUser] Auth user created:", authData.user.id);
@@ -721,7 +737,7 @@ export async function createCompanyUser(
         email: data.adminEmail,
         full_name: data.adminFullName,
         tenant_id: tenant.id,
-        role_id: roleData.id,
+        role_id: roleId,
         plan: data.plan || "starter",
         status: data.status || "active",
       })
