@@ -473,7 +473,7 @@ function parseInvoiceData(document: any): InvoiceData {
       if (emails && emails.length > 0) {
         // Prefer email addresses that look like supplier emails (not customer emails)
         // Usually supplier emails are in billing/payment sections
-        const supplierEmail = emails.find(email => 
+        const supplierEmail = emails.find((email: string) => 
           !email.toLowerCase().includes('cardholder') &&
           !email.toLowerCase().includes('billing') &&
           !email.toLowerCase().includes('customer')
