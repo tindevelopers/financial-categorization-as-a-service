@@ -273,25 +273,66 @@ async function processSingleInvoice(
       ? "needs_manual_review" 
       : (hasUsableData ? "completed" : "needs_manual_review");
 
+    // Extract and store supplier information
+    let supplierId: string | null = null;
+    if (invoiceData.supplier?.name || invoiceData.vendor_name) {
+      const supplierName = invoiceData.supplier?.name || invoiceData.vendor_name;
+      if (supplierName) {
+        // Get tenant_id from document
+        const { data: docData } = await supabase
+          .from("financial_documents")
+          .select("tenant_id")
+          .eq("id", doc.id)
+          .single();
+        
+        const tenantId = docData?.tenant_id || null;
+        
+        // Get or create supplier
+        const { data: supplierResult, error: supplierError } = await supabase
+          .rpc("get_or_create_supplier", {
+            p_user_id: userId,
+            p_tenant_id: tenantId,
+            p_name: supplierName,
+            p_email: invoiceData.supplier?.email || null,
+            p_phone: invoiceData.supplier?.phone || null,
+            p_website: invoiceData.supplier?.website || null,
+            p_address_street: invoiceData.supplier?.address?.street || null,
+            p_address_city: invoiceData.supplier?.address?.city || null,
+            p_address_postcode: invoiceData.supplier?.address?.postcode || null,
+            p_address_country: invoiceData.supplier?.address?.country || null,
+          });
+        
+        if (!supplierError && supplierResult) {
+          supplierId = supplierResult;
+        } else if (supplierError) {
+          console.error("Error creating supplier:", supplierError);
+        }
+      }
+    }
+
     // Update document with extracted data in financial_documents table
     await supabase
       .from("financial_documents")
       .update({
         vendor_name: invoiceData.vendor_name || null,
         document_date: invoiceData.invoice_date || null,
-        invoice_number: invoiceData.invoice_number || null,
+        document_number: invoiceData.invoice_number || null,
+        order_number: invoiceData.order_number || null,
+        delivery_date: invoiceData.delivery_date ? new Date(invoiceData.delivery_date).toISOString().split('T')[0] : null,
+        supplier_id: supplierId,
         total_amount: invoiceData.total || null,
         currency: invoiceData.currency || "USD",
         extracted_text: invoiceData.extracted_text || null,
-        ocr_confidence_score: invoiceData.confidence_score || 0.5,
+        ocr_confidence: invoiceData.confidence_score || 0.5,
         ocr_status: ocrStatus,
         ocr_provider: ocrVerification.provider,
         ocr_error: invoiceData.ocr_error || null,
-        // Store line items and breakdown
+        // Store line items and breakdown in dedicated columns
         subtotal_amount: invoiceData.subtotal || null,
         tax_amount: invoiceData.tax || null,
         fee_amount: invoiceData.fee_amount || null,
-        line_items: invoiceData.line_items || null, // Store as JSONB array
+        line_items: invoiceData.line_items || null,
+        // Also store in extracted_data JSONB for flexibility
         extracted_data: {
           line_items: invoiceData.line_items || [],
           subtotal: invoiceData.subtotal,
@@ -301,6 +342,9 @@ async function processSingleInvoice(
           shipping_amount: invoiceData.shipping_amount,
           ocr_failed: invoiceData.ocr_failed,
           ocr_configured: invoiceData.ocr_configured,
+          supplier: invoiceData.supplier,
+          order_number: invoiceData.order_number,
+          delivery_date: invoiceData.delivery_date,
         },
       })
       .eq("id", doc.id);

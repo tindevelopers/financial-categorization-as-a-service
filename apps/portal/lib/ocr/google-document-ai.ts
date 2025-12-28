@@ -27,6 +27,8 @@ export interface InvoiceData {
   vendor_name?: string;
   invoice_date?: string;
   invoice_number?: string;
+  order_number?: string; // Order/PO number
+  delivery_date?: string; // Delivery date for orders
   line_items?: Array<{
     description: string;
     quantity?: number;
@@ -41,6 +43,19 @@ export interface InvoiceData {
   confidence_score?: number;
   fee_amount?: number;
   shipping_amount?: number;
+  // Supplier contact information
+  supplier?: {
+    name?: string;
+    email?: string;
+    phone?: string;
+    address?: {
+      street?: string;
+      city?: string;
+      postcode?: string;
+      country?: string;
+    };
+    website?: string;
+  };
   // OCR status flags
   ocr_configured?: boolean;
   ocr_failed?: boolean;
@@ -252,13 +267,35 @@ function parseInvoiceData(document: any): InvoiceData {
             // [Description, Qty, Unit Price, Total]
             // [Description, Amount]
             // [Item, Price]
+            // [Quantity x Description - Price] (Screwfix format)
             for (let i = 0; i < cells.length; i++) {
               const cellText = cells[i]?.text || "";
               const cellTextLower = cellText.toLowerCase();
 
+              // Check for Screwfix format: "4 x Vapour Barrier Membrane 10m x 2m - £59.96"
+              const screwfixPattern = /^(\d+)\s*x\s+(.+?)\s*[-–]\s*([£$€]?\s*\d+[\d.,]*)/i;
+              const screwfixMatch = cellText.match(screwfixPattern);
+              if (screwfixMatch) {
+                quantity = parseFloat(screwfixMatch[1]);
+                description = screwfixMatch[2].trim();
+                total = parseAmount(screwfixMatch[3]);
+                if (total !== undefined && quantity > 0) {
+                  unitPrice = total / quantity;
+                }
+                break; // Found complete line item, move to next row
+              }
+
               // Description is usually the first column or contains text
               if (i === 0 && cellText && !parseAmount(cellText)) {
                 description = cellText.trim();
+                
+                // Also check if description contains quantity pattern: "4 x Item Name"
+                const qtyPattern = /^(\d+)\s*x\s+(.+)/i;
+                const qtyMatch = description.match(qtyPattern);
+                if (qtyMatch) {
+                  quantity = parseFloat(qtyMatch[1]);
+                  description = qtyMatch[2].trim();
+                }
               }
 
               // Try to identify amounts
@@ -287,6 +324,33 @@ function parseInvoiceData(document: any): InvoiceData {
               });
             }
           }
+        }
+      }
+    }
+  }
+  
+  // Also parse line items from plain text if not found in tables
+  // This helps with invoices that don't have structured tables
+  if (!data.line_items || data.line_items.length === 0) {
+    data.line_items = [];
+    const text = document.text || "";
+    const lines = text.split('\n');
+    
+    for (const line of lines) {
+      // Screwfix format: "4 x Vapour Barrier Membrane 10m x 2m - £59.96"
+      const screwfixPattern = /^(\d+)\s*x\s+(.+?)\s*[-–]\s*([£$€]?\s*\d+[\d.,]*)/i;
+      const match = line.match(screwfixPattern);
+      if (match) {
+        const quantity = parseFloat(match[1]);
+        const description = match[2].trim();
+        const total = parseAmount(match[3]);
+        if (total !== undefined && description.length > 3) {
+          data.line_items.push({
+            description,
+            quantity: quantity > 0 ? quantity : undefined,
+            unit_price: quantity > 0 && total ? total / quantity : undefined,
+            total,
+          });
         }
       }
     }
@@ -337,8 +401,152 @@ function parseInvoiceData(document: any): InvoiceData {
     }
   }
 
+  // Enhanced text parsing for supplier information and additional fields
+  // This helps extract data that Document AI might miss
+  if (document.text) {
+    const text = document.text;
+    
+    // Extract order number (common patterns: "Order Number:", "Order #", "PO Number:", etc.)
+    if (!data.order_number) {
+      const orderPatterns = [
+        /order\s*(?:number|#|no\.?):\s*([A-Z0-9\-]+)/i,
+        /order\s*id[:\s]+([A-Z0-9\-]+)/i,
+        /po\s*(?:number|#|no\.?):\s*([A-Z0-9\-]+)/i,
+        /purchase\s*order[:\s]+([A-Z0-9\-]+)/i,
+      ];
+      for (const pattern of orderPatterns) {
+        const match = text.match(pattern);
+        if (match && match[1]) {
+          data.order_number = match[1].trim();
+          break;
+        }
+      }
+    }
+    
+    // Extract delivery date
+    if (!data.delivery_date) {
+      const deliveryDatePatterns = [
+        /delivery\s*date[:\s]+(\d{1,2}\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{4})/i,
+        /delivered[:\s]+(\d{1,2}\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{4})/i,
+        /delivery[:\s]+(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4})/i,
+      ];
+      for (const pattern of deliveryDatePatterns) {
+        const match = text.match(pattern);
+        if (match && match[1]) {
+          data.delivery_date = parseDate(match[1]);
+          break;
+        }
+      }
+    }
+    
+    // Extract supplier information from text
+    if (!data.supplier) {
+      data.supplier = {};
+    }
+    
+    // Extract supplier name (usually at the top of the document)
+    if (!data.supplier.name && !data.vendor_name) {
+      // Look for company name patterns at the start of document
+      const lines = text.split('\n').slice(0, 10); // Check first 10 lines
+      for (const line of lines) {
+        const trimmed = line.trim();
+        // Skip common headers and labels
+        if (trimmed && 
+            !trimmed.match(/^(order|invoice|receipt|summary|details|payment|delivery)/i) &&
+            trimmed.length > 2 && trimmed.length < 100 &&
+            !trimmed.match(/^\d+[xX]\s/) && // Not a quantity line
+            !trimmed.match(/^[£$€]\s*\d/) && // Not a price line
+            !trimmed.match(/^\d{1,2}[\/\-]\d{1,2}/)) { // Not a date
+          data.supplier.name = trimmed;
+          data.vendor_name = trimmed; // Also set vendor_name for compatibility
+          break;
+        }
+      }
+    } else if (data.vendor_name && !data.supplier.name) {
+      data.supplier.name = data.vendor_name;
+    }
+    
+    // Extract email addresses
+    if (!data.supplier.email) {
+      const emailPattern = /([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/g;
+      const emails = text.match(emailPattern);
+      if (emails && emails.length > 0) {
+        // Prefer email addresses that look like supplier emails (not customer emails)
+        // Usually supplier emails are in billing/payment sections
+        const supplierEmail = emails.find(email => 
+          !email.toLowerCase().includes('cardholder') &&
+          !email.toLowerCase().includes('billing') &&
+          !email.toLowerCase().includes('customer')
+        ) || emails[0];
+        data.supplier.email = supplierEmail;
+      }
+    }
+    
+    // Extract phone numbers
+    if (!data.supplier.phone) {
+      const phonePatterns = [
+        /(?:\+44|0)?\s*\d{2,4}\s*\d{3,4}\s*\d{3,4}/g, // UK format
+        /(?:\+1[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}/g, // US format
+        /\d{10,}/g, // Generic 10+ digits
+      ];
+      for (const pattern of phonePatterns) {
+        const matches = text.match(pattern);
+        if (matches && matches.length > 0) {
+          // Clean up phone number
+          const phone = matches[0].replace(/[\s\-\(\)\.]/g, '').trim();
+          if (phone.length >= 10) {
+            data.supplier.phone = phone;
+            break;
+          }
+        }
+      }
+    }
+    
+    // Extract address (look for postcode patterns)
+    if (!data.supplier.address) {
+      data.supplier.address = {};
+      // UK postcode pattern
+      const ukPostcodePattern = /([A-Z]{1,2}\d{1,2}[A-Z]?\s?\d[A-Z]{2})/i;
+      const postcodeMatch = text.match(ukPostcodePattern);
+      if (postcodeMatch) {
+        data.supplier.address.postcode = postcodeMatch[1].trim().toUpperCase();
+        
+        // Try to extract address lines before postcode
+        const postcodeIndex = text.indexOf(postcodeMatch[1]);
+        const addressSection = text.substring(Math.max(0, postcodeIndex - 200), postcodeIndex);
+        const addressLines = addressSection.split('\n').filter(line => line.trim()).slice(-4);
+        
+        // Extract street, city, country
+        for (let i = addressLines.length - 1; i >= 0; i--) {
+          const line = addressLines[i].trim();
+          if (line.match(/united\s+kingdom|uk|england|scotland|wales/i)) {
+            data.supplier.address.country = 'United Kingdom';
+          } else if (!data.supplier.address.city && line.length > 2 && line.length < 50) {
+            data.supplier.address.city = line;
+          } else if (!data.supplier.address.street && line.length > 5) {
+            data.supplier.address.street = line;
+          }
+        }
+      }
+    }
+    
+    // Extract website (look for URLs)
+    if (!data.supplier.website) {
+      const urlPattern = /(https?:\/\/[^\s]+)/gi;
+      const urls = text.match(urlPattern);
+      if (urls && urls.length > 0) {
+        // Prefer www. or main domain, not email links
+        const website = urls.find(url => 
+          !url.includes('mailto:') && 
+          (url.includes('www.') || url.match(/https?:\/\/([^\/]+)/))
+        ) || urls[0];
+        data.supplier.website = website.replace(/[.,;]$/, ''); // Remove trailing punctuation
+      }
+    }
+  }
+
   // #region agent log
-  fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'google-document-ai.ts:308',message:'OCR processing completed',data:{hasTotal:!!data.total,total:data.total,hasLineItems:!!data.line_items,lineItemsCount:data.line_items?.length||0,vendorName:data.vendor_name,hasDate:!!data.invoice_date},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H3'})}).catch(()=>{});
+  fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'google-document-ai.ts:308',message:'OCR processing completed',data:{hasTotal:!!data.total,total:data.total,hasLineItems:!!data.line_items,lineItemsCount:data.line_items?.length||0,vendorName:data.vendor_name,hasDate:!!data.invoice_date,hasOrderNumber:!!data.order_number,hasSupplier:!!data.supplier,hasSupplierEmail:!!data.supplier?.email},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H3'})}).catch(()=>{});
   // #endregion
   return data;
 }
