@@ -214,12 +214,16 @@ export async function POST(request: NextRequest) {
       : (fileCount > 1 ? "async" : "sync"); // Async for multiple invoices, sync for single
 
     // Create categorization job
+    const jobTypeValue = fileCount === 1 ? "receipt" : "batch_receipt";
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'upload-invoices/route.ts:222',message:'About to insert job with job_type',data:{jobType:jobTypeValue,fileCount,effectiveBankAccountId:effectiveBankAccountId?.substring(0,8)+'...'},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H1'})}).catch(()=>{});
+    // #endregion
     const { data: jobData, error: jobError } = await supabase
       .from("categorization_jobs")
       .insert({
         user_id: user.id,
         tenant_id: userData?.tenant_id || null,
-        job_type: fileCount === 1 ? "receipt" : "batch_receipt",
+        job_type: jobTypeValue,
         status: "received", // File received, will be queued for processing
         status_message: `${fileCount} file${fileCount > 1 ? "s" : ""} uploaded successfully`,
         processing_mode: processingMode,
@@ -232,6 +236,9 @@ export async function POST(request: NextRequest) {
       .single();
 
     if (jobError) {
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'upload-invoices/route.ts:234',message:'Job creation error details',data:{errorCode:jobError.code,errorMessage:jobError.message,jobTypeAttempted:jobTypeValue},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H1'})}).catch(()=>{});
+      // #endregion
       console.error("Job creation error:", jobError);
       const errorCode = mapErrorToCode(jobError);
       const errorResponse = createJobErrorResponse(errorCode, jobError.message);
