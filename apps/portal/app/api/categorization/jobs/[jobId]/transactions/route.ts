@@ -11,10 +11,69 @@ export async function OPTIONS() {
     status: 200,
     headers: {
       "Access-Control-Allow-Origin": "*",
-      "Access-Control-Allow-Methods": "GET, OPTIONS",
+      "Access-Control-Allow-Methods": "GET, DELETE, OPTIONS",
       "Access-Control-Allow-Headers": "Content-Type, Authorization",
     },
   });
+}
+
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: Promise<{ jobId: string }> }
+) {
+  try {
+    const supabase = await createClient();
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+
+    if (authError || !user) {
+      return NextResponse.json(
+        { error: "Unauthorized" },
+        { status: 401 }
+      );
+    }
+
+    const { jobId } = await params;
+
+    // Verify job belongs to user
+    const { data: job, error: jobError } = await supabase
+      .from("categorization_jobs")
+      .select("id")
+      .eq("id", jobId)
+      .eq("user_id", user.id)
+      .single();
+
+    if (jobError || !job) {
+      return NextResponse.json(
+        { error: "Job not found" },
+        { status: 404 }
+      );
+    }
+
+    // Delete all transactions for this job
+    const { error: deleteError } = await supabase
+      .from("categorized_transactions")
+      .delete()
+      .eq("job_id", jobId);
+
+    if (deleteError) {
+      console.error("Error deleting transactions:", deleteError);
+      return NextResponse.json(
+        { error: "Failed to delete transactions" },
+        { status: 500 }
+      );
+    }
+
+    return NextResponse.json({
+      success: true,
+      message: "All transactions deleted",
+    });
+  } catch (error: any) {
+    console.error("Error:", error);
+    return NextResponse.json(
+      { error: error.message || "Internal server error" },
+      { status: 500 }
+    );
+  }
 }
 
 export async function GET(

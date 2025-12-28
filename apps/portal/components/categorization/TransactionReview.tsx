@@ -8,6 +8,7 @@ import {
   EyeIcon,
   XMarkIcon,
   PlusIcon,
+  TrashIcon,
 } from "@heroicons/react/24/outline";
 
 interface Document {
@@ -62,6 +63,8 @@ export default function TransactionReview({ jobId }: TransactionReviewProps) {
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [showNewSupplierForm, setShowNewSupplierForm] = useState(false);
   const [newSupplierName, setNewSupplierName] = useState("");
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [deletingAll, setDeletingAll] = useState(false);
 
   useEffect(() => {
     loadTransactions();
@@ -217,6 +220,59 @@ export default function TransactionReview({ jobId }: TransactionReviewProps) {
     }
   };
 
+  const handleDeleteTransaction = async (transactionId: string) => {
+    if (!confirm("Are you sure you want to delete this transaction?")) {
+      return;
+    }
+
+    setDeletingId(transactionId);
+    try {
+      const response = await fetch(`/api/categorization/transactions/${transactionId}`, {
+        method: "DELETE",
+        credentials: 'include',
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: `HTTP ${response.status}` }));
+        throw new Error(errorData.error || "Failed to delete transaction");
+      }
+
+      // Reload transactions
+      await loadTransactions();
+    } catch (err: any) {
+      alert(`Failed to delete transaction: ${err.message}`);
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
+  const handleDeleteAllTransactions = async () => {
+    if (!confirm(`Are you sure you want to delete all ${transactions.length} transactions? This cannot be undone.`)) {
+      return;
+    }
+
+    setDeletingAll(true);
+    try {
+      const response = await fetch(`/api/categorization/jobs/${jobId}/transactions`, {
+        method: "DELETE",
+        credentials: 'include',
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: `HTTP ${response.status}` }));
+        throw new Error(errorData.error || "Failed to delete transactions");
+      }
+
+      // Clear transactions from state
+      setTransactions([]);
+      alert("All transactions deleted successfully.");
+    } catch (err: any) {
+      alert(`Failed to delete transactions: ${err.message}`);
+    } finally {
+      setDeletingAll(false);
+    }
+  };
+
   const handleExportToGoogleSheets = async () => {
     setExporting(true);
     try {
@@ -329,8 +385,16 @@ export default function TransactionReview({ jobId }: TransactionReviewProps) {
         </div>
       </div>
 
-      {/* Export Button */}
-      <div className="flex justify-end">
+      {/* Action Buttons */}
+      <div className="flex justify-between items-center">
+        <button
+          onClick={handleDeleteAllTransactions}
+          disabled={deletingAll || transactions.length === 0}
+          className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          <TrashIcon className="h-5 w-5" />
+          {deletingAll ? "Deleting..." : "Delete All Transactions"}
+        </button>
         <button
           onClick={handleExportToGoogleSheets}
           disabled={exporting || transactions.length === 0}
@@ -548,6 +612,18 @@ export default function TransactionReview({ jobId }: TransactionReviewProps) {
                           <EyeIcon className="h-4 w-4" />
                         </button>
                       )}
+                      <button
+                        onClick={() => handleDeleteTransaction(tx.id)}
+                        disabled={deletingId === tx.id}
+                        className="text-red-600 hover:text-red-900 disabled:opacity-50"
+                        title="Delete transaction"
+                      >
+                        {deletingId === tx.id ? (
+                          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-red-600"></div>
+                        ) : (
+                          <TrashIcon className="h-4 w-4" />
+                        )}
+                      </button>
                       {!tx.user_confirmed && (
                         <>
                           <button
