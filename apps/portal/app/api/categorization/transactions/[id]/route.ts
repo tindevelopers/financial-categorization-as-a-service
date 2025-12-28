@@ -17,7 +17,7 @@ export async function PATCH(
     }
 
     const { id } = await params;
-    const { category, subcategory } = await request.json();
+    const { category, subcategory, supplier_id } = await request.json();
 
     // Verify transaction belongs to user's job
     const { data: transaction, error: txError } = await supabase
@@ -48,10 +48,28 @@ export async function PATCH(
       );
     }
 
+    // Verify supplier belongs to user if supplier_id is provided
+    if (supplier_id) {
+      const { data: supplier, error: supplierError } = await supabase
+        .from("suppliers")
+        .select("id")
+        .eq("id", supplier_id)
+        .eq("user_id", user.id)
+        .single();
+
+      if (supplierError || !supplier) {
+        return NextResponse.json(
+          { error: "Supplier not found" },
+          { status: 404 }
+        );
+      }
+    }
+
     // Update transaction
     const updateData: any = {};
     if (category !== undefined) updateData.category = category;
     if (subcategory !== undefined) updateData.subcategory = subcategory;
+    if (supplier_id !== undefined) updateData.supplier_id = supplier_id || null;
 
     const { error: updateError } = await supabase
       .from("categorized_transactions")

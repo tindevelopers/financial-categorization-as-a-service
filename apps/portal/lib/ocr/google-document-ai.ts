@@ -701,6 +701,63 @@ function parseInvoiceData(document: any): InvoiceData {
       }
     }
     
+    // Extract invoice number from text (fallback if entities didn't work)
+    if (!data.invoice_number) {
+      const invoiceNumberPatterns = [
+        /invoice\s*(?:number|#|no\.?)[:\s]+([A-Z0-9\-]+)/i,
+        /invoice\s*id[:\s]+([A-Z0-9\-]+)/i,
+        /invoice[:\s]+([A-Z]{2,}-\d{4}-\d+)/i, // Pattern like LD-2024-1000105683
+        /^invoice\s+([A-Z0-9\-]+)/im,
+        /(?:invoice|inv)\.?\s*#?\s*([A-Z0-9\-]{5,})/i,
+      ];
+      for (const pattern of invoiceNumberPatterns) {
+        const match = text.match(pattern);
+        if (match && match[1]) {
+          data.invoice_number = match[1].trim();
+          break;
+        }
+      }
+    }
+    
+    // Extract invoice date from text (fallback if entities didn't work)
+    if (!data.invoice_date) {
+      const invoiceDatePatterns = [
+        /invoice\s*date[:\s]+(\d{1,2}\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{4})/i,
+        /invoice\s*date[:\s]+(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4})/i,
+        /date[:\s]+(\d{1,2}\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{4})/i,
+        /dated[:\s]+(\d{1,2}\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{4})/i,
+      ];
+      for (const pattern of invoiceDatePatterns) {
+        const match = text.match(pattern);
+        if (match && match[1]) {
+          data.invoice_date = parseDate(match[1]);
+          if (data.invoice_date) break;
+        }
+      }
+    }
+    
+    // Extract vendor name from text (fallback if entities didn't work)
+    if (!data.vendor_name) {
+      // Look for vendor name patterns near the top of the document
+      const vendorPatterns = [
+        /^(?:from|vendor|supplier|merchant)[:\s]+(.+?)(?:\n|$)/im,
+        /^([A-Z][A-Z\s&]+(?:LTD|LIMITED|INC|LLC|CORP|CORPORATION|LLP|PLC))(?:\n|$)/m,
+      ];
+      for (const pattern of vendorPatterns) {
+        const match = text.match(pattern);
+        if (match && match[1]) {
+          const vendorName = match[1].trim();
+          if (vendorName.length > 2 && vendorName.length < 100) {
+            data.vendor_name = vendorName;
+            if (!data.supplier.name) {
+              data.supplier.name = vendorName;
+            }
+            break;
+          }
+        }
+      }
+    }
+    
     // Extract order number (common patterns: "Order Number:", "Order #", "PO Number:", etc.)
     if (!data.order_number) {
       const orderPatterns = [

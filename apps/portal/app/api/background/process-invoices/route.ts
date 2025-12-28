@@ -349,8 +349,15 @@ async function processSingleInvoice(
       })
       .eq("id", doc.id);
 
-    // Convert invoice to transactions (pass filename for fallback placeholder)
-    const transactions = await invoiceToTransactions(invoiceData, jobId, supabase, doc.original_filename);
+    // Convert invoice to transactions (pass filename, document_id, and supplier_id for linking)
+    const transactions = await invoiceToTransactions(
+      invoiceData, 
+      jobId, 
+      supabase, 
+      doc.original_filename,
+      doc.id, // document_id
+      supplierId // supplier_id
+    );
     // #region agent log
     fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'process-invoices/route.ts:250',message:'Transactions created from invoice',data:{docId:doc.id,jobId,transactionsCount:transactions.length,transactionJobIds:transactions.map(t=>t.job_id)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H1,H2'})}).catch(()=>{});
     // #endregion
@@ -431,7 +438,9 @@ async function invoiceToTransactions(
   invoiceData: any, 
   jobId: string,
   supabase: any,
-  documentFilename?: string
+  documentFilename?: string,
+  documentId?: string,
+  supplierId?: string
 ): Promise<any[]> {
   // Get bank_account_id from job
   const { data: jobData } = await supabase
@@ -465,6 +474,9 @@ async function invoiceToTransactions(
         confidence_score: 0.5,
         user_confirmed: false,
         bank_account_id: bankAccountId,
+        invoice_number: invoiceData.invoice_number || null,
+        supplier_id: supplierId || null,
+        document_id: documentId || null,
       });
     }
   } else if (invoiceData.total) {
@@ -481,6 +493,9 @@ async function invoiceToTransactions(
         confidence_score: 0.5,
         user_confirmed: false,
         bank_account_id: bankAccountId,
+        invoice_number: invoiceData.invoice_number || null,
+        supplier_id: supplierId || null,
+        document_id: documentId || null,
       });
     } else {
       console.warn(`[invoiceToTransactions] Skipping invoice with invalid total amount: ${invoiceData.total}`);
@@ -507,6 +522,9 @@ async function invoiceToTransactions(
       date: new Date().toISOString().split("T")[0],
       category: "Uncategorized",
       subcategory: null,
+      invoice_number: invoiceData.invoice_number || null,
+      supplier_id: supplierId || null,
+      document_id: documentId || null,
       confidence_score: 0,
       user_confirmed: false,
       bank_account_id: bankAccountId,

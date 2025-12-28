@@ -63,7 +63,7 @@ export async function GET(
       );
     }
 
-    // Get transactions
+    // Get transactions with related document and supplier info
     // NOTE: Using admin client to bypass RLS issue - the SELECT RLS policy seems to have
     // issues with the EXISTS subquery even though the job ownership is verified.
     // Security is still enforced above via job ownership verification.
@@ -71,11 +71,58 @@ export async function GET(
     // #region agent log
     fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'transactions/route.ts:71',message:'Querying transactions for job',data:{jobId,userId:user.id.substring(0,8)+'...'},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H5'})}).catch(()=>{});
     // #endregion
+    // Get transactions
     const { data: transactions, error: transactionsError } = await adminClientForQuery
       .from("categorized_transactions")
       .select("*")
       .eq("job_id", jobId)
       .order("date", { ascending: false });
+
+    // If we have transactions, enrich them with document and supplier info
+    if (transactions && transactions.length > 0) {
+      const documentIds = transactions
+        .map(t => t.document_id)
+        .filter((id): id is string => id !== null);
+      const supplierIds = transactions
+        .map(t => t.supplier_id)
+        .filter((id): id is string => id !== null);
+
+      // Fetch documents
+      const documentsMap = new Map();
+      if (documentIds.length > 0) {
+        const { data: documents } = await adminClientForQuery
+          .from("financial_documents")
+          .select("id, original_filename, supabase_path, storage_tier, mime_type")
+          .in("id", documentIds);
+        
+        documents?.forEach((doc: any) => {
+          documentsMap.set(doc.id, doc);
+        });
+      }
+
+      // Fetch suppliers
+      const suppliersMap = new Map();
+      if (supplierIds.length > 0) {
+        const { data: suppliers } = await adminClientForQuery
+          .from("suppliers")
+          .select("id, name, email, phone")
+          .in("id", supplierIds);
+        
+        suppliers?.forEach((supplier: any) => {
+          suppliersMap.set(supplier.id, supplier);
+        });
+      }
+
+      // Enrich transactions with document and supplier data
+      transactions.forEach((tx: any) => {
+        if (tx.document_id) {
+          tx.document = documentsMap.get(tx.document_id) || null;
+        }
+        if (tx.supplier_id) {
+          tx.supplier = suppliersMap.get(tx.supplier_id) || null;
+        }
+      });
+    }
     // #region agent log
     fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'transactions/route.ts:75',message:'Transactions query result',data:{jobId,transactionsCount:transactions?.length||0,hasError:!!transactionsError,errorMessage:transactionsError?.message},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H5'})}).catch(()=>{});
     // #endregion

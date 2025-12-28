@@ -5,7 +5,25 @@ import {
   CheckCircleIcon, 
   ArrowDownTrayIcon,
   PencilIcon,
+  EyeIcon,
+  XMarkIcon,
+  PlusIcon,
 } from "@heroicons/react/24/outline";
+
+interface Document {
+  id: string;
+  original_filename: string;
+  supabase_path: string | null;
+  storage_tier: string;
+  mime_type: string | null;
+}
+
+interface Supplier {
+  id: string;
+  name: string;
+  email: string | null;
+  phone: string | null;
+}
 
 interface Transaction {
   id: string;
@@ -17,6 +35,11 @@ interface Transaction {
   confidence_score: number;
   user_confirmed: boolean;
   user_notes: string | null;
+  invoice_number: string | null;
+  supplier_id: string | null;
+  document_id: string | null;
+  document?: Document | null;
+  supplier?: Supplier | null;
 }
 
 interface TransactionReviewProps {
@@ -30,10 +53,20 @@ export default function TransactionReview({ jobId }: TransactionReviewProps) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editCategory, setEditCategory] = useState("");
   const [editSubcategory, setEditSubcategory] = useState("");
+  const [editSupplierId, setEditSupplierId] = useState<string>("");
   const [exporting, setExporting] = useState(false);
+  const [viewingDocumentId, setViewingDocumentId] = useState<string | null>(null);
+  const [documentUrl, setDocumentUrl] = useState<string | null>(null);
+  const [categories, setCategories] = useState<string[]>([]);
+  const [subcategories, setSubcategories] = useState<Record<string, string[]>>({});
+  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
+  const [showNewSupplierForm, setShowNewSupplierForm] = useState(false);
+  const [newSupplierName, setNewSupplierName] = useState("");
 
   useEffect(() => {
     loadTransactions();
+    loadCategories();
+    loadSuppliers();
     // Poll for updates if job is still processing
     const interval = setInterval(() => {
       loadTransactions();
@@ -50,7 +83,7 @@ export default function TransactionReview({ jobId }: TransactionReviewProps) {
         headers: {
           'Content-Type': 'application/json',
         },
-        credentials: 'include', // Include cookies for authentication
+        credentials: 'include',
       });
       
       if (!response.ok) {
@@ -61,11 +94,9 @@ export default function TransactionReview({ jobId }: TransactionReviewProps) {
       const data = await response.json();
       const newTransactions = data.transactions || [];
       
-      // Always update transactions and stop loading on successful response
       setTransactions(newTransactions);
       setLoading(false);
       
-      // If no transactions, log for debugging
       if (newTransactions.length === 0) {
         console.log('No transactions found for job:', jobId);
       }
@@ -73,6 +104,53 @@ export default function TransactionReview({ jobId }: TransactionReviewProps) {
       console.error("Error loading transactions:", err);
       setError(err.message);
       setLoading(false);
+    }
+  };
+
+  const loadCategories = async () => {
+    try {
+      const response = await fetch('/api/categorization/categories', {
+        credentials: 'include',
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setCategories(data.categories || []);
+        setSubcategories(data.subcategories || {});
+      }
+    } catch (err) {
+      console.error("Error loading categories:", err);
+    }
+  };
+
+  const loadSuppliers = async () => {
+    try {
+      const response = await fetch('/api/categorization/suppliers', {
+        credentials: 'include',
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setSuppliers(data.suppliers || []);
+      }
+    } catch (err) {
+      console.error("Error loading suppliers:", err);
+    }
+  };
+
+  const handleViewDocument = async (documentId: string) => {
+    try {
+      const response = await fetch(`/api/documents/${documentId}/download`, {
+        credentials: 'include',
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setDocumentUrl(data.downloadUrl);
+        setViewingDocumentId(documentId);
+      } else {
+        alert("Failed to load document");
+      }
+    } catch (err) {
+      console.error("Error loading document:", err);
+      alert("Failed to load document");
     }
   };
 
@@ -89,7 +167,7 @@ export default function TransactionReview({ jobId }: TransactionReviewProps) {
     }
   };
 
-  const handleUpdateCategory = async (id: string) => {
+  const handleUpdateTransaction = async (id: string) => {
     try {
       const response = await fetch(`/api/categorization/transactions/${id}`, {
         method: "PATCH",
@@ -98,13 +176,44 @@ export default function TransactionReview({ jobId }: TransactionReviewProps) {
         body: JSON.stringify({
           category: editCategory,
           subcategory: editSubcategory || null,
+          supplier_id: editSupplierId || null,
         }),
       });
       if (!response.ok) throw new Error("Failed to update");
       setEditingId(null);
       await loadTransactions();
+      await loadSuppliers(); // Refresh suppliers in case a new one was created
     } catch (err: any) {
       setError(err.message);
+    }
+  };
+
+  const handleCreateSupplier = async () => {
+    if (!newSupplierName.trim()) {
+      alert("Please enter a supplier name");
+      return;
+    }
+
+    try {
+      const response = await fetch('/api/categorization/suppliers', {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: 'include',
+        body: JSON.stringify({
+          name: newSupplierName.trim(),
+        }),
+      });
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || "Failed to create supplier");
+      }
+      const data = await response.json();
+      setSuppliers([...suppliers, data.supplier]);
+      setEditSupplierId(data.supplier.id);
+      setNewSupplierName("");
+      setShowNewSupplierForm(false);
+    } catch (err: any) {
+      alert(`Failed to create supplier: ${err.message}`);
     }
   };
 
@@ -118,7 +227,6 @@ export default function TransactionReview({ jobId }: TransactionReviewProps) {
 
       const contentType = response.headers.get("content-type") || "unknown";
 
-      // Check if response is CSV (fallback when Google Sheets API not configured)
       if (contentType.includes("text/csv") || contentType.includes("application/csv")) {
         const csvData = await response.text();
         const blob = new Blob([csvData], { type: 'text/csv' });
@@ -135,20 +243,17 @@ export default function TransactionReview({ jobId }: TransactionReviewProps) {
       }
 
       if (!response.ok) {
-        // Try to parse as JSON for error message
         try {
           const errorData = await response.json();
           const errorMessage = errorData.error || errorData.message || "Export failed";
           const guidance = errorData.guidance;
           const helpUrl = errorData.helpUrl;
           
-          // Build a helpful error message
           let fullMessage = errorMessage;
           if (guidance) {
             fullMessage += `\n\n${guidance}`;
           }
           
-          // If there's a help URL and it's an OAuth error, offer to redirect
           if (helpUrl && errorData.error_code === "OAUTH_REQUIRED") {
             const shouldRedirect = confirm(`${fullMessage}\n\nWould you like to connect your Google account now?`);
             if (shouldRedirect) {
@@ -159,7 +264,6 @@ export default function TransactionReview({ jobId }: TransactionReviewProps) {
           
           throw new Error(fullMessage);
         } catch (jsonError) {
-          // If JSON parsing fails, use status text
           throw new Error(`Export failed: ${response.statusText || response.status}`);
         }
       }
@@ -170,7 +274,6 @@ export default function TransactionReview({ jobId }: TransactionReviewProps) {
         window.open(data.sheetUrl, "_blank");
         alert("Google Sheet created successfully! Opening in new tab...");
       } else if (data.csvAvailable) {
-        // Server indicates CSV is available but not configured
         alert("Google Sheets export requires additional configuration. Please contact support.");
       }
     } catch (err: any) {
@@ -248,6 +351,12 @@ export default function TransactionReview({ jobId }: TransactionReviewProps) {
                   Date
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                  Invoice #
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                  Supplier
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                   Description
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
@@ -273,6 +382,74 @@ export default function TransactionReview({ jobId }: TransactionReviewProps) {
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
                     {new Date(tx.date).toLocaleDateString()}
                   </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
+                    {tx.invoice_number || "-"}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
+                    {editingId === tx.id ? (
+                      <div className="space-y-2 min-w-[200px]">
+                        <select
+                          value={editSupplierId}
+                          onChange={(e) => setEditSupplierId(e.target.value)}
+                          className="w-full px-2 py-1 border rounded text-sm"
+                        >
+                          <option value="">Select supplier...</option>
+                          {suppliers.map((s) => (
+                            <option key={s.id} value={s.id}>
+                              {s.name}
+                            </option>
+                          ))}
+                        </select>
+                        {showNewSupplierForm ? (
+                          <div className="flex gap-2">
+                            <input
+                              type="text"
+                              value={newSupplierName}
+                              onChange={(e) => setNewSupplierName(e.target.value)}
+                              placeholder="New supplier name"
+                              className="flex-1 px-2 py-1 border rounded text-sm"
+                              onKeyPress={(e) => {
+                                if (e.key === 'Enter') {
+                                  handleCreateSupplier();
+                                }
+                              }}
+                            />
+                            <button
+                              onClick={handleCreateSupplier}
+                              className="px-2 py-1 bg-green-600 text-white rounded text-sm"
+                              title="Create supplier"
+                            >
+                              <PlusIcon className="h-4 w-4" />
+                            </button>
+                            <button
+                              onClick={() => {
+                                setShowNewSupplierForm(false);
+                                setNewSupplierName("");
+                              }}
+                              className="px-2 py-1 bg-gray-300 text-gray-700 rounded text-sm"
+                            >
+                              <XMarkIcon className="h-4 w-4" />
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            onClick={() => setShowNewSupplierForm(true)}
+                            className="text-xs text-blue-600 hover:text-blue-900"
+                          >
+                            + Add new supplier
+                          </button>
+                        )}
+                      </div>
+                    ) : (
+                      <div>
+                        {tx.supplier ? (
+                          <span className="font-medium">{tx.supplier.name}</span>
+                        ) : (
+                          <span className="text-gray-400">-</span>
+                        )}
+                      </div>
+                    )}
+                  </td>
                   <td className="px-6 py-4 text-sm text-gray-900 dark:text-white">
                     {tx.original_description}
                   </td>
@@ -281,24 +458,39 @@ export default function TransactionReview({ jobId }: TransactionReviewProps) {
                   </td>
                   <td className="px-6 py-4 text-sm text-gray-900 dark:text-white">
                     {editingId === tx.id ? (
-                      <div className="space-y-2">
-                        <input
-                          type="text"
+                      <div className="space-y-2 min-w-[200px]">
+                        <select
                           value={editCategory}
-                          onChange={(e) => setEditCategory(e.target.value)}
-                          placeholder="Category"
+                          onChange={(e) => {
+                            setEditCategory(e.target.value);
+                            setEditSubcategory(""); // Reset subcategory when category changes
+                          }}
                           className="w-full px-2 py-1 border rounded text-sm"
-                        />
-                        <input
-                          type="text"
-                          value={editSubcategory}
-                          onChange={(e) => setEditSubcategory(e.target.value)}
-                          placeholder="Subcategory (optional)"
-                          className="w-full px-2 py-1 border rounded text-sm"
-                        />
+                        >
+                          <option value="">Select category...</option>
+                          {categories.map((cat) => (
+                            <option key={cat} value={cat}>
+                              {cat}
+                            </option>
+                          ))}
+                        </select>
+                        {editCategory && subcategories[editCategory] && subcategories[editCategory].length > 0 && (
+                          <select
+                            value={editSubcategory}
+                            onChange={(e) => setEditSubcategory(e.target.value)}
+                            className="w-full px-2 py-1 border rounded text-sm"
+                          >
+                            <option value="">Select subcategory...</option>
+                            {subcategories[editCategory].map((sub) => (
+                              <option key={sub} value={sub}>
+                                {sub}
+                              </option>
+                            ))}
+                          </select>
+                        )}
                         <div className="flex gap-2">
                           <button
-                            onClick={() => handleUpdateCategory(tx.id)}
+                            onClick={() => handleUpdateTransaction(tx.id)}
                             className="text-xs px-2 py-1 bg-blue-600 text-white rounded"
                           >
                             Save
@@ -308,6 +500,9 @@ export default function TransactionReview({ jobId }: TransactionReviewProps) {
                               setEditingId(null);
                               setEditCategory("");
                               setEditSubcategory("");
+                              setEditSupplierId("");
+                              setShowNewSupplierForm(false);
+                              setNewSupplierName("");
                             }}
                             className="text-xs px-2 py-1 bg-gray-300 text-gray-700 rounded"
                           >
@@ -344,6 +539,15 @@ export default function TransactionReview({ jobId }: TransactionReviewProps) {
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                     <div className="flex items-center gap-2">
+                      {tx.document_id && (
+                        <button
+                          onClick={() => handleViewDocument(tx.document_id!)}
+                          className="text-blue-600 hover:text-blue-900"
+                          title="View invoice"
+                        >
+                          <EyeIcon className="h-4 w-4" />
+                        </button>
+                      )}
                       {!tx.user_confirmed && (
                         <>
                           <button
@@ -351,9 +555,11 @@ export default function TransactionReview({ jobId }: TransactionReviewProps) {
                               setEditingId(tx.id);
                               setEditCategory(tx.category || "");
                               setEditSubcategory(tx.subcategory || "");
+                              setEditSupplierId(tx.supplier_id || "");
+                              setShowNewSupplierForm(false);
                             }}
                             className="text-blue-600 hover:text-blue-900"
-                            title="Edit category"
+                            title="Edit"
                           >
                             <PencilIcon className="h-4 w-4" />
                           </button>
@@ -377,6 +583,33 @@ export default function TransactionReview({ jobId }: TransactionReviewProps) {
           </table>
         </div>
       </div>
+
+      {/* Document Viewer Modal */}
+      {viewingDocumentId && documentUrl && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-gray-800 rounded-lg max-w-4xl w-full max-h-[90vh] flex flex-col">
+            <div className="flex justify-between items-center p-4 border-b">
+              <h3 className="text-lg font-semibold">Invoice Document</h3>
+              <button
+                onClick={() => {
+                  setViewingDocumentId(null);
+                  setDocumentUrl(null);
+                }}
+                className="text-gray-500 hover:text-gray-700"
+              >
+                <XMarkIcon className="h-6 w-6" />
+              </button>
+            </div>
+            <div className="flex-1 overflow-auto p-4">
+              <iframe
+                src={documentUrl}
+                className="w-full h-full min-h-[600px] border-0"
+                title="Invoice Document"
+              />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
