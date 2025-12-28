@@ -403,6 +403,30 @@ async function processSingleInvoice(
   }
 }
 
+// Maximum amount that can be stored in DECIMAL(10,2) - 99,999,999.99
+const MAX_AMOUNT = 99999999.99;
+const MIN_AMOUNT = -99999999.99;
+
+function validateAndClampAmount(amount: number | undefined | null, fieldName: string = 'amount'): number | null {
+  if (amount === undefined || amount === null || isNaN(amount)) {
+    return null;
+  }
+  
+  // Check if amount exceeds database limit
+  if (amount > MAX_AMOUNT) {
+    console.warn(`[Amount Validation] ${fieldName} ${amount} exceeds maximum ${MAX_AMOUNT}, clamping to maximum`);
+    return MAX_AMOUNT;
+  }
+  
+  if (amount < MIN_AMOUNT) {
+    console.warn(`[Amount Validation] ${fieldName} ${amount} exceeds minimum ${MIN_AMOUNT}, clamping to minimum`);
+    return MIN_AMOUNT;
+  }
+  
+  // Round to 2 decimal places to match database precision
+  return Math.round(amount * 100) / 100;
+}
+
 async function invoiceToTransactions(
   invoiceData: any, 
   jobId: string,
@@ -425,31 +449,42 @@ async function invoiceToTransactions(
   // If we have line items, create a transaction for each
   if (invoiceData.line_items && invoiceData.line_items.length > 0) {
     for (const item of invoiceData.line_items) {
-        transactions.push({
-          job_id: jobId,
-          original_description: `${invoiceData.vendor_name || "Vendor"} - ${item.description}`,
-          amount: item.total,
-          date: invoiceData.invoice_date || new Date().toISOString().split("T")[0],
-          category: null,
-          subcategory: null,
-          confidence_score: 0.5,
-          user_confirmed: false,
-          bank_account_id: bankAccountId,
-        });
+      const validatedAmount = validateAndClampAmount(item.total, 'line_item.total');
+      if (validatedAmount === null) {
+        console.warn(`[invoiceToTransactions] Skipping line item with invalid amount: ${item.total}`);
+        continue;
+      }
+      
+      transactions.push({
+        job_id: jobId,
+        original_description: `${invoiceData.vendor_name || "Vendor"} - ${item.description}`,
+        amount: validatedAmount,
+        date: invoiceData.invoice_date || new Date().toISOString().split("T")[0],
+        category: null,
+        subcategory: null,
+        confidence_score: 0.5,
+        user_confirmed: false,
+        bank_account_id: bankAccountId,
+      });
     }
   } else if (invoiceData.total) {
     // Single transaction for entire invoice
-        transactions.push({
-          job_id: jobId,
-          original_description: invoiceData.vendor_name || "Invoice",
-          amount: invoiceData.total,
-          date: invoiceData.invoice_date || new Date().toISOString().split("T")[0],
-          category: null,
-          subcategory: null,
-          confidence_score: 0.5,
-          user_confirmed: false,
-          bank_account_id: bankAccountId,
-        });
+    const validatedAmount = validateAndClampAmount(invoiceData.total, 'invoice.total');
+    if (validatedAmount !== null) {
+      transactions.push({
+        job_id: jobId,
+        original_description: invoiceData.vendor_name || "Invoice",
+        amount: validatedAmount,
+        date: invoiceData.invoice_date || new Date().toISOString().split("T")[0],
+        category: null,
+        subcategory: null,
+        confidence_score: 0.5,
+        user_confirmed: false,
+        bank_account_id: bankAccountId,
+      });
+    } else {
+      console.warn(`[invoiceToTransactions] Skipping invoice with invalid total amount: ${invoiceData.total}`);
+    }
   }
 
   // FALLBACK: If no transactions were created (OCR failed or returned no data),

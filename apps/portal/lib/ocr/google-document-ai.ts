@@ -23,6 +23,9 @@ const PROJECT_ID = process.env.GOOGLE_CLOUD_PROJECT_ID?.trim();
 const LOCATION = (process.env.GOOGLE_CLOUD_LOCATION || "us").trim();
 const PROCESSOR_ID = process.env.GOOGLE_DOCUMENT_AI_PROCESSOR_ID?.trim();
 
+// Maximum reasonable amount for validation (matches DECIMAL(10,2) database limit)
+const MAX_REASONABLE_AMOUNT = 99999999.99;
+
 export interface InvoiceData {
   vendor_name?: string;
   invoice_date?: string;
@@ -606,7 +609,9 @@ function parseInvoiceData(document: any): InvoiceData {
     // This is a last resort when entities and patterns don't work
     if (!data.total && !data.subtotal && !data.tax && text) {
       // Find all monetary amounts in the text
-      const amountRegex = /([£$€]?\s*\d{1,3}(?:[,\s]\d{3})*(?:[.,]\d{2})?)\s*[£$€]?/g;
+      // Improved regex: look for amounts with currency symbols or reasonable decimal patterns
+      // Avoid matching dates, reference numbers, etc.
+      const amountRegex = /([£$€]\s*\d{1,3}(?:[,\s]\d{3})*(?:[.,]\d{2})?|\d{1,6}[.,]\d{2}(?:\s*[£$€])?)/g;
       const allAmounts: Array<{ amount: number; context: string; position: number }> = [];
       
       let match: RegExpExecArray | null;
@@ -614,11 +619,18 @@ function parseInvoiceData(document: any): InvoiceData {
         const amountStr = match[1]?.trim();
         if (amountStr) {
           const amount = parseAmount(amountStr);
-          if (amount !== undefined && amount > 0) {
+          // Only accept reasonable amounts (between 0.01 and MAX_REASONABLE_AMOUNT)
+          if (amount !== undefined && amount > 0 && amount <= MAX_REASONABLE_AMOUNT) {
             // Get context around the amount (50 chars before and after)
             const start = Math.max(0, match.index - 50);
             const end = Math.min(text.length, match.index + match[0].length + 50);
             const context = text.substring(start, end).toLowerCase();
+            
+            // Skip if context suggests this is not a monetary amount
+            // (e.g., dates, reference numbers, phone numbers)
+            if (context.match(/\b(date|phone|ref|reference|order\s*#|invoice\s*#)\b/i)) {
+              continue;
+            }
             
             allAmounts.push({
               amount,
@@ -877,6 +889,9 @@ function parseDate(value: string | undefined): string | undefined {
   return value; // Return as-is if parsing fails
 }
 
+// Maximum reasonable amount for validation (99,999,999.99 - database limit)
+const MAX_REASONABLE_AMOUNT = 99999999.99;
+
 function parseAmount(value: string | undefined): number | undefined {
   if (!value) return undefined;
   
@@ -938,5 +953,22 @@ function parseAmount(value: string | undefined): number | undefined {
   
   if (isNaN(amount)) return undefined;
   
-  return isNegative ? -Math.abs(amount) : amount;
+  const finalAmount = isNegative ? -Math.abs(amount) : amount;
+  
+  // Validate amount is reasonable (not a date or reference number parsed incorrectly)
+  // Reject amounts that are suspiciously large (likely parsing errors)
+  if (Math.abs(finalAmount) > MAX_REASONABLE_AMOUNT) {
+    console.warn(`[parseAmount] Rejected suspiciously large amount: ${finalAmount} (original: ${value})`);
+    return undefined;
+  }
+  
+  // Reject amounts that look like dates (e.g., 20241228, 2024-12-28)
+  // If the number is exactly 8 digits and starts with 19 or 20, it's likely a date
+  const numericOnly = cleaned.replace(/[^0-9]/g, "");
+  if (numericOnly.length === 8 && /^(19|20)\d{6}$/.test(numericOnly)) {
+    console.warn(`[parseAmount] Rejected date-like value as amount: ${value}`);
+    return undefined;
+  }
+  
+  return finalAmount;
 }
