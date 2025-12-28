@@ -1,12 +1,12 @@
 'use client'
 
-import { useState } from 'react'
 import { usePathname } from 'next/navigation'
 import {
   SidebarLayout,
   Sidebar,
   SidebarHeader,
   SidebarBody,
+  SidebarFooter,
   SidebarSection,
   SidebarItem,
   SidebarLabel,
@@ -16,6 +16,7 @@ import {
 } from '@/components/catalyst'
 import { CompanySwitcher } from '@/components/navigation/CompanySwitcher'
 import { UserMenu } from '@/components/navigation/UserMenu'
+import { SidebarUserMenu } from '@/components/navigation/SidebarUserMenu'
 import {
   HomeIcon,
   BuildingOfficeIcon,
@@ -134,6 +135,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               </SidebarItem>
             </SidebarSection>
           </SidebarBody>
+
+          <SidebarFooter>
+            <SidebarUserMenu />
+          </SidebarFooter>
         </Sidebar>
       }
     >
