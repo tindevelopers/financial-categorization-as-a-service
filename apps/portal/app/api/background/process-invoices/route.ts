@@ -266,12 +266,12 @@ async function processSingleInvoice(
         
         // Attempt automatic reconciliation after transactions are created
         if (insertedTransactionIds.length > 0) {
-          await reconcileInvoiceAfterProcessing(doc.id, insertedTransactionIds, userId, supabase);
+          await reconcileInvoiceAfterProcessing(doc.id, insertedTransactionIds, userId, jobId, supabase);
         }
       }
     } else {
       // Even if no transactions were created, try to reconcile the invoice document
-      await reconcileInvoiceAfterProcessing(doc.id, [], userId, supabase);
+      await reconcileInvoiceAfterProcessing(doc.id, [], userId, jobId, supabase);
     }
   } catch (error: any) {
     console.error(`Error processing invoice ${doc.id}:`, error);
@@ -406,6 +406,7 @@ async function reconcileInvoiceAfterProcessing(
   invoiceDocumentId: string,
   invoiceTransactionIds: string[],
   userId: string,
+  jobId: string,
   supabase: any
 ): Promise<void> {
   try {
