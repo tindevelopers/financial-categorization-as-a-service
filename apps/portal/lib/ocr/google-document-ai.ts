@@ -889,9 +889,6 @@ function parseDate(value: string | undefined): string | undefined {
   return value; // Return as-is if parsing fails
 }
 
-// Maximum reasonable amount for validation (99,999,999.99 - database limit)
-const MAX_REASONABLE_AMOUNT = 99999999.99;
-
 function parseAmount(value: string | undefined): number | undefined {
   if (!value) return undefined;
   
