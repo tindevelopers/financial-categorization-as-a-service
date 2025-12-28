@@ -146,6 +146,12 @@ CREATE INDEX IF NOT EXISTS idx_user_integrations_provider ON user_integrations(p
 
 ALTER TABLE user_integrations ENABLE ROW LEVEL SECURITY;
 
+-- Drop policies if they exist before creating
+DROP POLICY IF EXISTS "Users can view own integrations" ON user_integrations;
+DROP POLICY IF EXISTS "Users can insert own integrations" ON user_integrations;
+DROP POLICY IF EXISTS "Users can update own integrations" ON user_integrations;
+DROP POLICY IF EXISTS "Users can delete own integrations" ON user_integrations;
+
 CREATE POLICY "Users can view own integrations"
   ON user_integrations FOR SELECT
   USING (auth.uid() = user_id);

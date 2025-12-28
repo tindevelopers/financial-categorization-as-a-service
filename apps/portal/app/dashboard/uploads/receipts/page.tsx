@@ -196,11 +196,7 @@ export default function ReceiptsUploadPage() {
       return
     }
 
-    if (!selectedBankAccountId) {
-      setError('Please select a bank account before uploading.')
-      return
-    }
-
+    // Bank account is optional - if selected, validate spreadsheet
     const selectedAccount = bankAccounts.find(acc => acc.id === selectedBankAccountId)
     if (selectedAccount && !selectedAccount.default_spreadsheet_id) {
       setError('Please set a default spreadsheet for this bank account before uploading.')
@@ -217,7 +213,10 @@ export default function ReceiptsUploadPage() {
         formData.append(`file_${index}`, file)
       })
       formData.append('fileCount', files.length.toString())
-      formData.append('bank_account_id', selectedBankAccountId)
+      // Bank account is optional - if not selected, backend will use suspense account
+      if (selectedBankAccountId) {
+        formData.append('bank_account_id', selectedBankAccountId)
+      }
 
       const response = await fetch('/api/categorization/upload-invoices', {
         method: 'POST',
@@ -304,29 +303,31 @@ export default function ReceiptsUploadPage() {
         {!uploading && (
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-              Select Bank Account <span className="text-red-500">*</span>
+              Select Account <span className="text-gray-400 text-xs font-normal">(optional)</span>
             </label>
             {loadingBankAccounts ? (
               <div className="animate-pulse bg-gray-200 dark:bg-gray-700 h-10 rounded-lg"></div>
-            ) : bankAccounts.length === 0 ? (
-              <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-4">
-                <p className="text-sm text-yellow-800 dark:text-yellow-200">
-                  No bank accounts found. Please <Link href="/dashboard/setup" className="underline">create a bank account</Link> first.
-                </p>
-              </div>
             ) : (
-              <select
-                value={selectedBankAccountId}
-                onChange={(e) => setSelectedBankAccountId(e.target.value)}
-                className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              >
-                <option value="">-- Select Bank Account --</option>
-                {bankAccounts.map(account => (
-                  <option key={account.id} value={account.id}>
-                    {account.account_name} ({account.bank_name})
-                  </option>
-                ))}
-              </select>
+              <>
+                <select
+                  value={selectedBankAccountId}
+                  onChange={(e) => setSelectedBankAccountId(e.target.value)}
+                  className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                >
+                  <option value="">-- Auto-match to any account --</option>
+                  {bankAccounts.map(account => (
+                    <option key={account.id} value={account.id}>
+                      {account.account_name} ({account.bank_name}) - {account.account_type}
+                    </option>
+                  ))}
+                </select>
+                <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                  {selectedBankAccountId 
+                    ? "Receipt will be linked to this account"
+                    : "We'll try to match this receipt to transactions across all your accounts"
+                  }
+                </p>
+              </>
             )}
           </div>
         )}

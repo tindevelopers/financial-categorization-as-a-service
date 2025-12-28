@@ -50,34 +50,58 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Require bank account
-    if (!bankAccountId) {
-      return NextResponse.json(
-        { error: "BANK_ACCOUNT_REQUIRED", error_code: "BANK_ACCOUNT_REQUIRED" },
-        { status: 400 }
-      );
-    }
+    // Handle bank account - use suspense account if none provided
+    let effectiveBankAccountId = bankAccountId;
+    let bankAccount: { id: string; default_spreadsheet_id: string | null; spreadsheet_tab_name: string | null; is_active: boolean } | null = null;
 
-    // Validate bank account and spreadsheet requirement
-    const { data: bankAccount, error: bankAccountError } = await supabase
-      .from("bank_accounts")
-      .select("id, default_spreadsheet_id, spreadsheet_tab_name, is_active")
-      .eq("id", bankAccountId)
-      .eq("user_id", user.id)
-      .single();
+    if (bankAccountId) {
+      // Validate the provided bank account
+      const { data: selectedAccount, error: bankAccountError } = await supabase
+        .from("bank_accounts")
+        .select("id, default_spreadsheet_id, spreadsheet_tab_name, is_active")
+        .eq("id", bankAccountId)
+        .eq("user_id", user.id)
+        .single();
 
-    if (bankAccountError || !bankAccount || !bankAccount.is_active) {
-      return NextResponse.json(
-        { error: "Invalid or inactive bank account", error_code: "BANK_ACCOUNT_INVALID" },
-        { status: 400 }
-      );
-    }
+      if (bankAccountError || !selectedAccount || !selectedAccount.is_active) {
+        return NextResponse.json(
+          { error: "Invalid or inactive bank account", error_code: "BANK_ACCOUNT_INVALID" },
+          { status: 400 }
+        );
+      }
 
-    if (!bankAccount.default_spreadsheet_id) {
-      return NextResponse.json(
-        { error: "SPREADSHEET_REQUIRED", error_code: "SPREADSHEET_REQUIRED" },
-        { status: 400 }
-      );
+      // Only require spreadsheet if a specific account was selected
+      if (!selectedAccount.default_spreadsheet_id) {
+        return NextResponse.json(
+          { error: "SPREADSHEET_REQUIRED", error_code: "SPREADSHEET_REQUIRED" },
+          { status: 400 }
+        );
+      }
+
+      bankAccount = selectedAccount;
+    } else {
+      // No bank account provided - get or create suspense account
+      const { data: suspenseAccountId, error: suspenseError } = await supabase
+        .rpc('get_or_create_suspense_account', { p_user_id: user.id });
+
+      if (suspenseError) {
+        console.error("Failed to create suspense account:", suspenseError);
+        return NextResponse.json(
+          { error: "Failed to create default account for unmatched receipts", error_code: "SUSPENSE_ACCOUNT_ERROR" },
+          { status: 500 }
+        );
+      }
+
+      effectiveBankAccountId = suspenseAccountId;
+      
+      // Get the suspense account details
+      const { data: suspenseAccount } = await supabase
+        .from("bank_accounts")
+        .select("id, default_spreadsheet_id, spreadsheet_tab_name, is_active")
+        .eq("id", suspenseAccountId)
+        .single();
+      
+      bankAccount = suspenseAccount;
     }
 
     if (fileCount === 0) {
@@ -202,6 +226,7 @@ export async function POST(request: NextRequest) {
         original_filename: files.map(f => f.name).join(", "),
         file_url: fileUrls[0], // Store first file URL (we'll store all in documents table)
         total_items: fileCount,
+        bank_account_id: effectiveBankAccountId, // Link job to bank account for processing
       })
       .select()
       .single();
@@ -234,7 +259,7 @@ export async function POST(request: NextRequest) {
       storage_tier: "hot",
       supabase_path: fileName,
       ocr_status: "pending",
-      bank_account_id: bankAccountId || null,
+      bank_account_id: effectiveBankAccountId || null,
     }));
 
     const { error: docError } = await supabase
