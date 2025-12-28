@@ -139,12 +139,12 @@ export async function POST(request: NextRequest) {
             
             // Attempt automatic reconciliation after transactions are created
             if (insertedTransactionIds.length > 0) {
-              await reconcileInvoiceAfterProcessing(doc.id, insertedTransactionIds, user.id, supabase);
+              await reconcileInvoiceAfterProcessing(doc.id, insertedTransactionIds, user.id, jobId, supabase);
             }
           }
         } else {
           // Even if no transactions were created, try to reconcile the invoice document
-          await reconcileInvoiceAfterProcessing(doc.id, [], user.id, supabase);
+          await reconcileInvoiceAfterProcessing(doc.id, [], user.id, jobId, supabase);
         }
 
         processedCount++;
@@ -306,6 +306,7 @@ async function reconcileInvoiceAfterProcessing(
   invoiceDocumentId: string,
   invoiceTransactionIds: string[],
   userId: string,
+  jobId: string,
   supabase: any
 ): Promise<void> {
   try {
