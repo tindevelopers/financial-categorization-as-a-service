@@ -348,6 +348,13 @@ function parseInvoiceData(document: any): InvoiceData {
     data.line_items = [];
     // Extract table confidence
     let tableConfidences: number[] = [];
+    
+    // Detect Amazon invoice format from text
+    const isAmazonInvoice = (document.text || "").includes('amazon') || 
+                           (document.text || "").includes('Amazon EU') || 
+                           (document.text || "").match(/order\s*#:\s*\d{3}-\d{7}-\d{7}/i) ||
+                           (document.text || "").includes('ASIN:');
+    
     // Extract line items from tables
     for (const table of document.pages[0].tables) {
       if (table.confidence !== undefined && table.confidence !== null) {
@@ -358,6 +365,15 @@ function parseInvoiceData(document: any): InvoiceData {
       const headerRows = table.headerRows || [];
       const allRows = [...headerRows, ...bodyRows];
       
+      // Detect Amazon table format by checking headers
+      let isAmazonTable = false;
+      if (headerRows.length > 0) {
+        const headerText = headerRows[0].cells?.map((c: any) => c?.text || '').join(' ').toLowerCase() || '';
+        isAmazonTable = headerText.includes('unit price (incl. vat)') || 
+                       headerText.includes('item subtotal (incl. vat)') ||
+                       headerText.includes('asin');
+      }
+      
       // Skip header rows when processing
       const rowsToProcess = headerRows.length > 0 ? bodyRows : allRows;
       
@@ -367,10 +383,73 @@ function parseInvoiceData(document: any): InvoiceData {
         
         // Skip summary rows (contain "total", "subtotal", "vat", etc.)
         const rowText = cells.map((c: any) => c?.text || '').join(' ').toLowerCase();
-        if (rowText.match(/\b(total|subtotal|vat|tax|sub\s*total|delivery|shipping)\b/)) {
+        if (rowText.match(/\b(total|subtotal|vat|tax|sub\s*total|delivery|shipping|shipping charges)\b/)) {
           continue;
         }
         
+        // AMAZON TABLE FORMAT PARSING
+        // Amazon format: [Description, Qty, Unit price (excl. VAT), VAT rate, Unit price (incl. VAT), Item subtotal (incl. VAT)]
+        if (isAmazonTable || isAmazonInvoice) {
+          let description = "";
+          let quantity: number | undefined;
+          let unitPrice: number | undefined;
+          let total: number | undefined;
+          let asin: string | undefined;
+          
+          // Description is usually first column
+          if (cells[0]?.text) {
+            description = cells[0].text.trim();
+            // Extract ASIN if present in description: "ASIN: B0CJY33X7Q"
+            const asinMatch = description.match(/asin[:\s]+([A-Z0-9]{10})/i);
+            if (asinMatch) {
+              asin = asinMatch[1];
+              // Remove ASIN from description
+              description = description.replace(/asin[:\s]+[A-Z0-9]{10}/i, '').trim();
+            }
+          }
+          
+          // Quantity is usually second column (or can be in description)
+          if (cells[1]?.text) {
+            const qtyText = cells[1].text.trim();
+            const qtyValue = parseFloat(qtyText);
+            if (!isNaN(qtyValue) && qtyValue > 0 && qtyValue < 1000 && qtyValue === Math.floor(qtyValue)) {
+              quantity = qtyValue;
+            }
+          }
+          
+          // Try to find "Item subtotal (incl. VAT)" - this is the total for the line item
+          // Usually the last column or second-to-last
+          for (let i = cells.length - 1; i >= Math.max(0, cells.length - 3); i--) {
+            const cellText = (cells[i]?.text || "").trim();
+            const amount = parseAmount(cellText);
+            if (amount !== undefined && amount > 0 && amount <= MAX_REASONABLE_AMOUNT) {
+              total = amount;
+              break;
+            }
+          }
+          
+          // Unit price (incl. VAT) is usually second-to-last column
+          if (cells.length >= 5 && cells[cells.length - 2]?.text) {
+            const unitPriceText = cells[cells.length - 2].text.trim();
+            const unitPriceAmount = parseAmount(unitPriceText);
+            if (unitPriceAmount !== undefined && unitPriceAmount > 0 && unitPriceAmount <= MAX_REASONABLE_AMOUNT) {
+              unitPrice = unitPriceAmount;
+            }
+          }
+          
+          // Only add if we have description and total
+          if (description && description.length > 3 && total !== undefined && total > 0) {
+            data.line_items!.push({
+              description: description.trim(),
+              quantity,
+              unit_price: unitPrice,
+              total,
+            });
+            continue; // Skip generic parsing for this row
+          }
+        }
+        
+        // GENERIC TABLE PARSING (for non-Amazon invoices)
         // Try to extract description, quantity, unit price, and total
         let description = "";
         let quantity: number | undefined;
@@ -426,7 +505,7 @@ function parseInvoiceData(document: any): InvoiceData {
 
           // Try to identify amounts (monetary values)
           const amount = parseAmount(cellText);
-          if (amount !== undefined && amount > 0) {
+          if (amount !== undefined && amount > 0 && amount <= MAX_REASONABLE_AMOUNT) {
             // If this looks like a quantity (small integer), don't treat as amount
             if (cellText.match(/^\d+$/) && amount < 1000 && amount === Math.floor(amount)) {
               quantity = amount;
@@ -904,6 +983,8 @@ function parseInvoiceData(document: any): InvoiceData {
         /order\s*id[:\s]+([A-Z0-9\-]+)/i,
         /po\s*(?:number|#|no\.?):\s*([A-Z0-9\-]+)/i,
         /purchase\s*order[:\s]+([A-Z0-9\-]+)/i,
+        // Amazon format: Order #: 203-7525121-4700369
+        /order\s*#:\s*(\d{3}-\d{7}-\d{7})/i,
       ];
       for (const pattern of orderPatterns) {
         const match = text.match(pattern);
@@ -911,6 +992,112 @@ function parseInvoiceData(document: any): InvoiceData {
           data.order_number = match[1].trim();
           break;
         }
+      }
+    }
+    
+    // AMAZON INVOICE SPECIFIC PARSING
+    // Detect if this is an Amazon invoice
+    const isAmazonInvoice = text.includes('amazon') || 
+                           text.includes('Amazon EU') || 
+                           text.match(/order\s*#:\s*\d{3}-\d{7}-\d{7}/i) ||
+                           text.includes('ASIN:');
+    
+    if (isAmazonInvoice) {
+      console.log('[DocumentAI] Detected Amazon invoice format, applying Amazon-specific parsing');
+      
+      // Extract "Sold by" vendor name (Amazon invoices)
+      if (!data.vendor_name) {
+        const soldByPatterns = [
+          /sold\s*by[:\s]+(.+?)(?:\n|$)/im,
+          /sold\s*by[:\s]+(.+?)(?:\n|VAT|Address)/im,
+        ];
+        for (const pattern of soldByPatterns) {
+          const match = text.match(pattern);
+          if (match && match[1]) {
+            const vendorName = match[1].trim().split('\n')[0].trim();
+            if (vendorName.length > 2 && vendorName.length < 200) {
+              data.vendor_name = vendorName;
+              data.field_confidence!['vendor_name'] = 0.85; // High confidence for Amazon format
+              data.extraction_methods!['vendor_name'] = 'pattern';
+              if (!data.supplier) data.supplier = {};
+              data.supplier.name = vendorName;
+              break;
+            }
+          }
+        }
+      }
+      
+      // Extract Amazon invoice total explicitly
+      // Pattern: "Invoice total: £89.54" or "Invoice total £89.54"
+      if (!data.total) {
+        const amazonTotalPatterns = [
+          /invoice\s*total[:\s]+([£$€]?\s*\d+[\d.,]*)/i,
+          /invoice\s*total\s*\(incl\.?\s*vat\)[:\s]+([£$€]?\s*\d+[\d.,]*)/i,
+        ];
+        for (const pattern of amazonTotalPatterns) {
+          const match = text.match(pattern);
+          if (match && match[1]) {
+            const amount = parseAmount(match[1]);
+            if (amount !== undefined && amount > 0 && amount <= MAX_REASONABLE_AMOUNT) {
+              data.total = amount;
+              data.field_confidence!['total'] = 0.9; // High confidence for explicit "Invoice total"
+              data.extraction_methods!['total'] = 'pattern';
+              break;
+            }
+          }
+        }
+      }
+      
+      // Extract VAT breakdown from Amazon format
+      // Pattern: "VAT rate: 20%" followed by "VAT subtotal: £14.92"
+      if (!data.tax) {
+        const vatSubtotalPattern = /vat\s*subtotal[:\s]+([£$€]?\s*\d+[\d.,]*)/i;
+        const vatMatch = text.match(vatSubtotalPattern);
+        if (vatMatch && vatMatch[1]) {
+          const taxAmount = parseAmount(vatMatch[1]);
+          if (taxAmount !== undefined && taxAmount > 0 && taxAmount <= MAX_REASONABLE_AMOUNT) {
+            data.tax = taxAmount;
+            data.field_confidence!['tax'] = 0.85;
+            data.extraction_methods!['tax'] = 'pattern';
+          }
+        }
+      }
+      
+      // Extract subtotal (excl. VAT) from Amazon format
+      // Pattern: "Item subtotal (excl. VAT): £74.62"
+      if (!data.subtotal) {
+        const subtotalExVatPattern = /item\s*subtotal\s*\(excl\.?\s*vat\)[:\s]+([£$€]?\s*\d+[\d.,]*)/i;
+        const subtotalMatch = text.match(subtotalExVatPattern);
+        if (subtotalMatch && subtotalMatch[1]) {
+          const subtotalAmount = parseAmount(subtotalMatch[1]);
+          if (subtotalAmount !== undefined && subtotalAmount > 0 && subtotalAmount <= MAX_REASONABLE_AMOUNT) {
+            data.subtotal = subtotalAmount;
+            data.field_confidence!['subtotal'] = 0.85;
+            data.extraction_methods!['subtotal'] = 'pattern';
+          }
+        }
+      }
+      
+      // Extract order date from Amazon format
+      // Pattern: "Order date: 03 September 2024"
+      if (!data.invoice_date) {
+        const amazonDatePattern = /order\s*date[:\s]+(\d{1,2}\s+(?:January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{4})/i;
+        const dateMatch = text.match(amazonDatePattern);
+        if (dateMatch && dateMatch[1]) {
+          const parsedDate = parseDate(dateMatch[1]);
+          if (parsedDate) {
+            data.invoice_date = parsedDate;
+            data.field_confidence!['invoice_date'] = 0.85;
+            data.extraction_methods!['invoice_date'] = 'pattern';
+          }
+        }
+      }
+      
+      // Extract order number as invoice number if invoice number not found
+      if (!data.invoice_number && data.order_number) {
+        data.invoice_number = data.order_number;
+        data.field_confidence!['invoice_number'] = 0.8;
+        data.extraction_methods!['invoice_number'] = 'pattern';
       }
     }
     
@@ -1082,9 +1269,40 @@ function parseInvoiceData(document: any): InvoiceData {
   };
   
   // Determine if review is needed
-  data.needs_review = Object.values(data.field_confidence || {}).some(conf => conf < MEDIUM_CONFIDENCE) ||
+  // Critical fields: total, vendor_name, invoice_date
+  const criticalFieldsMissing = [];
+  if (!data.total && !data.subtotal) criticalFieldsMissing.push('total');
+  if (!data.vendor_name && !data.supplier?.name) criticalFieldsMissing.push('vendor_name');
+  if (!data.invoice_date) criticalFieldsMissing.push('invoice_date');
+  
+  // Flag for review if:
+  // - Any critical field is missing
+  // - Low confidence on critical fields
+  // - Overall confidence is low
+  // - Amount validation failed
+  const hasLowConfidenceFields = Object.entries(data.field_confidence || {}).some(([field, conf]) => {
+    const isCritical = ['total', 'vendor_name', 'invoice_date'].includes(field);
+    return isCritical && conf < MEDIUM_CONFIDENCE;
+  });
+  
+  const hasValidationFailures = Object.values(data.validation_flags || {}).some(valid => valid === false);
+  
+  data.needs_review = criticalFieldsMissing.length > 0 ||
+                      hasLowConfidenceFields ||
                       fieldsMissing.length > 2 ||
-                      data.confidence_score! < MEDIUM_CONFIDENCE;
+                      data.confidence_score! < MEDIUM_CONFIDENCE ||
+                      hasValidationFailures;
+  
+  // Log review reasons for debugging
+  if (data.needs_review) {
+    console.log('[DocumentAI] Invoice flagged for review:', {
+      criticalFieldsMissing,
+      hasLowConfidenceFields,
+      fieldsMissing,
+      confidenceScore: data.confidence_score,
+      hasValidationFailures,
+    });
+  }
   
   // Debug logging for extraction diagnostics
   const extractionSummary = {

@@ -485,6 +485,11 @@ async function invoiceToTransactions(
   // #endregion
   const transactions: any[] = [];
 
+  // Build description components
+  const vendorName = invoiceData.vendor_name || invoiceData.supplier?.name || "Vendor";
+  const invoiceNumber = invoiceData.invoice_number || invoiceData.order_number;
+  const invoiceRef = invoiceNumber ? `Invoice #${invoiceNumber}` : null;
+  
   // If we have line items, create a transaction for each
   if (invoiceData.line_items && invoiceData.line_items.length > 0) {
     for (const item of invoiceData.line_items) {
@@ -494,9 +499,30 @@ async function invoiceToTransactions(
         continue;
       }
       
+      // Build rich description: Vendor - Line Item Description - Invoice #Number
+      const descriptionParts = [vendorName];
+      
+      // Add line item description (truncate if too long)
+      const itemDesc = (item.description || "").trim();
+      if (itemDesc) {
+        // Truncate very long descriptions to keep it readable
+        const maxDescLength = 100;
+        const truncatedDesc = itemDesc.length > maxDescLength 
+          ? itemDesc.substring(0, maxDescLength) + "..."
+          : itemDesc;
+        descriptionParts.push(truncatedDesc);
+      }
+      
+      // Add invoice number if available
+      if (invoiceRef) {
+        descriptionParts.push(invoiceRef);
+      }
+      
+      const fullDescription = descriptionParts.join(" - ");
+      
       transactions.push({
         job_id: jobId,
-        original_description: `${invoiceData.vendor_name || "Vendor"} - ${item.description}`,
+        original_description: fullDescription,
         amount: validatedAmount,
         date: invoiceData.invoice_date || new Date().toISOString().split("T")[0],
         category: null,
@@ -504,7 +530,7 @@ async function invoiceToTransactions(
         confidence_score: 0.5,
         user_confirmed: false,
         bank_account_id: bankAccountId,
-        invoice_number: invoiceData.invoice_number || null,
+        invoice_number: invoiceNumber || null,
         supplier_id: supplierId || null,
         document_id: documentId || null,
       });
@@ -513,9 +539,16 @@ async function invoiceToTransactions(
     // Single transaction for entire invoice
     const validatedAmount = validateAndClampAmount(invoiceData.total, 'invoice.total');
     if (validatedAmount !== null) {
+      // Build description: Vendor - Invoice #Number (or just Vendor if no invoice number)
+      const descriptionParts = [vendorName];
+      if (invoiceRef) {
+        descriptionParts.push(invoiceRef);
+      }
+      const fullDescription = descriptionParts.join(" - ");
+      
       transactions.push({
         job_id: jobId,
-        original_description: invoiceData.vendor_name || "Invoice",
+        original_description: fullDescription,
         amount: validatedAmount,
         date: invoiceData.invoice_date || new Date().toISOString().split("T")[0],
         category: null,
@@ -523,7 +556,7 @@ async function invoiceToTransactions(
         confidence_score: 0.5,
         user_confirmed: false,
         bank_account_id: bankAccountId,
-        invoice_number: invoiceData.invoice_number || null,
+        invoice_number: invoiceNumber || null,
         supplier_id: supplierId || null,
         document_id: documentId || null,
       });
@@ -569,13 +602,122 @@ async function categorizeInvoiceTransactions(
   userId: string,
   adminClient: any
 ): Promise<void> {
+  if (!transactions || transactions.length === 0) {
+    return;
+  }
+
   // Get user's category mappings
   const { data: mappings } = await adminClient
     .from("user_category_mappings")
     .select("*")
     .eq("user_id", userId);
 
-  // Categorize each transaction
+  // Use AI categorization service if available
+  const useAI = process.env.USE_AI_CATEGORIZATION === "true";
+  
+  if (useAI) {
+    try {
+      const { AICategorizationFactory } = await import("@/lib/ai/AICategorizationFactory");
+      const { VercelAICategorizationService } = await import("@/lib/ai/VercelAICategorizationService");
+      const provider = AICategorizationFactory.getDefaultProvider();
+      
+      // Get company profile ID if available
+      const { data: companyProfile } = await adminClient
+        .from("company_profiles")
+        .select("id")
+        .eq("user_id", userId)
+        .eq("setup_completed", true)
+        .limit(1)
+        .single();
+      
+      const companyProfileId = companyProfile?.id;
+      
+      // Load AI instructions
+      const aiInstructions = await VercelAICategorizationService.loadCategorizationInstructions(
+        adminClient,
+        userId,
+        companyProfileId
+      );
+      
+      const userMappings = mappings?.map((m: any) => ({
+        pattern: m.pattern,
+        category: m.category,
+        subcategory: m.subcategory || undefined,
+      }));
+      
+      const aiService = AICategorizationFactory.create(
+        provider,
+        userMappings,
+        aiInstructions,
+        companyProfileId
+      );
+      
+      // Convert transactions to AI service format
+      const aiTransactions = transactions
+        .filter(tx => tx.original_description) // Skip transactions without descriptions
+        .map(tx => ({
+          original_description: tx.original_description || tx.description || "Invoice transaction",
+          amount: tx.amount || 0,
+          date: typeof tx.date === "string" ? tx.date : (tx.date?.toISOString().split("T")[0] || new Date().toISOString().split("T")[0]),
+        }));
+
+      if (aiTransactions.length === 0) {
+        return;
+      }
+
+      // Categorize in batches (process 20 at a time to avoid token limits)
+      const BATCH_SIZE = 20;
+      const validTransactions = transactions.filter(tx => tx.original_description);
+      
+      for (let i = 0; i < aiTransactions.length; i += BATCH_SIZE) {
+        const batch = aiTransactions.slice(i, i + BATCH_SIZE);
+        const batchTransactions = validTransactions.slice(i, i + BATCH_SIZE);
+        
+        try {
+          const results = await aiService.categorizeBatch(batch);
+          
+          // Update each transaction with AI categorization results
+          for (let j = 0; j < results.length && j < batchTransactions.length; j++) {
+            const result = results[j];
+            const tx = batchTransactions[j];
+            
+            if (result && tx) {
+              await adminClient
+                .from("categorized_transactions")
+                .update({
+                  category: result.category || "Uncategorized",
+                  subcategory: result.subcategory || null,
+                  confidence_score: result.confidenceScore || 0.5,
+                })
+                .eq("id", tx.id);
+            }
+          }
+        } catch (error: any) {
+          console.error(`[AI Categorization] Error categorizing batch ${i / BATCH_SIZE + 1}:`, error);
+          // Fallback to keyword matching for this batch
+          await categorizeWithKeywordMatching(batchTransactions, mappings, adminClient);
+        }
+      }
+      
+      return; // Successfully used AI categorization
+    } catch (error: any) {
+      console.error("[AI Categorization] Failed to use AI categorization, falling back to keyword matching:", error);
+      // Fall through to keyword matching fallback
+    }
+  }
+  
+  // Fallback to keyword matching if AI is not enabled or failed
+  await categorizeWithKeywordMatching(transactions, mappings, adminClient);
+}
+
+/**
+ * Fallback categorization using keyword matching
+ */
+async function categorizeWithKeywordMatching(
+  transactions: any[],
+  mappings: any[],
+  adminClient: any
+): Promise<void> {
   for (const tx of transactions) {
     let category: string | undefined;
     let subcategory: string | undefined;
@@ -605,11 +747,14 @@ async function categorizeInvoiceTransactions(
     if (!category) {
       const desc = (tx.original_description || "").toLowerCase();
       
-      if (desc.includes("office") || desc.includes("supplies")) {
+      if (desc.includes("office") || desc.includes("supplies") || desc.includes("printer") || desc.includes("equipment")) {
         category = "Office Supplies";
         confidenceScore = 0.7;
       } else if (desc.includes("software") || desc.includes("saas") || desc.includes("subscription")) {
         category = "Software & Subscriptions";
+        confidenceScore = 0.7;
+      } else if (desc.includes("amazon") || desc.includes("shopping") || desc.includes("retail")) {
+        category = "Shopping";
         confidenceScore = 0.7;
       } else {
         category = "Uncategorized";

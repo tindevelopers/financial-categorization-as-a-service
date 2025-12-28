@@ -234,6 +234,34 @@ Common categories: ${commonCategories.join(", ")}
       prompt += `\nNote: These transactions are for financial statement generation and may be exported to XERO or filed with HMRC. Ensure proper categorization for tax and accounting compliance.\n\n`;
     }
 
+    // Detect if transactions are from invoices
+    const hasInvoiceIndicators = transactions.some(tx => 
+      tx.original_description?.includes("Invoice #") || 
+      tx.original_description?.includes(" - ") ||
+      tx.original_description?.match(/\b(amazon|screwfix|office|supplies|equipment|printer|software)\b/i)
+    );
+    
+    if (hasInvoiceIndicators) {
+      prompt += `\nINVOICE TRANSACTION GUIDANCE:
+These transactions appear to be from invoices. Pay special attention to:
+- Vendor names (e.g., "Amazon" → Shopping or Office Supplies depending on item)
+- Product descriptions in transaction descriptions (e.g., "HP OfficeJet Pro printer" → Office Supplies / Equipment)
+- Invoice numbers help identify the source document
+- Common invoice vendors and their typical categories:
+  * Amazon → Shopping (general items) or Office Supplies (if office/equipment mentioned)
+  * Screwfix, Toolstation → Office Supplies / Tools & Equipment
+  * Software vendors → Software & Subscriptions
+  * Office supply stores → Office Supplies
+
+Examples:
+- "Amazon EU S.à r.l. - HP OfficeJet Pro printer - Invoice #203-7525121" → Office Supplies / Equipment
+- "Amazon - Wireless Mouse - Invoice #123" → Office Supplies / Computer Accessories
+- "Screwfix - Vapour Barrier Membrane - Invoice #LD-2024-1000105683" → Office Supplies / Building Materials
+- "Microsoft - Office 365 Subscription - Invoice #MS-12345" → Software & Subscriptions / Productivity Software
+
+\n`;
+    }
+
     prompt += `Transactions to categorize:\n\n`;
     transactions.forEach((tx, index) => {
       const txAny = tx as any;
@@ -254,6 +282,12 @@ Common categories: ${commonCategories.join(", ")}
         txLine += ` [Ref: ${txAny.reference_number}]`;
       }
       
+      // Add invoice number if present in description (extract it)
+      const invoiceMatch = tx.original_description?.match(/Invoice\s*#([A-Z0-9\-]+)/i);
+      if (invoiceMatch) {
+        txLine += ` [Invoice: ${invoiceMatch[1]}]`;
+      }
+      
       txLine += `\n`;
       prompt += txLine;
     });
@@ -264,7 +298,7 @@ Common categories: ${commonCategories.join(", ")}
 - confidenceScore: Your confidence (0.0 to 1.0) that this category is correct
 - reasoning: Brief explanation of your categorization decision
 
-Consider the transaction description, amount, transaction type (debit/credit/interest/fee), and any patterns. Use user mappings when applicable.`;
+Consider the transaction description (especially vendor names and product descriptions), amount, transaction type (debit/credit/interest/fee), and any patterns. For invoice transactions, pay special attention to product descriptions and vendor names. Use user mappings when applicable.`;
 
     return prompt;
   }
