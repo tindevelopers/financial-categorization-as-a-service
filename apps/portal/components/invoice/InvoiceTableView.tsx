@@ -66,6 +66,7 @@ interface InvoiceTableViewProps {
   onDelete: (transactionId: string, documentId: string) => Promise<void>;
   onConfirm: (transactionId: string) => Promise<void>;
   onViewDocument: (documentId: string) => void;
+  onEditingChange?: (isEditing: boolean) => void;
 }
 
 export default function InvoiceTableView({
@@ -75,9 +76,15 @@ export default function InvoiceTableView({
   onDelete,
   onConfirm,
   onViewDocument,
+  onEditingChange,
 }: InvoiceTableViewProps) {
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
   const [editingRows, setEditingRows] = useState<Set<string>>(new Set());
+  
+  // Notify parent when editing state changes
+  React.useEffect(() => {
+    onEditingChange?.(editingRows.size > 0);
+  }, [editingRows.size, onEditingChange]);
   const [editData, setEditData] = useState<Record<string, Partial<Document>>>({});
   const [showDeleteModal, setShowDeleteModal] = useState<{
     transactionId: string;

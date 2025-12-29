@@ -67,6 +67,9 @@ export default function TransactionReview({ jobId }: TransactionReviewProps) {
   const [error, setError] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
   
+  // Track if any child view is in editing mode to pause polling
+  const [isEditing, setIsEditing] = useState(false);
+  
   // Initialize view from stored preference (safe for SSR)
   const [currentView, setCurrentView] = useState<ViewType>("table");
   const [documentUrls, setDocumentUrls] = useState<Record<string, string>>({});
@@ -79,14 +82,16 @@ export default function TransactionReview({ jobId }: TransactionReviewProps) {
 
   useEffect(() => {
     loadTransactions();
-    // Poll for updates if job is still processing
+    // Poll for updates if job is still processing, but pause while editing
     const interval = setInterval(() => {
-      loadTransactions();
+      if (!isEditing) {
+        loadTransactions();
+      }
     }, 3000); // Poll every 3 seconds
 
     return () => clearInterval(interval);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [jobId]);
+  }, [jobId, isEditing]);
 
   useEffect(() => {
     // Load document URLs for all transactions with documents
@@ -368,6 +373,7 @@ export default function TransactionReview({ jobId }: TransactionReviewProps) {
       onDelete: handleDelete,
       onConfirm: handleConfirm,
       onViewDocument: handleViewDocument,
+      onEditingChange: setIsEditing,
     };
 
     switch (currentView) {

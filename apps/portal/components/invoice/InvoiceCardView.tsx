@@ -65,6 +65,7 @@ interface InvoiceCardViewProps {
   onDelete: (transactionId: string, documentId: string) => Promise<void>;
   onConfirm: (transactionId: string) => Promise<void>;
   onViewDocument: (documentId: string) => void;
+  onEditingChange?: (isEditing: boolean) => void;
 }
 
 export default function InvoiceCardView({
@@ -74,9 +75,15 @@ export default function InvoiceCardView({
   onDelete,
   onConfirm,
   onViewDocument,
+  onEditingChange,
 }: InvoiceCardViewProps) {
   const [expandedCards, setExpandedCards] = useState<Set<string>>(new Set());
   const [editingCards, setEditingCards] = useState<Set<string>>(new Set());
+  
+  // Notify parent when editing state changes
+  React.useEffect(() => {
+    onEditingChange?.(editingCards.size > 0);
+  }, [editingCards.size, onEditingChange]);
   const [editData, setEditData] = useState<Record<string, Partial<Document>>>({});
   const [showDeleteModal, setShowDeleteModal] = useState<{
     transactionId: string;

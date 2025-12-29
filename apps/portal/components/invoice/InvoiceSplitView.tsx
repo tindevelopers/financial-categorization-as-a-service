@@ -62,6 +62,7 @@ interface InvoiceSplitViewProps {
   onDelete: (transactionId: string, documentId: string) => Promise<void>;
   onConfirm: (transactionId: string) => Promise<void>;
   onViewDocument: (documentId: string) => void;
+  onEditingChange?: (isEditing: boolean) => void;
 }
 
 export default function InvoiceSplitView({
@@ -71,11 +72,17 @@ export default function InvoiceSplitView({
   onDelete,
   onConfirm,
   onViewDocument,
+  onEditingChange,
 }: InvoiceSplitViewProps) {
   const [selectedTransactionId, setSelectedTransactionId] = useState<string | null>(
     transactions.length > 0 && transactions[0].document_id ? transactions[0].id : null
   );
   const [editingTransactionId, setEditingTransactionId] = useState<string | null>(null);
+  
+  // Notify parent when editing state changes
+  React.useEffect(() => {
+    onEditingChange?.(editingTransactionId !== null);
+  }, [editingTransactionId, onEditingChange]);
   const [editData, setEditData] = useState<Record<string, Partial<Document>>>({});
   const [showDeleteModal, setShowDeleteModal] = useState<{
     transactionId: string;
