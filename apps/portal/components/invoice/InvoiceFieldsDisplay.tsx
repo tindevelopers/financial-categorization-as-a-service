@@ -65,6 +65,27 @@ export default function InvoiceFieldsDisplay({
     }).catch(() => {});
   }, [editMode, compact, invoiceData?.invoice_number]);
   // #endregion
+  const toDateInputValue = (v: unknown): string => {
+    if (v === null || v === undefined) return "";
+    if (typeof v === "string") {
+      if (/^\d{4}-\d{2}-\d{2}$/.test(v)) return v;
+      if (/^\d{4}-\d{2}-\d{2}T/.test(v)) return v.slice(0, 10);
+      const d = new Date(v);
+      if (!isNaN(d.getTime())) return d.toISOString().slice(0, 10);
+      return "";
+    }
+    if (v instanceof Date && !isNaN(v.getTime())) return v.toISOString().slice(0, 10);
+    return "";
+  };
+
+  const toDisplayDate = (v: unknown): string => {
+    const input = toDateInputValue(v);
+    if (!input) return "";
+    const d = new Date(`${input}T00:00:00`);
+    if (isNaN(d.getTime())) return "";
+    return d.toLocaleDateString();
+  };
+
   const isValidDateInputValue = (v: unknown) =>
     typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v);
 
@@ -112,8 +133,10 @@ export default function InvoiceFieldsDisplay({
     placeholder?: string;
   }) => {
     const displayValue =
-      type === "date" && value
-        ? new Date(value).toLocaleDateString()
+      type === "date"
+        ? editMode
+          ? toDateInputValue(value)
+          : toDisplayDate(value)
         : value !== null && value !== undefined
         ? String(value)
         : "";
@@ -167,8 +190,8 @@ export default function InvoiceFieldsDisplay({
                       field,
                       rawValueType: typeof value,
                       rawValue: typeof value === "string" ? value.slice(0, 32) : value,
-                      displayValue,
-                      displayValueValidForDateInput: isValidDateInputValue(displayValue),
+                      displayValue: toDateInputValue(value),
+                      displayValueValidForDateInput: isValidDateInputValue(toDateInputValue(value)),
                     },
                     timestamp: Date.now(),
                     sessionId: "debug-session",
