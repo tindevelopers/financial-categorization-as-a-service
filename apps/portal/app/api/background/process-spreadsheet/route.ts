@@ -11,8 +11,7 @@ import { createJobErrorResponse, mapErrorToCode } from "@/lib/errors/job-errors"
  * POST /api/background/process-spreadsheet
  * Process a spreadsheet file asynchronously using Vercel Background Functions
  */
-export async function POST(request: NextRequest) {
-  try {
+export async function POST(request: NextRequest) {  try {
     const supabase = await createClient();
     const { data: { user }, error: authError } = await supabase.auth.getUser();
 
@@ -47,11 +46,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Start background processing
-    waitUntil(
+    // Start background processing    waitUntil(
       processSpreadsheet(jobId, user.id, supabase)
     );
-
     return NextResponse.json({
       success: true,
       jobId,
@@ -66,32 +63,15 @@ export async function POST(request: NextRequest) {
   }
 }
 
-async function processSpreadsheet(jobId: string, userId: string, supabase: any) {
-  try {
-    // #region agent log
-    console.log('[DEBUG] processSpreadsheet started', { jobId, userId });
-    // #endregion
-    
+async function processSpreadsheet(jobId: string, userId: string, supabase: any) {  try {    
     // Use admin client for updates to bypass RLS if needed
     let adminClient;
     try {
-      adminClient = createAdminClient();
-      // #region agent log
-      console.log('[DEBUG] Admin client created successfully');
-      // #endregion
-    } catch (adminError) {
+      adminClient = createAdminClient();    } catch (adminError) {
       // Fallback to regular client if admin client fails
-      adminClient = supabase;
-      // #region agent log
-      console.log('[DEBUG] Admin client failed, using regular client', { error: String(adminError) });
-      // #endregion
-    }
+      adminClient = supabase;    }
 
-    // Update job status to processing
-    // #region agent log
-    console.log('[DEBUG] Updating job status to processing', { jobId });
-    // #endregion
-    const statusUpdateResult = await adminClient
+    // Update job status to processing    const statusUpdateResult = await adminClient
       .from("categorization_jobs")
       .update({ 
         status: "processing",
@@ -99,28 +79,14 @@ async function processSpreadsheet(jobId: string, userId: string, supabase: any) 
         started_at: new Date().toISOString(),
       })
       .eq("id", jobId);
-    
-    // #region agent log
-    console.log('[DEBUG] Job status updated to processing', { jobId, hasError: !!statusUpdateResult.error, error: statusUpdateResult.error });
-    // #endregion
-
     // Get job details to find file path
     const { data: job, error: jobError } = await supabase
       .from("categorization_jobs")
       .select("file_url")
       .eq("id", jobId)
       .single();
-
-    // #region agent log
-    console.log('[DEBUG] Job details fetched', { jobId, hasJob: !!job, hasError: !!jobError, fileUrl: job?.file_url });
-    // #endregion
-
     if (jobError || !job) {
-      const errorResponse = createJobErrorResponse("UNKNOWN_ERROR", "Job not found");
-      // #region agent log
-      console.log('[DEBUG] Job not found, marking as failed', { jobId, jobError: jobError?.message });
-      // #endregion
-      await adminClient
+      const errorResponse = createJobErrorResponse("UNKNOWN_ERROR", "Job not found");      await adminClient
         .from("categorization_jobs")
         .update({ 
           status: "failed",
@@ -160,37 +126,13 @@ async function processSpreadsheet(jobId: string, userId: string, supabase: any) 
     } else {
       // Fallback: construct path from filename (less reliable)
       const fileName = job.original_filename || '';
-      filePath = `${userId}/${Date.now()}-${fileName}`;
-      // #region agent log
-      console.log('[DEBUG] No file_url found, constructing path from filename', { filePath, originalFilename: fileName });
-      // #endregion
-    }
-    
-    // #region agent log
-    console.log('[DEBUG] Downloading file from storage', { 
-      filePath, 
-      fileUrl: job.file_url, 
-      originalFilename: job.original_filename,
-      extractedPath: filePath,
-      userId 
-    });
-    // #endregion
-    
+      filePath = `${userId}/${Date.now()}-${fileName}`;    }    
     const { data: fileData, error: downloadError } = await supabase.storage
       .from("categorization-uploads")
       .download(filePath);
-
-    // #region agent log
-    console.log('[DEBUG] File download result', { filePath, hasFileData: !!fileData, hasError: !!downloadError, error: downloadError?.message, fileSize: fileData?.size });
-    // #endregion
-
     if (downloadError || !fileData) {
       const errorCode = mapErrorToCode(downloadError || new Error("Failed to download file"));
-      const errorResponse = createJobErrorResponse(errorCode, downloadError?.message || "Failed to download file");
-      // #region agent log
-      console.log('[DEBUG] File download failed, marking job as failed', { filePath, error: downloadError?.message });
-      // #endregion
-      await adminClient
+      const errorResponse = createJobErrorResponse(errorCode, downloadError?.message || "Failed to download file");      await adminClient
         .from("categorization_jobs")
         .update({ 
           status: "failed",
@@ -202,25 +144,12 @@ async function processSpreadsheet(jobId: string, userId: string, supabase: any) 
       return;
     }
 
-    // Process spreadsheet
-    // #region agent log
-    console.log('[DEBUG] Starting spreadsheet processing', { jobId, fileSize: fileData.size });
-    // #endregion
-    const arrayBuffer = await fileData.arrayBuffer();
+    // Process spreadsheet    const arrayBuffer = await fileData.arrayBuffer();
     // Pass admin client to bypass RLS for transaction inserts
     const result = await processSpreadsheetFile(arrayBuffer, jobId, userId, supabase, adminClient);
-
-    // #region agent log
-    console.log('[DEBUG] Spreadsheet processing completed', { jobId, success: result.success, transactionCount: result.transactionCount, insertedCount: result.insertedCount, skippedCount: result.skippedCount, error: result.error });
-    // #endregion
-
     if (!result.success) {
       const errorCode = mapErrorToCode(new Error(result.error || "Processing failed"));
-      const errorResponse = createJobErrorResponse(errorCode, result.error || "Processing failed");
-      // #region agent log
-      console.log('[DEBUG] Processing failed, marking job as failed', { jobId, error: result.error });
-      // #endregion
-      await adminClient
+      const errorResponse = createJobErrorResponse(errorCode, result.error || "Processing failed");      await adminClient
         .from("categorization_jobs")
         .update({ 
           status: "failed",
@@ -235,12 +164,7 @@ async function processSpreadsheet(jobId: string, userId: string, supabase: any) 
     // Update job status to reviewing
     const finalStatusMessage = result.skippedCount && result.skippedCount > 0
       ? `Processing complete. ${result.insertedCount || 0} new transactions added, ${result.skippedCount} duplicates skipped.`
-      : "Processing complete. Ready for review.";
-    
-    // #region agent log
-    console.log('[DEBUG] Updating job status to reviewing', { jobId, insertedCount: result.insertedCount, skippedCount: result.skippedCount, transactionCount: result.transactionCount });
-    // #endregion
-    
+      : "Processing complete. Ready for review.";    
     const finalStatusUpdate = await adminClient
       .from("categorization_jobs")
       .update({ 
@@ -252,11 +176,6 @@ async function processSpreadsheet(jobId: string, userId: string, supabase: any) 
         completed_at: new Date().toISOString(),
       })
       .eq("id", jobId);
-    
-    // #region agent log
-    console.log('[DEBUG] Job status updated to reviewing', { jobId, hasError: !!finalStatusUpdate.error, error: finalStatusUpdate.error });
-    // #endregion
-
     // Check for auto-sync enabled sheets and sync if configured
     try {
       const { data: autoSyncSheets } = await supabase
@@ -316,11 +235,7 @@ async function processSpreadsheet(jobId: string, userId: string, supabase: any) 
       console.error("Auto-sync check failed:", autoSyncError);
       // Don't fail the job if auto-sync fails
     }
-  } catch (error: any) {
-    // #region agent log
-    console.log('[DEBUG] processSpreadsheet error caught', { jobId, errorMessage: error.message, errorName: error.name, errorStack: error.stack?.substring(0, 500) });
-    // #endregion
-    console.error("Process spreadsheet error:", error);
+  } catch (error: any) {    console.error("Process spreadsheet error:", error);
     
     // Try to update job status to failed
     try {
@@ -332,12 +247,7 @@ async function processSpreadsheet(jobId: string, userId: string, supabase: any) 
       }
       
       const errorCode = mapErrorToCode(error);
-      const errorResponse = createJobErrorResponse(errorCode, error.message || "Internal processing error");
-      
-      // #region agent log
-      console.log('[DEBUG] Updating job status to failed due to error', { jobId, errorCode: errorResponse.error_code });
-      // #endregion
-      
+      const errorResponse = createJobErrorResponse(errorCode, error.message || "Internal processing error");      
       const failedStatusUpdate = await adminClient
         .from("categorization_jobs")
         .update({ 
@@ -346,16 +256,7 @@ async function processSpreadsheet(jobId: string, userId: string, supabase: any) 
           error_message: errorResponse.error_message,
           status_message: errorResponse.status_message,
         })
-        .eq("id", jobId);
-      
-      // #region agent log
-      console.log('[DEBUG] Failed status update result', { jobId, hasError: !!failedStatusUpdate.error, error: failedStatusUpdate.error });
-      // #endregion
-    } catch (updateError) {
-      // #region agent log
-      console.log('[DEBUG] Failed to update job status to failed', { jobId, updateError: String(updateError) });
-      // #endregion
-      console.error("Failed to update job status:", updateError);
+        .eq("id", jobId);    } catch (updateError) {      console.error("Failed to update job status:", updateError);
     }
   }
 }

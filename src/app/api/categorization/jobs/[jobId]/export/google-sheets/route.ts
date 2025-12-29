@@ -18,23 +18,6 @@ export async function POST(
     }
 
     const { jobId } = await params;
-
-    // #region agent log
-    fetch("http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        sessionId: "debug-session",
-        runId: "run1",
-        hypothesisId: "H1",
-        location: "src/app/api/categorization/jobs/[jobId]/export/google-sheets/route.ts:entry",
-        message: "Export request received",
-        data: { jobId, userId: user?.id ?? "unknown" },
-        timestamp: Date.now(),
-      }),
-    }).catch(() => {});
-    // #endregion
-
     // Verify job belongs to user
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { data: job, error: jobError } = await (supabase as any)
@@ -84,25 +67,6 @@ export async function POST(
     );
 
     if (!serviceAccountCreds) {
-      // #region agent log
-      fetch("http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          sessionId: "debug-session",
-          runId: "run1",
-          hypothesisId: "H1",
-          location: "src/app/api/categorization/jobs/[jobId]/export/google-sheets/route.ts:csvFallback",
-          message: "Service account missing, returning CSV fallback",
-          data: {
-            hasServiceAccount: Boolean(serviceAccountCreds),
-            transactionCount: transactions.length,
-          },
-          timestamp: Date.now(),
-        }),
-      }).catch(() => {});
-      // #endregion
-
       // Return a CSV download instead
       const csvHeader = "Date,Description,Amount,Category,Subcategory,Confidence,Confirmed,Notes\n";
       const csvRows = transactions.map((tx: {
@@ -141,25 +105,6 @@ export async function POST(
 
     // Google Sheets integration would go here
     // For now, return an error indicating it's not fully configured
-    // #region agent log
-    fetch("http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        sessionId: "debug-session",
-        runId: "run1",
-        hypothesisId: "H1",
-        location: "src/app/api/categorization/jobs/[jobId]/export/google-sheets/route.ts:serviceAccountPresent",
-        message: "Service account present, Google Sheets flow not implemented",
-        data: {
-          hasEmail: Boolean(serviceAccountCreds?.email),
-          hasKey: Boolean(serviceAccountCreds?.privateKey),
-        },
-        timestamp: Date.now(),
-      }),
-    }).catch(() => {});
-    // #endregion
-
     return NextResponse.json(
       { 
         error: "Google Sheets export requires additional configuration. Use CSV export instead.",
@@ -167,23 +112,7 @@ export async function POST(
       },
       { status: 501 }
     );
-  } catch (error: unknown) {
-    // #region agent log
-    fetch("http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        sessionId: "debug-session",
-        runId: "run1",
-        hypothesisId: "H2",
-        location: "src/app/api/categorization/jobs/[jobId]/export/google-sheets/route.ts:catch",
-        message: "Export route threw",
-        data: { error: error instanceof Error ? error.message : "unknown" },
-        timestamp: Date.now(),
-      }),
-    }).catch(() => {});
-    // #endregion
-    console.error("Export error:", error);
+  } catch (error: unknown) {    console.error("Export error:", error);
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Failed to export" },
       { status: 500 }

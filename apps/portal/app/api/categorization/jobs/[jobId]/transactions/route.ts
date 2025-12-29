@@ -24,11 +24,6 @@ export async function DELETE(
   try {
     const supabase = await createClient();
     const { data: { user }, error: authError } = await supabase.auth.getUser();
-
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'apps/portal/app/api/categorization/jobs/[jobId]/transactions/route.ts:delete:entry',message:'DELETE job transactions called',data:{hasUser:!!user,hasAuthError:!!authError},timestamp:Date.now(),sessionId:'debug-session',runId:'delete-1',hypothesisId:'D2'})}).catch(()=>{});
-    // #endregion
-
     if (authError || !user) {
       return NextResponse.json(
         { error: "Unauthorized" },
@@ -70,20 +65,11 @@ export async function DELETE(
     const { error: deleteError } = await deleteQuery;
 
     if (deleteError) {
-      console.error("Error deleting transactions:", deleteError);
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'apps/portal/app/api/categorization/jobs/[jobId]/transactions/route.ts:delete:error',message:'DELETE job transactions failed',data:{jobId,documentId,errorMessage:deleteError.message,code:(deleteError as any)?.code},timestamp:Date.now(),sessionId:'debug-session',runId:'delete-1',hypothesisId:'D2'})}).catch(()=>{});
-      // #endregion
-      return NextResponse.json(
+      console.error("Error deleting transactions:", deleteError);      return NextResponse.json(
         { error: "Failed to delete transactions", details: deleteError.message },
         { status: 500 }
       );
     }
-
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'apps/portal/app/api/categorization/jobs/[jobId]/transactions/route.ts:delete:ok',message:'DELETE job transactions ok',data:{jobId,documentId},timestamp:Date.now(),sessionId:'debug-session',runId:'delete-1',hypothesisId:'D2'})}).catch(()=>{});
-    // #endregion
-
     return NextResponse.json({
       success: true,
       message: documentId ? "Invoice transactions deleted" : "All transactions deleted",
@@ -147,23 +133,12 @@ export async function GET(
     // NOTE: Using admin client to bypass RLS issue - the SELECT RLS policy seems to have
     // issues with the EXISTS subquery even though the job ownership is verified.
     // Security is still enforced above via job ownership verification.
-    const adminClientForQuery = createAdminClient();
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'transactions/route.ts:71',message:'Querying transactions for job',data:{jobId,userId:user.id.substring(0,8)+'...'},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H5'})}).catch(()=>{});
-    // #endregion
-    // Get transactions
+    const adminClientForQuery = createAdminClient();    // Get transactions
     const { data: transactions, error: transactionsError } = await adminClientForQuery
       .from("categorized_transactions")
       .select("*")
       .eq("job_id", jobId)
       .order("date", { ascending: false });
-
-    // #region agent log
-    const txDocIdCount = (transactions || []).filter((t: any) => Boolean(t.document_id)).length;
-    const txSample = (transactions || [])[0] || null;
-    fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'apps/portal/app/api/categorization/jobs/[jobId]/transactions/route.ts:txShape',message:'Raw transactions shape (before enrichment)',data:{jobId,transactionsCount:transactions?.length||0,txDocIdCount,txKeys:txSample?Object.keys(txSample).slice(0,30):[],txSampleDocumentId:txSample?.document_id,txSampleId:txSample?.id},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H1'})}).catch(()=>{});
-    // #endregion
-
     // If we have transactions, enrich them with document and supplier info
     if (transactions && transactions.length > 0) {
       const documentIds = transactions
@@ -227,24 +202,13 @@ export async function GET(
           const errMsg = String(documentsError?.message || "");
           const match = errMsg.match(/financial_documents\.([a-zA-Z0-9_]+)/);
           const missingCol = match?.[1];
-
-          // #region agent log
-          fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'apps/portal/app/api/categorization/jobs/[jobId]/transactions/route.ts:docsFetchRetry',message:'Documents select failed; considering retry without missing column',data:{jobId,attempt,code:(documentsError as any)?.code,errorMessage:documentsError?.message,missingCol,columnsCount:docSelectColumns.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H1'})}).catch(()=>{});
-          // #endregion
-
           if ((documentsError as any)?.code === "42703" && missingCol && docSelectColumns.includes(missingCol)) {
             docSelectColumns = docSelectColumns.filter((c) => c !== missingCol);
             continue;
           }
 
           break;
-        }
-
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'apps/portal/app/api/categorization/jobs/[jobId]/transactions/route.ts:docsFetch',message:'Fetched documents for transaction document_ids',data:{jobId,documentIdsCount:documentIds.length,documentsFetched:documents?.length||0,docIdsSample:documentIds.slice(0,3)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H2'})}).catch(()=>{});
-        fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'apps/portal/app/api/categorization/jobs/[jobId]/transactions/route.ts:docsFetchError',message:'Documents fetch error (if any)',data:{jobId,hasError:!!documentsError,errorMessage:documentsError?.message,code:(documentsError as any)?.code,details:(documentsError as any)?.details,hint:(documentsError as any)?.hint},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H1'})}).catch(()=>{});
-        // #endregion
-        
+        }        
         documents?.forEach((doc: any) => {
           // Back-compat: older pipeline writes document_number, UI expects invoice_number
           if (!doc.invoice_number && doc.document_number) {
@@ -270,11 +234,7 @@ export async function GET(
             const looksSwapped = ratio > 0.5 && swappedRatio < 0.5 && tax > subtotal;
             if (sumMatches && looksSwapped) {
               doc.subtotal_amount = tax;
-              doc.tax_amount = subtotal;
-              // #region agent log
-              fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'apps/portal/app/api/categorization/jobs/[jobId]/transactions/route.ts:vatSanity:swap',message:'Swapped subtotal_amount and tax_amount for response',data:{jobId,documentId:doc.id,total,prevSubtotal:subtotal,prevTax:tax,ratio},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'VAT1'})}).catch(()=>{});
-              // #endregion
-            }
+              doc.tax_amount = subtotal;            }
           }
           documentsMap.set(doc.id, doc);
         });
@@ -301,18 +261,7 @@ export async function GET(
         if (tx.supplier_id) {
           tx.supplier = suppliersMap.get(tx.supplier_id) || null;
         }
-      });
-
-      // #region agent log
-      const sampleTxWithDoc = transactions.find((t: any) => t.document) || null;
-      const sampleDoc = sampleTxWithDoc?.document || null;
-      fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'apps/portal/app/api/categorization/jobs/[jobId]/transactions/route.ts:sampleDoc',message:'Sample enriched document fields',data:{jobId,hasSampleTx:!!sampleTxWithDoc,docId:sampleDoc?.id,vendor_name:sampleDoc?.vendor_name,total_amount:sampleDoc?.total_amount,tax_amount:sampleDoc?.tax_amount,invoice_number:sampleDoc?.invoice_number,document_number:sampleDoc?.document_number,document_date:sampleDoc?.document_date,currency:sampleDoc?.currency,keys:sampleDoc?Object.keys(sampleDoc).slice(0,25):[]},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H1'})}).catch(()=>{});
-      // #endregion
-    }
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'transactions/route.ts:75',message:'Transactions query result',data:{jobId,transactionsCount:transactions?.length||0,hasError:!!transactionsError,errorMessage:transactionsError?.message},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H5'})}).catch(()=>{});
-    // #endregion
-
+      });    }
 
     if (transactionsError) {
       console.error("Error fetching transactions:", transactionsError);

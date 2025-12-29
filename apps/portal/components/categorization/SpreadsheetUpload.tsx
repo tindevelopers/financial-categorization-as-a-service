@@ -159,6 +159,18 @@ export default function SpreadsheetUpload() {
   const selectedBankAccount = bankAccounts.find(acc => acc.id === selectedBankAccountId);
 
   const onDrop = useCallback(async (acceptedFiles: File[]) => {
+    // Early return if upload is disabled
+    const currentBankAccountId = selectedBankAccountIdRef.current;
+    const currentBankAccounts = bankAccountsRef.current;
+    const currentProfileReady = profileReadyRef.current;
+    const currentProfileLoading = profileLoadingRef.current;    
+    // Only block if profile is done loading AND not ready
+    if (!currentBankAccountId || 
+        currentBankAccountId.trim() === '' ||
+        currentBankAccounts.length === 0 ||
+        (!currentProfileLoading && !currentProfileReady)) {      return; // Silently ignore if conditions aren't met
+    }
+    
     const file = acceptedFiles[0];
     
     // Validate file type
@@ -202,9 +214,7 @@ export default function SpreadsheetUpload() {
     const currentBankAccounts = bankAccountsRef.current;
     const currentProfileReady = profileReadyRef.current;
     const currentProfileLoading = profileLoadingRef.current;
-    const currentSelectedBankAccount = currentBankAccounts.find(acc => acc.id === currentBankAccountId);
-    
-    
+    const currentSelectedBankAccount = currentBankAccounts.find(acc => acc.id === currentBankAccountId);    
     // Gating checks
     if (!currentProfileReady && !currentProfileLoading) {
       setUploadState(prev => ({ ...prev, error: "Please complete your profile (individual/company name) before uploading." }));
@@ -474,6 +484,15 @@ export default function SpreadsheetUpload() {
     });
   };
 
+  // Determine if upload should be disabled
+  // Only disable if profile is done loading AND not ready
+  const isUploadDisabled = uploadState.uploading || 
+    !selectedBankAccountId || 
+    selectedBankAccountId.trim() === '' ||
+    loadingBankAccounts ||
+    bankAccounts.length === 0 ||
+    (!profileLoading && !profileReady);
+
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
     accept: {
@@ -482,11 +501,62 @@ export default function SpreadsheetUpload() {
       'text/csv': ['.csv'],
     },
     maxFiles: 1,
-    disabled: uploadState.uploading,
+    disabled: isUploadDisabled,
   });
 
   return (
     <div className="space-y-6">
+      {/* Bank Account Selection - Now appears first */}
+      <div className="mb-6">
+        {!profileLoading && !profileReady && (
+          <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-4 mb-3">
+            <p className="text-sm text-yellow-800 dark:text-yellow-200">
+              Please complete your profile (individual/company name) before uploading.
+              <Link href="/dashboard/settings" className="underline ml-1">Go to settings</Link>
+            </p>
+          </div>
+        )}
+        <label htmlFor="bank-account" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+          Select Bank Account <span className="text-red-500">*</span>
+        </label>
+        {loadingBankAccounts ? (
+          <div className="animate-pulse bg-gray-200 dark:bg-gray-700 h-10 rounded-lg"></div>
+        ) : bankAccounts.length === 0 ? (
+          <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-4">
+            <p className="text-sm text-yellow-800 dark:text-yellow-200">
+              No bank accounts found. Please <Link href="/dashboard/settings/bank-accounts" className="underline">create a bank account</Link> first.
+            </p>
+          </div>
+        ) : (
+          <>
+            <select
+              id="bank-account"
+              name="bank-account"
+              value={typeof selectedBankAccountId === 'string' ? selectedBankAccountId : ''}
+              onChange={(e) => {
+                // Use safe setter to ensure we always set a string value
+                setSelectedBankAccountIdSafe(e.target.value);
+              }}
+              className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              required
+            >
+              <option value="">-- Select Bank Account --</option>
+              {bankAccounts.map((account) => (
+                <option key={account.id} value={account.id}>
+                  {account.account_name} ({account.bank_name}) - {account.account_type}
+                </option>
+              ))}
+            </select>
+            {selectedBankAccount && selectedBankAccount.default_spreadsheet_id && (
+              <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">
+                Will sync to spreadsheet: {selectedBankAccount.default_spreadsheet_id}
+                {selectedBankAccount.spreadsheet_tab_name && ` (Tab: ${selectedBankAccount.spreadsheet_tab_name})`}
+              </p>
+            )}
+          </>
+        )}
+      </div>
+
       {/* Upload Area */}
       <div
         {...getRootProps()}
@@ -498,7 +568,7 @@ export default function SpreadsheetUpload() {
               ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
               : 'border-gray-300 dark:border-gray-600 hover:border-gray-400 dark:hover:border-gray-500'
           }
-          ${uploadState.uploading ? 'opacity-50 cursor-not-allowed' : ''}
+          ${isUploadDisabled ? 'opacity-50 cursor-not-allowed' : ''}
         `}
       >
         <input {...getInputProps()} />
@@ -532,13 +602,23 @@ export default function SpreadsheetUpload() {
             </>
           ) : (
             <>
-              <ArrowUpTrayIcon className="h-12 w-12 text-gray-400 dark:text-gray-500 mb-4" />
-              <p className="text-lg font-medium text-gray-900 dark:text-white mb-2">
-                {isDragActive ? 'Drop your file here' : 'Drag & drop your spreadsheet'}
+              <ArrowUpTrayIcon className={`h-12 w-12 mb-4 ${isUploadDisabled ? 'text-gray-300 dark:text-gray-600' : 'text-gray-400 dark:text-gray-500'}`} />
+              <p className={`text-lg font-medium mb-2 ${isUploadDisabled ? 'text-gray-500 dark:text-gray-500' : 'text-gray-900 dark:text-white'}`}>
+                {isUploadDisabled && !selectedBankAccountId ? (
+                  'Select a bank account above to upload'
+                ) : isUploadDisabled && !profileReady ? (
+                  'Complete your profile to upload'
+                ) : isDragActive ? (
+                  'Drop your file here'
+                ) : (
+                  'Drag & drop your spreadsheet'
+                )}
               </p>
-              <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
-                or click to browse
-              </p>
+              {!isUploadDisabled && (
+                <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
+                  or click to browse
+                </p>
+              )}
               <div className="flex items-center gap-2 text-xs text-gray-400 dark:text-gray-500">
                 <DocumentIcon className="h-4 w-4" />
                 <span>Supports .xlsx, .xls, .csv (max 10MB)</span>
@@ -655,60 +735,6 @@ export default function SpreadsheetUpload() {
         </div>
       )}
 
-      {/* Bank Account Selection */}
-      {!uploadState.uploading && (
-        <div className="mb-6">
-          {!profileLoading && !profileReady && (
-            <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-4 mb-3">
-              <p className="text-sm text-yellow-800 dark:text-yellow-200">
-                Please complete your profile (individual/company name) before uploading.
-                <Link href="/dashboard/settings" className="underline ml-1">Go to settings</Link>
-              </p>
-            </div>
-          )}
-          <label htmlFor="bank-account" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-            Select Bank Account <span className="text-red-500">*</span>
-          </label>
-          {loadingBankAccounts ? (
-            <div className="animate-pulse bg-gray-200 dark:bg-gray-700 h-10 rounded-lg"></div>
-          ) : bankAccounts.length === 0 ? (
-            <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-4">
-              <p className="text-sm text-yellow-800 dark:text-yellow-200">
-                No bank accounts found. Please <Link href="/dashboard/settings/bank-accounts" className="underline">create a bank account</Link> first.
-              </p>
-            </div>
-          ) : (
-            <>
-              <select
-                id="bank-account"
-                name="bank-account"
-                value={typeof selectedBankAccountId === 'string' ? selectedBankAccountId : ''}
-                onChange={(e) => {
-                  const value = e.target.value;
-                  console.log('Bank account selected:', value, 'type:', typeof value, 'event target:', e.target);
-                  // Use safe setter to ensure we always set a string value
-                  setSelectedBankAccountIdSafe(value);
-                }}
-                className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                required
-              >
-                <option value="">-- Select Bank Account --</option>
-                {bankAccounts.map((account) => (
-                  <option key={account.id} value={account.id}>
-                    {account.account_name} ({account.bank_name}) - {account.account_type}
-                  </option>
-                ))}
-              </select>
-              {selectedBankAccount && selectedBankAccount.default_spreadsheet_id && (
-                <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">
-                  Will sync to spreadsheet: {selectedBankAccount.default_spreadsheet_id}
-                  {selectedBankAccount.spreadsheet_tab_name && ` (Tab: ${selectedBankAccount.spreadsheet_tab_name})`}
-                </p>
-              )}
-            </>
-          )}
-        </div>
-      )}
 
       {/* Instructions */}
       {!uploadState.file && !uploadState.uploading && (

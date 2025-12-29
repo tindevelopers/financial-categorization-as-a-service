@@ -68,31 +68,27 @@ function GoogleSheetsIntegrationContent() {
       setLoading(true)
       const response = await fetch('/api/integrations/google-sheets/list')
       
-      if (!response.ok) {
-        if (response.status === 401) {
-          // Unauthorized - user not logged in, but still show the page
-          setConnected(false)
-          setError(null)
-          setProviderEmail(null)
-          setLoading(false)
-          return
-        }
-        // Try to parse error response
-        try {
-          const errorData = await response.json()
-          if (errorData.error_code === 'NOT_CONNECTED') {
-            setConnected(false)
-            setError(null)
-            setProviderEmail(null)
-            setLoading(false)
-            return
-          }
-        } catch {
-          // If JSON parsing fails, continue with default error handling
-        }
+      if (response.status === 401) {
+        // Unauthorized - user not logged in, but still show the page
+        setConnected(false)
+        setError(null)
+        setProviderEmail(null)
+        setLoading(false)
+        return
       }
       
-      const data = await response.json()
+      // Parse JSON once and reuse the data
+      let data: any = null
+      try {
+        data = await response.json()
+      } catch {
+        // If JSON parsing fails, set a generic error
+        setConnected(false)
+        setError('Failed to parse server response')
+        setProviderEmail(null)
+        setLoading(false)
+        return
+      }
 
       if (response.ok && data.success) {
         setConnected(true)
@@ -291,6 +287,36 @@ function GoogleSheetsIntegrationContent() {
                   <LinkIcon className="h-4 w-4" />
                   Open Google Cloud Console to fix OAuth configuration
                 </a>
+              </div>
+            )}
+            {(error.includes('decrypt') || error.includes('1C800064')) && (
+              <div className="mt-3">
+                <p className="text-xs text-red-600 dark:text-red-400 mb-2">
+                  Your stored connection has become corrupted. Click below to clear it and reconnect.
+                </p>
+                <Button
+                  onClick={async () => {
+                    try {
+                      const response = await fetch('/api/integrations/google-sheets/disconnect', {
+                        method: 'POST',
+                      })
+                      if (response.ok) {
+                        setError(null)
+                        setConnected(false)
+                        checkConnection()
+                      } else {
+                        const data = await response.json()
+                        setError(data.error || 'Failed to clear connection')
+                      }
+                    } catch (err) {
+                      setError('Failed to clear connection')
+                    }
+                  }}
+                  outline
+                  className="text-red-600 dark:text-red-400"
+                >
+                  Clear Corrupted Connection
+                </Button>
               </div>
             )}
           </div>

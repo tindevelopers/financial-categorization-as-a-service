@@ -12,10 +12,6 @@ import {
 } from "@heroicons/react/24/outline"
 
 // Component version marker for debugging - UPDATE THIS TO BUST CACHE
-const COMPONENT_VERSION = "v2.1-with-bulk-actions-2025-12-25-cache-bust"
-const BUILD_TIMESTAMP = Date.now()
-const IS_PRODUCTION = typeof window !== 'undefined' && window.location.hostname !== 'localhost' && !window.location.hostname.includes('127.0.0.1')
-const BUILD_ENV = process.env.NODE_ENV || 'unknown'
 
 interface Job {
   id: string
@@ -46,9 +42,6 @@ export default function ReviewJobsPage() {
 
   useEffect(() => {
     const logData = {
-      componentVersion: COMPONENT_VERSION,
-      isProduction: IS_PRODUCTION,
-      buildEnv: BUILD_ENV,
       hostname: typeof window !== 'undefined' ? window.location.hostname : 'server',
       timestamp: Date.now(),
       selectedIdsSize: selectedIds.size,
@@ -59,9 +52,7 @@ export default function ReviewJobsPage() {
       userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : 'unknown'
     };
     // Log to console for production debugging (visible in browser console)
-    console.log('[ReviewPage] Component mounted:', logData);
     // Also send to debug server if available (localhost only)
-    if (!IS_PRODUCTION) {
     }
   }, []);
 
@@ -112,11 +103,7 @@ export default function ReviewJobsPage() {
       jobId,
       currentSelected: selectedIds.has(jobId),
       selectedCount: selectedIds.size,
-      isProduction: IS_PRODUCTION,
-      componentVersion: COMPONENT_VERSION
     };
-    console.log('[ReviewPage] Checkbox clicked:', logData);
-    if (!IS_PRODUCTION) {
     }
     setSelectedIds(prev => {
       const next = new Set(prev)
@@ -128,11 +115,7 @@ export default function ReviewJobsPage() {
       const updateLogData = {
         newSelectedCount: next.size,
         willShowButtons: next.size > 0,
-        isProduction: IS_PRODUCTION,
-        componentVersion: COMPONENT_VERSION
       };
-      console.log('[ReviewPage] Selection updated:', updateLogData);
-      if (!IS_PRODUCTION) {
       }
       return next
     })
@@ -272,11 +255,6 @@ export default function ReviewJobsPage() {
 
   return (
     <div className="p-6 space-y-6">
-      {/* #region agent log - Version indicator for deployment verification */}
-      <div className="mb-2 px-3 py-1 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded text-xs text-blue-700 dark:text-blue-300" style={{fontFamily:'monospace'}}>
-        Component Version: {COMPONENT_VERSION} | Build: {BUILD_TIMESTAMP} | Env: {BUILD_ENV} | Host: {typeof window !== 'undefined' ? window.location.hostname : 'server'} | Production: {IS_PRODUCTION ? 'Yes' : 'No'}
-      </div>
-      {/* #endregion */}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
@@ -287,21 +265,6 @@ export default function ReviewJobsPage() {
           </p>
         </div>
         <div className="flex gap-3">
-          {/* #region agent log */}
-          {(() => {
-            const logData = {
-              selectedIdsSize: selectedIds.size,
-              shouldShowButtons: selectedIds.size > 0,
-              hasCheckboxes: true,
-              isProduction: IS_PRODUCTION,
-              componentVersion: COMPONENT_VERSION
-            };
-            console.log('[ReviewPage] Rendering bulk actions:', logData);
-            if (!IS_PRODUCTION) {
-            }
-            return null;
-          })()}
-          {/* #endregion */}
           {selectedIds.size > 0 && (
             <>
               <button
@@ -371,21 +334,6 @@ export default function ReviewJobsPage() {
             <thead className="bg-gray-50 dark:bg-zinc-800">
               <tr>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider w-12">
-                  {/* #region agent log */}
-                  {(() => {
-                    const logData = {
-                      jobsCount: jobs.length,
-                      selectedCount: selectedIds.size,
-                      isChecked: jobs.length > 0 && selectedIds.size === jobs.length,
-                      isProduction: IS_PRODUCTION,
-                      componentVersion: COMPONENT_VERSION
-                    };
-                    console.log('[ReviewPage] Rendering select all checkbox:', logData);
-                    if (!IS_PRODUCTION) {
-                    }
-                    return null;
-                  })()}
-                  {/* #endregion */}
                   <input
                     type="checkbox"
                     checked={jobs.length > 0 && selectedIds.size === jobs.length}
@@ -469,23 +417,6 @@ export default function ReviewJobsPage() {
                     }`}
                   >
                   <td className="px-6 py-4 whitespace-nowrap">
-                    {/* #region agent log */}
-                    {(() => {
-                      if (groupIndex === 0 || (!isGrouped && allJobs.findIndex(({job: j}) => j.id === job.id) === 0)) {
-                        const logData = {
-                          jobId: job.id,
-                          isSelected: selectedIds.has(job.id),
-                          totalSelected: selectedIds.size,
-                          isProduction: IS_PRODUCTION,
-                          componentVersion: COMPONENT_VERSION
-                        };
-                        console.log('[ReviewPage] Rendering row checkbox:', logData);
-                        if (!IS_PRODUCTION) {
-                        }
-                      }
-                      return null;
-                    })()}
-                    {/* #endregion */}
                     <input
                       type="checkbox"
                       checked={selectedIds.has(job.id)}

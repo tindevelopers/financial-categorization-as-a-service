@@ -9,14 +9,6 @@ import ViewSwitcher, {
 import InvoiceCardView from "@/components/invoice/InvoiceCardView";
 import InvoiceSplitView from "@/components/invoice/InvoiceSplitView";
 import InvoiceTableView from "@/components/invoice/InvoiceTableView";
-
-// #region agent log
-const DEBUG_ENDPOINT = 'http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e';
-const debugLog = (loc: string, msg: string, data: Record<string, unknown>, hId: string) => {
-  fetch(DEBUG_ENDPOINT, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: loc, message: msg, data, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: hId }) }).catch(() => {});
-};
-// #endregion
-
 interface Document {
   id: string;
   original_filename: string;
@@ -68,25 +60,10 @@ interface TransactionReviewProps {
 }
 
 export default function TransactionReview({ jobId }: TransactionReviewProps) {
-  // #region agent log
-  debugLog('TransactionReview.tsx:mount', 'TransactionReview component mounted with new UI', { jobId, hasViewSwitcher: true }, 'H1');
-  // #endregion
-
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [exporting, setExporting] = useState(false);
-  
-  // #region agent log
-  let initialView: ViewType = 'table';
-  try {
-    initialView = getStoredViewPreference();
-    debugLog('TransactionReview.tsx:getStoredViewPreference', 'View preference retrieved', { initialView }, 'H2');
-  } catch (e) {
-    debugLog('TransactionReview.tsx:getStoredViewPreference:error', 'Failed to get view preference', { error: String(e) }, 'H2');
-  }
-  // #endregion
-  
+  const [exporting, setExporting] = useState(false);  
   const [currentView, setCurrentView] = useState<ViewType>(initialView);
   const [documentUrls, setDocumentUrls] = useState<Record<string, string>>({});
   const [loadingUrls, setLoadingUrls] = useState<Set<string>>(new Set());
@@ -151,26 +128,13 @@ export default function TransactionReview({ jobId }: TransactionReviewProps) {
       }
       const data = await response.json();
       const newTransactions = data.transactions || [];
-
-      // #region agent log
-      debugLog('TransactionReview.tsx:loadTransactions', 'Transactions loaded', { 
-        count: newTransactions.length, 
-        hasDocuments: newTransactions.filter((t: Transaction) => t.document).length,
-        sampleFields: newTransactions[0] ? Object.keys(newTransactions[0]) : []
-      }, 'H3');
-      // #endregion
-
       // Only update if we have transactions or if we're still loading
       if (newTransactions.length > 0 || loading) {
         setTransactions(newTransactions);
         setLoading(false);
       }
       // If no transactions yet but job exists, keep loading state
-    } catch (err: any) {
-      // #region agent log
-      debugLog('TransactionReview.tsx:loadTransactions:error', 'Failed to load transactions', { error: err.message }, 'H3');
-      // #endregion
-      setError(err.message);
+    } catch (err: any) {      setError(err.message);
       setLoading(false);
     }
   };
@@ -342,15 +306,7 @@ export default function TransactionReview({ jobId }: TransactionReviewProps) {
   const confirmedCount = transactions.filter((t) => t.user_confirmed).length;
   const totalAmount = transactions.reduce((sum, t) => sum + Math.abs(t.amount), 0);
 
-  const renderView = () => {
-    // #region agent log
-    debugLog('TransactionReview.tsx:renderView', 'Rendering view', { 
-      currentView, 
-      transactionCount: transactions.length,
-      hasViewSwitcher: true
-    }, 'H1');
-    // #endregion
-    
+  const renderView = () => {    
     const commonProps = {
       transactions,
       documentUrls,
@@ -371,17 +327,6 @@ export default function TransactionReview({ jobId }: TransactionReviewProps) {
         return <InvoiceTableView {...commonProps} />;
     }
   };
-
-  // #region agent log
-  debugLog('TransactionReview.tsx:render', 'NEW UI rendering with ViewSwitcher', { 
-    currentView, 
-    transactionCount: transactions.length,
-    confirmed: confirmedCount,
-    totalAmount,
-    componentVersion: 'v2-with-view-switcher'
-  }, 'H5');
-  // #endregion
-
   return (
     <div className="space-y-6">
       {/* Summary */}

@@ -27,6 +27,8 @@ import {
   ChatBubbleLeftRightIcon,
   Cog6ToothIcon,
   DocumentCheckIcon,
+  BanknotesIcon,
+  DocumentTextIcon,
 } from '@heroicons/react/24/outline'
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
@@ -85,11 +87,27 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               </SidebarItem>
 
               <SidebarItem
+                href="/dashboard/uploads/bank-statements"
+                current={pathname === '/dashboard/uploads/bank-statements'}
+              >
+                <BanknotesIcon />
+                <SidebarLabel>Bank Statements</SidebarLabel>
+              </SidebarItem>
+
+              <SidebarItem
+                href="/dashboard/uploads/receipts"
+                current={pathname === '/dashboard/uploads/receipts'}
+              >
+                <DocumentTextIcon />
+                <SidebarLabel>Invoices &amp; Receipts</SidebarLabel>
+              </SidebarItem>
+
+              <SidebarItem
                 href="/dashboard/uploads"
-                current={pathname.startsWith('/dashboard/uploads')}
+                current={pathname === '/dashboard/uploads'}
               >
                 <FolderOpenIcon />
-                <SidebarLabel>Uploads</SidebarLabel>
+                <SidebarLabel>All Uploads</SidebarLabel>
               </SidebarItem>
 
               <SidebarItem

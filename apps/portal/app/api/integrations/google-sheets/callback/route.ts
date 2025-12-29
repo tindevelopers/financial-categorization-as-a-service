@@ -144,22 +144,11 @@ export async function GET(request: NextRequest) {
 
     // Use the redirect URI we actually used in the authorize request (stored in cookie),
     // otherwise derive from this request origin (avoids env drift), and only then fall back.
-    // Trim any whitespace/newlines that might have been introduced from env vars
-    // #region agent log - Check redirect URI sources before selection
-    const redirectUriCookieRaw = redirectUriCookie;
-    const oauthCredsRedirectUriRaw = oauthCreds.redirectUri;
-    const requestOriginRaw = request.nextUrl.origin;
-    fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'apps/portal/app/api/integrations/google-sheets/callback/route.ts:redirectUriForTokenExchange:before',message:'Redirect URI sources before selection and trim',data:{redirectUriCookieRaw,redirectUriCookieLength:redirectUriCookieRaw?.length,redirectUriCookieHasTrailingWs:redirectUriCookieRaw?.[redirectUriCookieRaw?.length-1]===' '||redirectUriCookieRaw?.[redirectUriCookieRaw?.length-1]==='\n',oauthCredsRedirectUriRaw,oauthCredsRedirectUriLength:oauthCredsRedirectUriRaw?.length,oauthCredsRedirectUriHasTrailingWs:oauthCredsRedirectUriRaw?.[oauthCredsRedirectUriRaw?.length-1]===' '||oauthCredsRedirectUriRaw?.[oauthCredsRedirectUriRaw?.length-1]==='\n',requestOriginRaw,requestOriginLength:requestOriginRaw.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
-    // #endregion
-    const redirectUriForTokenExchange = (
+    // Trim any whitespace/newlines that might have been introduced from env vars    const redirectUriForTokenExchange = (
       redirectUriCookie ||
       new URL("/api/integrations/google-sheets/callback", request.nextUrl.origin.trim()).toString() ||
       oauthCreds.redirectUri
     ).trim();
-    // #region agent log - Check final redirect URI after trim
-    fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'apps/portal/app/api/integrations/google-sheets/callback/route.ts:redirectUriForTokenExchange:after',message:'Final redirect URI after trim for token exchange',data:{redirectUriForTokenExchange,redirectUriForTokenExchangeLength:redirectUriForTokenExchange.length,hasTrailingWs:redirectUriForTokenExchange[redirectUriForTokenExchange.length-1]===' '||redirectUriForTokenExchange[redirectUriForTokenExchange.length-1]==='\n'},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
-    // #endregion
-
     // Log detailed OAuth configuration for debugging invalid_client errors
     console.log("OAuth token exchange configuration:", {
       clientId: oauthCreds.clientId ? `${oauthCreds.clientId.substring(0, 20)}...` : "missing",
@@ -177,11 +166,7 @@ export async function GET(request: NextRequest) {
     // Exchange code for tokens using googleapis
     const clientIdForTokenExchange = oauthCreds.clientId?.trim();
     const clientSecretForTokenExchange = oauthCreds.clientSecret?.trim();
-    const redirectUriForTokenExchangeFinal = redirectUriForTokenExchange.trim();
-    // #region agent log - Check values being sent to Google token exchange
-    fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'apps/portal/app/api/integrations/google-sheets/callback/route.ts:oauth2Client:before',message:'Values being sent to Google token exchange',data:{clientIdForTokenExchange,clientIdLength:clientIdForTokenExchange?.length,clientIdHasTrailingWs:clientIdForTokenExchange?.[clientIdForTokenExchange.length-1]===' '||clientIdForTokenExchange?.[clientIdForTokenExchange.length-1]==='\n',hasClientSecret:!!clientSecretForTokenExchange,clientSecretLength:clientSecretForTokenExchange?.length,redirectUriForTokenExchangeFinal,redirectUriLength:redirectUriForTokenExchangeFinal.length,redirectUriHasTrailingWs:redirectUriForTokenExchangeFinal[redirectUriForTokenExchangeFinal.length-1]===' '||redirectUriForTokenExchangeFinal[redirectUriForTokenExchangeFinal.length-1]==='\n',hasNewlineInMiddle:redirectUriForTokenExchangeFinal.includes('\n')},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'F'})}).catch(()=>{});
-    // #endregion
-    const oauth2Client = new google.auth.OAuth2(
+    const redirectUriForTokenExchangeFinal = redirectUriForTokenExchange.trim();    const oauth2Client = new google.auth.OAuth2(
       clientIdForTokenExchange,
       clientSecretForTokenExchange,
       redirectUriForTokenExchangeFinal
@@ -242,10 +227,8 @@ export async function GET(request: NextRequest) {
       : "personal";
 
     // Encrypt tokens before storing
-    const encryptionKey = process.env.ENCRYPTION_KEY;
-    if (!encryptionKey) {
-      console.error("ENCRYPTION_KEY not configured");
-      const configErrorUrl = new URL("/dashboard/integrations/google-sheets", request.url);
+    const encryptionKey = process.env.ENCRYPTION_KEY;    if (!encryptionKey) {
+      console.error("ENCRYPTION_KEY not configured");      const configErrorUrl = new URL("/dashboard/integrations/google-sheets", request.url);
       configErrorUrl.searchParams.set("error", "configuration_error");
       return NextResponse.redirect(configErrorUrl.toString());
     }

@@ -33,6 +33,7 @@ interface Upload {
   status_message?: string
   created_at: string
   job_type: string
+  file_type?: string | null // file_type from financial_documents
   total_items?: number
   processed_items?: number
   failed_items?: number
@@ -86,8 +87,7 @@ export default function UploadsPage() {
         throw new Error('Failed to fetch uploads')
       }
 
-      const result = await response.json()
-      setUploads(result.jobs || [])
+      const result = await response.json()      setUploads(result.jobs || [])
     } catch (error: any) {
       console.error('Error fetching uploads:', error)
     } finally {
@@ -762,7 +762,7 @@ export default function UploadsPage() {
                             {upload.original_filename}
                           </div>
                           <div className="text-xs text-gray-500 dark:text-gray-400 capitalize">
-                            {upload.job_type.replace('_', ' ')}
+                            {upload.file_type === 'bank_statement' ? 'Bank Statement' : upload.job_type.replace('_', ' ')}
                           </div>
                         </div>
                       </div>

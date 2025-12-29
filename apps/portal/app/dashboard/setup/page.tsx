@@ -6,6 +6,7 @@ import { Heading, Text, Button } from '@/components/catalyst'
 import { CompanyDetailsForm } from '@/components/setup/CompanyDetailsForm'
 import { TaxSettingsForm } from '@/components/setup/TaxSettingsForm'
 import { BankAccountsForm } from '@/components/setup/BankAccountsForm'
+import { GoogleDriveSettings } from '@/components/setup/GoogleDriveSettings'
 import { CompletionStep } from '@/components/setup/CompletionStep'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
 
@@ -37,9 +38,15 @@ export default function SetupWizardPage() {
       accountNumber: string
       bank: string
     }>,
+    
+    // Google Shared Drive Settings
+    googleSharedDriveId: null as string | null,
+    googleSharedDriveName: null as string | null,
+    googleMasterSpreadsheetId: null as string | null,
+    googleMasterSpreadsheetName: null as string | null,
   })
 
-  const totalSteps = 4
+  const totalSteps = 5
 
   // Load existing company profile data on mount
   useEffect(() => {
@@ -68,6 +75,11 @@ export default function SetupWizardPage() {
               financialYearEnd: company.financial_year_end || '',
               accountingBasis: company.accounting_basis || 'cash',
               bankAccounts: company.bank_accounts || [],
+              // Google Shared Drive settings
+              googleSharedDriveId: company.google_shared_drive_id || null,
+              googleSharedDriveName: company.google_shared_drive_name || null,
+              googleMasterSpreadsheetId: company.google_master_spreadsheet_id || null,
+              googleMasterSpreadsheetName: company.google_master_spreadsheet_name || null,
             })
             // Restore the step if saved
             if (company.setup_step) {
@@ -91,11 +103,7 @@ export default function SetupWizardPage() {
     }
   }
 
-  const handleSubmit = async () => {
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'apps/portal/app/dashboard/setup/page.tsx:handleSubmit:entry',message:'handleSubmit called',data:{companyProfileId,hasCompanyProfileId:!!companyProfileId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-    // #endregion
-    try {
+  const handleSubmit = async () => {    try {
       const method = companyProfileId ? 'PUT' : 'POST'
       const url = '/api/company'
       const body = companyProfileId
@@ -110,47 +118,23 @@ export default function SetupWizardPage() {
             setupCompleted: true,
             setupStep: totalSteps,
           }
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'apps/portal/app/dashboard/setup/page.tsx:handleSubmit:beforeFetch',message:'About to send request',data:{method,url,bodySetupCompleted:body.setupCompleted,bodySetupStep:body.setupStep,bodyId:'id' in body ? body.id : undefined},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
-      // #endregion
-
       const response = await fetch(url, {
         method,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       })
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'apps/portal/app/dashboard/setup/page.tsx:handleSubmit:afterFetch',message:'Response received',data:{status:response.status,statusText:response.statusText,ok:response.ok},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-      // #endregion
-
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}))
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'apps/portal/app/dashboard/setup/page.tsx:handleSubmit:error',message:'Response not OK',data:{status:response.status,errorData},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-        // #endregion
-        throw new Error(errorData.error || `Failed to ${companyProfileId ? 'update' : 'create'} company`)
+        const errorData = await response.json().catch(() => ({}))        throw new Error(errorData.error || `Failed to ${companyProfileId ? 'update' : 'create'} company`)
       }
 
-      const data = await response.json()
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'apps/portal/app/dashboard/setup/page.tsx:handleSubmit:success',message:'Response data received',data:{success:data.success,companySetupCompleted:data.company?.setup_completed,companyId:data.company?.id},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
-      // #endregion
-      
+      const data = await response.json()      
       // Update local state to show "Setup Complete" before redirect
       if (data.company?.setup_completed) {
         setSetupCompleted(true)
       }
       
-      // Redirect to dashboard
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'apps/portal/app/dashboard/setup/page.tsx:handleSubmit:beforeRedirect',message:'About to redirect',data:{timestamp:Date.now()},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
-      // #endregion
-      router.push('/dashboard')
-    } catch (error: any) {
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'apps/portal/app/dashboard/setup/page.tsx:handleSubmit:catch',message:'Error caught',data:{errorMessage:error.message,errorStack:error.stack},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-      // #endregion
-      console.error('Setup error:', error)
+      // Redirect to dashboard      router.push('/dashboard')
+    } catch (error: any) {      console.error('Setup error:', error)
       alert(error.message || 'Failed to complete setup. Please try again.')
     }
   }
@@ -243,6 +227,19 @@ export default function SetupWizardPage() {
 
           {currentStep === 4 && (
             <ErrorBoundary>
+              <GoogleDriveSettings
+                companyId={companyProfileId || ''}
+                initialDriveId={formData.googleSharedDriveId}
+                initialDriveName={formData.googleSharedDriveName}
+                initialSpreadsheetId={formData.googleMasterSpreadsheetId}
+                initialSpreadsheetName={formData.googleMasterSpreadsheetName}
+                onChange={(settings) => setFormData({ ...formData, ...settings })}
+              />
+            </ErrorBoundary>
+          )}
+
+          {currentStep === 5 && (
+            <ErrorBoundary>
               <CompletionStep data={formData} setupCompleted={setupCompleted} />
             </ErrorBoundary>
           )}
@@ -289,6 +286,8 @@ function isStepValid(step: number, data: typeof formData) {
     case 3:
       return true // Bank accounts are optional
     case 4:
+      return true // Google Drive settings are optional
+    case 5:
       return true // Completion step
     default:
       return false
@@ -313,6 +312,10 @@ type FormData = {
     accountNumber: string
     bank: string
   }>
+  googleSharedDriveId: string | null
+  googleSharedDriveName: string | null
+  googleMasterSpreadsheetId: string | null
+  googleMasterSpreadsheetName: string | null
 }
 
 declare const formData: FormData

@@ -5,28 +5,16 @@ import { createAdminClient } from "@/lib/database/admin-client";
 import { createJobErrorResponse, mapErrorToCode } from "@/lib/errors/job-errors";
 
 export async function POST(request: NextRequest) {
-  try {
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'process-invoices/route.ts:6',message:'Background processing route called',data:{hasBody:!!request.body},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H1'})}).catch(()=>{});
-    // #endregion
-    const supabase = await createClient();
+  try {    const supabase = await createClient();
     const { data: { user }, error: authError } = await supabase.auth.getUser();
 
-    if (authError || !user) {
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'process-invoices/route.ts:12',message:'Background processing auth failed',data:{authError:authError?.message},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H1'})}).catch(()=>{});
-      // #endregion
-      return NextResponse.json(
+    if (authError || !user) {      return NextResponse.json(
         { error: "Unauthorized" },
         { status: 401 }
       );
     }
 
     const { jobId } = await request.json();
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'process-invoices/route.ts:18',message:'Background processing received jobId',data:{jobId,userId:user.id.substring(0,8)+'...'},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H1'})}).catch(()=>{});
-    // #endregion
-
     if (!jobId) {
       return NextResponse.json(
         { error: "Job ID is required" },
@@ -49,16 +37,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Start background processing
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'process-invoices/route.ts:43',message:'Calling waitUntil for background processing',data:{jobId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H5'})}).catch(()=>{});
-    // #endregion
-    waitUntil(
-      processInvoicesBatch(jobId, user.id, supabase).catch((err) => {
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'process-invoices/route.ts:45',message:'Background batch processing error',data:{jobId,errorMessage:err?.message,errorStack:err?.stack?.substring(0,200)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H3'})}).catch(()=>{});
-        // #endregion
-        console.error("Background batch processing failed:", err);
+    // Start background processing    waitUntil(
+      processInvoicesBatch(jobId, user.id, supabase).catch((err) => {        console.error("Background batch processing failed:", err);
       })
     );
 
@@ -83,10 +63,6 @@ async function processInvoicesBatch(
 ) {
   const adminClient = createAdminClient();
   const BATCH_SIZE = 10; // Process 10 invoices at a time
-  // #region agent log
-  fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'process-invoices/route.ts:61',message:'processInvoicesBatch started',data:{jobId,userId:userId.substring(0,8)+'...'},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H5'})}).catch(()=>{});
-  // #endregion
-
   try {
     // Update job status
     await supabase
@@ -98,25 +74,13 @@ async function processInvoicesBatch(
       })
       .eq("id", jobId);
 
-    // Get documents for this job from financial_documents table
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'process-invoices/route.ts:79',message:'Querying documents for job',data:{jobId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H2'})}).catch(()=>{});
-    // #endregion
-    const { data: documents, error: docsError } = await supabase
+    // Get documents for this job from financial_documents table    const { data: documents, error: docsError } = await supabase
       .from("financial_documents")
       .select("*")
       .eq("job_id", jobId)
       .in("ocr_status", ["pending", "failed"])
       .in("file_type", ["receipt", "invoice"]);
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'process-invoices/route.ts:85',message:'Documents query result',data:{jobId,documentsCount:documents?.length||0,hasError:!!docsError,errorMessage:docsError?.message,docIds:documents?.map((d: {id: string}) => d.id).slice(0,3)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H2,H4'})}).catch(()=>{});
-    // #endregion
-
-    if (!documents || documents.length === 0) {
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'process-invoices/route.ts:87',message:'No documents found for job',data:{jobId,queryError:docsError?.message},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H2,H4'})}).catch(()=>{});
-      // #endregion
-      const errorResponse = createJobErrorResponse("PROCESSING_FAILED", "No documents found");
+    if (!documents || documents.length === 0) {      const errorResponse = createJobErrorResponse("PROCESSING_FAILED", "No documents found");
       await supabase
         .from("categorization_jobs")
         .update({ 
@@ -271,11 +235,6 @@ async function processSingleInvoice(
         needsReview: invoiceData.needs_review,
       });
     }
-    
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'process-invoices/route.ts:214',message:'OCR extraction result',data:{docId:doc.id,jobId,hasTotal:!!invoiceData.total,total:invoiceData.total,hasLineItems:!!invoiceData.line_items,lineItemsCount:invoiceData.line_items?.length||0,confidence:invoiceData.confidence_score,needsReview:invoiceData.needs_review,extractionMethods:invoiceData.extraction_methods},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H1'})}).catch(()=>{});
-    // #endregion
-
     // Verify OCR source before updating
     const { verifyOCRSource } = await import("@/lib/ocr/google-document-ai");
     const ocrVerification = verifyOCRSource();
@@ -384,10 +343,6 @@ async function processSingleInvoice(
       doc.id, // document_id
       supplierId // supplier_id
     );
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'process-invoices/route.ts:250',message:'Transactions created from invoice',data:{docId:doc.id,jobId,transactionsCount:transactions.length,transactionJobIds:transactions.map(t=>t.job_id)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H1,H2'})}).catch(()=>{});
-    // #endregion
-
     // Insert transactions
     let insertedTransactionIds: string[] = [];
     if (transactions.length > 0) {
@@ -396,29 +351,10 @@ async function processSingleInvoice(
         .insert(transactions)
         .select("id");
 
-      if (txError) {
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'process-invoices/route.ts:260',message:'Transaction insert error',data:{docId:doc.id,jobId,errorCode:txError.code,errorMessage:txError.message},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H4'})}).catch(()=>{});
-        // #endregion
-        console.error("Transaction insert error:", txError);
+      if (txError) {        console.error("Transaction insert error:", txError);
         throw txError;
       } else {
         insertedTransactionIds = insertedTransactions?.map((t: any) => t.id) || [];
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'process-invoices/route.ts:263',message:'Transactions inserted successfully',data:{docId:doc.id,jobId,insertedCount:insertedTransactionIds.length,insertedIds:insertedTransactionIds.slice(0,3)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H2'})}).catch(()=>{});
-        // #endregion
-
-        // #region agent log
-        // Verify document_id persisted on inserted rows (common root cause of UI showing 0/unknown)
-        if (insertedTransactionIds.length > 0) {
-          const { data: insertedCheck } = await adminClient
-            .from("categorized_transactions")
-            .select("id, document_id, supplier_id, invoice_number, amount, date")
-            .in("id", insertedTransactionIds.slice(0, 5));
-          fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'process-invoices/route.ts:insertCheck',message:'Post-insert check of document_id on categorized_transactions',data:{docId:doc.id,jobId,sample:insertedCheck?.map((r:any)=>({id:r.id,document_id:r.document_id,supplier_id:r.supplier_id,invoice_number:r.invoice_number,amount:r.amount}))||[]},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H1'})}).catch(()=>{});
-        }
-        // #endregion
-
         // Categorize the transactions
         await categorizeInvoiceTransactions(insertedTransactions || transactions, userId, adminClient);
         
@@ -491,11 +427,7 @@ async function invoiceToTransactions(
     .eq("id", jobId)
     .single();
 
-  const bankAccountId = jobData?.bank_account_id || null;
-  // #region agent log
-  fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'process-invoices/route.ts:305',message:'invoiceToTransactions called',data:{jobId,bankAccountId:bankAccountId?.substring(0,8)+'...',hasTotal:!!invoiceData.total,total:invoiceData.total,hasLineItems:!!invoiceData.line_items,lineItemsCount:invoiceData.line_items?.length||0,ocrFailed:invoiceData.ocr_failed,ocrConfigured:invoiceData.ocr_configured},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H1'})}).catch(()=>{});
-  // #endregion
-  const transactions: any[] = [];
+  const bankAccountId = jobData?.bank_account_id || null;  const transactions: any[] = [];
 
   // Build description components
   const vendorName = invoiceData.vendor_name || invoiceData.supplier?.name || "Vendor";

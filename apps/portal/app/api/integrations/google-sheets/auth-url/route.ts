@@ -14,27 +14,11 @@ async function getGoogleCredentials(supabase: any, userId: string): Promise<{
   clientSecret: string | null;
   redirectUri: string;
   source: 'tenant' | 'platform';
-}> {
-  // #region agent log - Check env vars for whitespace
-  const nextPublicAppUrlRaw = process.env.NEXT_PUBLIC_APP_URL;
-  const vercelUrlRaw = process.env.VERCEL_URL;
-  const googleRedirectUriRaw = process.env.GOOGLE_REDIRECT_URI;
-  fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'apps/portal/app/api/integrations/google-sheets/auth-url/route.ts:getGoogleCredentials:env',message:'Environment variables before trim',data:{nextPublicAppUrlRaw,nextPublicAppUrlLength:nextPublicAppUrlRaw?.length,nextPublicAppUrlHasTrailingWs:nextPublicAppUrlRaw?.[nextPublicAppUrlRaw.length-1]===' '||nextPublicAppUrlRaw?.[nextPublicAppUrlRaw.length-1]==='\n',vercelUrlRaw,googleRedirectUriRaw,googleRedirectUriLength:googleRedirectUriRaw?.length,googleRedirectUriHasTrailingWs:googleRedirectUriRaw?.[googleRedirectUriRaw?.length-1]===' '||googleRedirectUriRaw?.[googleRedirectUriRaw?.length-1]==='\n'},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-  // #endregion
-  
+}> {  
   const nextPublicAppUrl = process.env.NEXT_PUBLIC_APP_URL?.trim();
-  const vercelUrl = process.env.VERCEL_URL?.trim();
-  // #region agent log - Check base URL construction inputs
-  fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'apps/portal/app/api/integrations/google-sheets/auth-url/route.ts:getGoogleCredentials:baseUrlInputs',message:'Base URL construction inputs',data:{nextPublicAppUrl,vercelUrl,hasNextPublicAppUrl:!!nextPublicAppUrl,hasVercelUrl:!!vercelUrl},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
-  // #endregion
-  const baseUrl = (nextPublicAppUrl || 
+  const vercelUrl = process.env.VERCEL_URL?.trim();  const baseUrl = (nextPublicAppUrl || 
     (vercelUrl ? `https://${vercelUrl}` : 'http://localhost:3000')).trim()
   const defaultRedirectUri = `${baseUrl}/api/integrations/google-sheets/callback`.trim()
-  
-  // #region agent log - Check constructed defaultRedirectUri
-  fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'apps/portal/app/api/integrations/google-sheets/auth-url/route.ts:getGoogleCredentials:defaultRedirectUri',message:'Default redirect URI after construction',data:{defaultRedirectUri,defaultRedirectUriLength:defaultRedirectUri.length,hasTrailingWs:defaultRedirectUri[defaultRedirectUri.length-1]===' '||defaultRedirectUri[defaultRedirectUri.length-1]==='\n',baseUrl,baseUrlLength:baseUrl.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
-  // #endregion
-
   // Get user's tenant ID
   const { data: userData } = await supabase
     .from('users')
@@ -53,23 +37,7 @@ async function getGoogleCredentials(supabase: any, userId: string): Promise<{
       .eq('provider', 'google_sheets')
       .eq('use_custom_credentials', true)
       .single()
-
-    // #region agent log - Debug tenant settings
-    console.log('[DEBUG] Tenant settings lookup:', JSON.stringify({
-      tenantId,
-      hasSettings: !!tenantSettings,
-      useCustomCredentials: tenantSettings?.use_custom_credentials,
-      customRedirectUri: tenantSettings?.custom_redirect_uri || '(not set)',
-      hasCustomClientId: !!tenantSettings?.custom_client_id,
-    }));
-    // #endregion
-
-    if (tenantSettings?.custom_client_id) {
-      // #region agent log - Check database custom_redirect_uri for whitespace
-      const customRedirectUriRaw = tenantSettings.custom_redirect_uri;
-      fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'apps/portal/app/api/integrations/google-sheets/auth-url/route.ts:getGoogleCredentials:customRedirectUri',message:'Database custom_redirect_uri before trim',data:{customRedirectUriRaw,customRedirectUriLength:customRedirectUriRaw?.length,customRedirectUriHasTrailingWs:customRedirectUriRaw?.[customRedirectUriRaw?.length-1]===' '||customRedirectUriRaw?.[customRedirectUriRaw?.length-1]==='\n',defaultRedirectUri},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
-      // #endregion
-      
+    if (tenantSettings?.custom_client_id) {      
       let decryptedSecret = null
       
       // Try to get secret from vault first
@@ -102,11 +70,7 @@ async function getGoogleCredentials(supabase: any, userId: string): Promise<{
       }
 
       if (decryptedSecret) {
-        const finalRedirectUri = (tenantSettings.custom_redirect_uri?.trim() || defaultRedirectUri).trim()
-        // #region agent log - Check final redirect URI before return
-        fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'apps/portal/app/api/integrations/google-sheets/auth-url/route.ts:getGoogleCredentials:finalRedirectUri',message:'Final redirect URI before return (tenant)',data:{finalRedirectUri,finalRedirectUriLength:finalRedirectUri.length,hasTrailingWs:finalRedirectUri[finalRedirectUri.length-1]===' '||finalRedirectUri[finalRedirectUri.length-1]==='\n'},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
-        // #endregion
-        return {
+        const finalRedirectUri = (tenantSettings.custom_redirect_uri?.trim() || defaultRedirectUri).trim()        return {
           clientId: tenantSettings.custom_client_id,
           clientSecret: decryptedSecret,
           redirectUri: finalRedirectUri,
@@ -119,15 +83,7 @@ async function getGoogleCredentials(supabase: any, userId: string): Promise<{
   // Fall back to platform-level environment variables
   // Check both GOOGLE_REDIRECT_URI and GOOGLE_SHEETS_REDIRECT_URI
   const googleRedirectUri = process.env.GOOGLE_REDIRECT_URI?.trim();
-  const googleSheetsRedirectUri = process.env.GOOGLE_SHEETS_REDIRECT_URI?.trim();
-  // #region agent log - Check which redirect URI env vars are available
-  fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'apps/portal/app/api/integrations/google-sheets/auth-url/route.ts:getGoogleCredentials:checkEnvVars',message:'Checking redirect URI environment variables',data:{hasGoogleRedirectUri:!!googleRedirectUri,hasGoogleSheetsRedirectUri:!!googleSheetsRedirectUri,googleRedirectUri,googleSheetsRedirectUri,defaultRedirectUri},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-  // #endregion
-  const platformRedirectUri = (googleSheetsRedirectUri || googleRedirectUri || defaultRedirectUri).trim()
-  // #region agent log - Check platform redirect URI before return
-  fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'apps/portal/app/api/integrations/google-sheets/auth-url/route.ts:getGoogleCredentials:platformRedirectUri',message:'Final redirect URI before return (platform)',data:{platformRedirectUri,platformRedirectUriLength:platformRedirectUri.length,hasTrailingWs:platformRedirectUri[platformRedirectUri.length-1]===' '||platformRedirectUri[platformRedirectUri.length-1]==='\n',defaultRedirectUri,usedEnvVar:googleSheetsRedirectUri?'GOOGLE_SHEETS_REDIRECT_URI':googleRedirectUri?'GOOGLE_REDIRECT_URI':'defaultRedirectUri'},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-  // #endregion
-  return {
+  const googleSheetsRedirectUri = process.env.GOOGLE_SHEETS_REDIRECT_URI?.trim();  const platformRedirectUri = (googleSheetsRedirectUri || googleRedirectUri || defaultRedirectUri).trim()  return {
     clientId: process.env.GOOGLE_CLIENT_ID || null,
     clientSecret: process.env.GOOGLE_CLIENT_SECRET || null,
     redirectUri: platformRedirectUri,
@@ -136,20 +92,7 @@ async function getGoogleCredentials(supabase: any, userId: string): Promise<{
 }
 
 export async function GET() {
-  try {
-    // #region agent log - Debug environment variables for Vercel
-    const debugEnvInfo = {
-      NEXT_PUBLIC_APP_URL: process.env.NEXT_PUBLIC_APP_URL || '(not set)',
-      VERCEL_URL: process.env.VERCEL_URL || '(not set)',
-      GOOGLE_REDIRECT_URI: process.env.GOOGLE_REDIRECT_URI || '(not set)',
-      GOOGLE_SHEETS_REDIRECT_URI: process.env.GOOGLE_SHEETS_REDIRECT_URI || '(not set)',
-      GOOGLE_CLIENT_ID_PREFIX: process.env.GOOGLE_CLIENT_ID?.substring(0, 25) || '(not set)',
-      NODE_ENV: process.env.NODE_ENV,
-    };
-    console.log('[DEBUG] Auth URL endpoint - Environment:', JSON.stringify(debugEnvInfo));
-    fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'apps/portal/app/api/integrations/google-sheets/auth-url/route.ts:GET:envCheck',message:'Environment variables at endpoint entry',data:debugEnvInfo,timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-    // #endregion
-    const supabase = await createClient()
+  try {    const supabase = await createClient()
     const { data: { user }, error: authError } = await supabase.auth.getUser()
 
     if (authError || !user) {
@@ -206,36 +149,10 @@ export async function GET() {
     // Log redirect URI for debugging (don't log full URL with state for security)
     console.log('[Google Sheets OAuth] Redirect URI:', credentials.redirectUri)
     console.log('[Google Sheets OAuth] Client ID:', credentials.clientId?.substring(0, 20) + '...')
-    console.log('[Google Sheets OAuth] Credential Source:', credentials.source)
-
-    // #region agent log - Debug final credentials
-    const debugCredentialsInfo = {
-      redirectUri: credentials.redirectUri,
-      clientIdPrefix: credentials.clientId?.substring(0, 25),
-      source: credentials.source,
-    };
-    console.log('[DEBUG] Final credentials:', JSON.stringify(debugCredentialsInfo));
-    // #endregion
-
-    // #region agent log - Log final redirect URI being used
-    fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'apps/portal/app/api/integrations/google-sheets/auth-url/route.ts:GET:finalRedirectUri',message:'Final redirect URI being sent to Google',data:{redirectUri:credentials.redirectUri,credentialSource:credentials.source,envVars:{NEXT_PUBLIC_APP_URL:process.env.NEXT_PUBLIC_APP_URL,GOOGLE_SHEETS_REDIRECT_URI:process.env.GOOGLE_SHEETS_REDIRECT_URI,GOOGLE_REDIRECT_URI:process.env.GOOGLE_REDIRECT_URI,VERCEL_URL:process.env.VERCEL_URL}},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-    // #endregion
-    return NextResponse.json({ 
+    console.log('[Google Sheets OAuth] Credential Source:', credentials.source)    return NextResponse.json({ 
       authUrl: authUrl.toString(),
       credentialSource: credentials.source,
-      redirectUri: credentials.redirectUri, // Include in response for debugging
-      // #region agent log - Include debug info in response for remote debugging
-      _debug: {
-        envInfo: {
-          NEXT_PUBLIC_APP_URL: process.env.NEXT_PUBLIC_APP_URL || '(not set)',
-          VERCEL_URL: process.env.VERCEL_URL || '(not set)',
-          GOOGLE_REDIRECT_URI_ENV: process.env.GOOGLE_REDIRECT_URI || '(not set)',
-          GOOGLE_SHEETS_REDIRECT_URI_ENV: process.env.GOOGLE_SHEETS_REDIRECT_URI || '(not set)',
-        },
-        credentials: debugCredentialsInfo,
-      },
-      // #endregion
-    })
+      redirectUri: credentials.redirectUri, // Include in response for debugging    })
   } catch (error) {
     console.error('Error generating auth URL:', error)
     return NextResponse.json(

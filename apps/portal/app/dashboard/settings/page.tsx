@@ -371,43 +371,9 @@ export default function SettingsPage() {
     try {
       const response = await fetch('/api/integrations/google-sheets/auth-url')
       if (response.ok) {
-        const data = await response.json()
-        // #region agent log - Debug output with alert to pause before redirect
-        const debugInfo = `DEBUG INFO - COPY THIS:
-        
-Redirect URI being used:
-${data.redirectUri}
-
-Credential Source: ${data.credentialSource}
-
-Environment:
-- NEXT_PUBLIC_APP_URL: ${data._debug?.envInfo?.NEXT_PUBLIC_APP_URL || '(not in response)'}
-- VERCEL_URL: ${data._debug?.envInfo?.VERCEL_URL || '(not in response)'}
-- GOOGLE_REDIRECT_URI_ENV: ${data._debug?.envInfo?.GOOGLE_REDIRECT_URI_ENV || '(not in response)'}
-
-Window Origin: ${window.location.origin}
-
-⚠️ Make sure the Redirect URI above is added to Google Cloud Console OAuth settings!
-
-Click OK to continue to Google OAuth.`;
-        alert(debugInfo);
-        console.log('[DEBUG] Google Sheets Auth Response:', data);
-        // #endregion
-        window.location.href = data.authUrl
+        const data = await response.json()        window.location.href = data.authUrl
       } else {
-        const error = await response.json()
-        // #region agent log - Show detailed error for debugging
-        const errorDetails = `API Error (${response.status}):
-${JSON.stringify(error, null, 2)}
-
-This could mean:
-- Not authenticated (401)
-- Google credentials not configured (503)
-- Server error (500)`;
-        alert(errorDetails);
-        console.error('[DEBUG] Auth URL API error:', response.status, error);
-        // #endregion
-      }
+        const error = await response.json()      }
     } catch (error) {
       console.error('Failed to connect Google Sheets:', error)
       alert('Failed to connect Google Sheets. Network error: ' + (error as Error).message)

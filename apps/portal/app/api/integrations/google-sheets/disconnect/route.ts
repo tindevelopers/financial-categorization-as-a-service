@@ -23,10 +23,10 @@ export async function POST(request: NextRequest) {
 
     const connectedEmail = integration?.provider_email || null;
 
-    // Disconnect from both tables for compatibility
+    // Disconnect from both tables for compatibility - delete completely to allow fresh reconnection
     const { error: error1 } = await supabase
       .from("cloud_storage_connections")
-      .update({ is_active: false })
+      .delete()
       .eq("user_id", user.id)
       .eq("provider", "google_sheets");
 

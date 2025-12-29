@@ -9,6 +9,7 @@ import ViewSwitcher, {
 import InvoiceCardView from "@/components/invoice/InvoiceCardView";
 import InvoiceSplitView from "@/components/invoice/InvoiceSplitView";
 import InvoiceTableView from "@/components/invoice/InvoiceTableView";
+import BankStatementTableView from "@/components/categorization/BankStatementTableView";
 
 interface Document {
   id: string;
@@ -255,48 +256,22 @@ export default function TransactionReview({ jobId }: TransactionReviewProps) {
   const handleDelete = async (transactionId: string, documentId: string) => {
     try {
       // Delete the transaction first
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'apps/portal/components/categorization/TransactionReview.tsx:handleDelete:start',message:'Attempting delete transaction+document',data:{transactionId,documentId},timestamp:Date.now(),sessionId:'debug-session',runId:'delete-1',hypothesisId:'D1'})}).catch(()=>{});
-      // #endregion
-
       // Delete ALL line-item transactions for this invoice (document_id) within this job.
       const txResponse = await fetch(`/api/categorization/jobs/${jobId}/transactions?documentId=${encodeURIComponent(documentId)}`, {
         method: "DELETE",
         credentials: "include",
       });
       
-      if (!txResponse.ok) {
-        // #region agent log
-        let bodyText = "";
-        try { bodyText = await txResponse.clone().text(); } catch {}
-        fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'apps/portal/components/categorization/TransactionReview.tsx:handleDelete:txFail',message:'Transaction delete failed',data:{transactionId,status:txResponse.status,statusText:txResponse.statusText,bodyText:bodyText.slice(0,500)},timestamp:Date.now(),sessionId:'debug-session',runId:'delete-1',hypothesisId:'D2'})}).catch(()=>{});
-        // #endregion
-        throw new Error("Failed to delete transaction");
+      if (!txResponse.ok) {        throw new Error("Failed to delete transaction");
       }
-
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'apps/portal/components/categorization/TransactionReview.tsx:handleDelete:txOk',message:'Transaction(s) delete ok',data:{transactionId,documentId,status:txResponse.status},timestamp:Date.now(),sessionId:'debug-session',runId:'delete-1',hypothesisId:'D2'})}).catch(()=>{});
-      // #endregion
-
       // Then delete the document
       const docResponse = await fetch(`/api/documents/${documentId}`, {
         method: "DELETE",
         credentials: "include",
       });
       
-      if (!docResponse.ok) {
-        // #region agent log
-        let bodyText = "";
-        try { bodyText = await docResponse.clone().text(); } catch {}
-        fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'apps/portal/components/categorization/TransactionReview.tsx:handleDelete:docFail',message:'Document delete failed (tx deleted already)',data:{documentId,status:docResponse.status,statusText:docResponse.statusText,bodyText:bodyText.slice(0,500)},timestamp:Date.now(),sessionId:'debug-session',runId:'delete-1',hypothesisId:'D3'})}).catch(()=>{});
-        // #endregion
-        console.warn("Failed to delete document, transaction was deleted");
+      if (!docResponse.ok) {        console.warn("Failed to delete document, transaction was deleted");
       }
-
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'apps/portal/components/categorization/TransactionReview.tsx:handleDelete:docOk',message:'Document delete ok',data:{documentId,status:docResponse.status},timestamp:Date.now(),sessionId:'debug-session',runId:'delete-1',hypothesisId:'D3'})}).catch(()=>{});
-      // #endregion
-
       await loadTransactions();
     } catch (err: any) {
       setError(err.message);
@@ -377,10 +352,10 @@ export default function TransactionReview({ jobId }: TransactionReviewProps) {
     return (
       <div className="flex flex-col items-center justify-center py-12">
         <p className="text-gray-600 dark:text-gray-400">
-          No invoices found for this review job.
+          No transactions found for this review job.
         </p>
         <p className="text-sm text-gray-500 dark:text-gray-500 mt-2">
-          If you just uploaded, give it a moment and refresh. If you deleted the last invoice, this is expected.
+          If you just uploaded, give it a moment and refresh. Processing may still be in progress.
         </p>
       </div>
     );
@@ -393,7 +368,44 @@ export default function TransactionReview({ jobId }: TransactionReviewProps) {
     return sum + amt;
   }, 0);
 
+  // Check if transactions are bank statement transactions (no documents) or invoice transactions (with documents)
+  const hasDocuments = transactions.some((tx) => tx.document_id && tx.document);
+  const isBankStatementJob = transactions.length > 0 && !hasDocuments;
+
+  const handleEditCategory = async (transactionId: string, category: string) => {
+    try {
+      const response = await fetch(`/api/categorization/transactions/${transactionId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ category }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || "Failed to update category");
+      }
+
+      await loadTransactions();
+    } catch (err: any) {
+      setError(err.message);
+    }
+  };
+
   const renderView = () => {
+    // For bank statement jobs (transactions without documents), use dedicated view
+    if (isBankStatementJob) {
+      return (
+        <BankStatementTableView
+          transactions={transactions}
+          onConfirm={handleConfirm}
+          onEditCategory={handleEditCategory}
+          onEditingChange={setIsEditing}
+        />
+      );
+    }
+
+    // For invoice jobs (transactions with documents), use invoice views
     const commonProps = {
       transactions,
       documentUrls,

@@ -103,11 +103,6 @@ export async function DELETE(
   try {
     const supabase = await createClient();
     const { data: { user }, error: authError } = await supabase.auth.getUser();
-
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'apps/portal/app/api/categorization/transactions/[id]/route.ts:delete:auth',message:'DELETE transaction auth check',data:{hasUser:!!user,hasAuthError:!!authError,authErrorMessage:authError?.message},timestamp:Date.now(),sessionId:'debug-session',runId:'delete-1',hypothesisId:'D1'})}).catch(()=>{});
-    // #endregion
-
     if (authError || !user) {
       return NextResponse.json(
         { error: "Unauthorized" },
@@ -123,11 +118,6 @@ export async function DELETE(
       .select("job_id")
       .eq("id", id)
       .single();
-
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'apps/portal/app/api/categorization/transactions/[id]/route.ts:delete:txLookup',message:'DELETE transaction lookup',data:{transactionId:id,hasTx:!!transaction,txErrorMessage:txError?.message,jobId:transaction?.job_id},timestamp:Date.now(),sessionId:'debug-session',runId:'delete-1',hypothesisId:'D2'})}).catch(()=>{});
-    // #endregion
-
     if (txError || !transaction) {
       return NextResponse.json(
         { error: "Transaction not found" },
@@ -142,11 +132,6 @@ export async function DELETE(
       .eq("id", transaction.job_id)
       .eq("user_id", user.id)
       .single();
-
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'apps/portal/app/api/categorization/transactions/[id]/route.ts:delete:jobCheck',message:'DELETE transaction job ownership check',data:{transactionId:id,jobId:transaction?.job_id,hasJob:!!job,jobErrorMessage:jobError?.message},timestamp:Date.now(),sessionId:'debug-session',runId:'delete-1',hypothesisId:'D2'})}).catch(()=>{});
-    // #endregion
-
     if (jobError || !job) {
       return NextResponse.json(
         { error: "Transaction not found" },
@@ -159,11 +144,6 @@ export async function DELETE(
       .from("categorized_transactions")
       .delete()
       .eq("id", id);
-
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'apps/portal/app/api/categorization/transactions/[id]/route.ts:delete:deleteResult',message:'DELETE transaction result',data:{transactionId:id,hasDeleteError:!!deleteError,deleteErrorMessage:deleteError?.message,code:(deleteError as any)?.code,details:(deleteError as any)?.details,hint:(deleteError as any)?.hint},timestamp:Date.now(),sessionId:'debug-session',runId:'delete-1',hypothesisId:'D3'})}).catch(()=>{});
-    // #endregion
-
     if (deleteError) {
       return NextResponse.json(
         { error: "Failed to delete transaction" },

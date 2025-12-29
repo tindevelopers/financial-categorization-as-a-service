@@ -110,12 +110,10 @@ export async function GET(request: NextRequest) {
     // Get financial documents for these jobs to include storage info
     const jobIds = jobs?.map(j => j.id) || [];
     let documents = null;
-    if (jobIds.length > 0) {
-      const { data: docs } = await supabase
+    if (jobIds.length > 0) {      const { data: docs } = await supabase
         .from("financial_documents")
-        .select("job_id, storage_tier, archived_at, file_size_bytes")
-        .in("job_id", jobIds);
-      documents = docs;
+        .select("job_id, storage_tier, archived_at, file_size_bytes, file_type")
+        .in("job_id", jobIds);      documents = docs;
     }
 
     // Create a map of job_id -> document info
@@ -134,9 +132,11 @@ export async function GET(request: NextRequest) {
       const jobDocs = docMap.get(job.id) || [];
       const storageTiers = jobDocs.map((d: any) => d.storage_tier);
       const totalSize = jobDocs.reduce((sum: number, d: any) => sum + (d.file_size_bytes || 0), 0);
-      
+      // Get file_type from first document (most jobs have one document)
+      const fileType = jobDocs.length > 0 ? jobDocs[0].file_type : null;      
       return {
         ...job,
+        file_type: fileType, // Include file_type from financial_documents
         storage_info: {
           tier: storageTiers.includes("archive") ? "archive" : 
                 storageTiers.includes("restoring") ? "restoring" : "hot",

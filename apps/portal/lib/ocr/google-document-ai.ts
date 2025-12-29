@@ -144,17 +144,9 @@ export async function processInvoiceOCR(
   filename: string
 ): Promise<InvoiceData> {
   // Verify OCR source configuration
-  const verification = verifyOCRSource();
-  // #region agent log
-  fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'google-document-ai.ts:87',message:'OCR processing started',data:{filename,configured:verification.configured,hasProjectId:verification.hasProjectId,hasProcessorId:verification.hasProcessorId,hasCredentials:verification.hasCredentials,error:verification.error},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H3'})}).catch(()=>{});
-  // #endregion
-  
+  const verification = verifyOCRSource();  
   if (!verification.configured) {
-    console.warn("[DocumentAI] OCR not configured:", verification.error);
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'google-document-ai.ts:90',message:'OCR not configured, returning empty',data:{filename,error:verification.error},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H3'})}).catch(()=>{});
-    // #endregion
-    // Return basic structure with ocr_configured flag if Document AI not configured
+    console.warn("[DocumentAI] OCR not configured:", verification.error);    // Return basic structure with ocr_configured flag if Document AI not configured
     return {
       extracted_text: "",
       confidence_score: 0,
@@ -1587,30 +1579,7 @@ function parseInvoiceData(document: any): InvoiceData {
 
     if (sumMatches && looksSwapped) {
       data.subtotal = tax;
-      data.tax = subtotal;
-
-      // #region agent log
-      fetch("http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          location: "apps/portal/lib/ocr/google-document-ai.ts:vatSanity:swap",
-          message: "Swapped subtotal and tax after sanity check",
-          data: {
-            invoiceNumber: (data.invoice_number || "").toString().slice(0, 40),
-            total,
-            prevSubtotal: subtotal,
-            prevTax: tax,
-            ratio,
-          },
-          timestamp: Date.now(),
-          sessionId: "debug-session",
-          runId: "run1",
-          hypothesisId: "VAT1",
-        }),
-      }).catch(() => {});
-      // #endregion
-    }
+      data.tax = subtotal;    }
   }
 
   // Debug logging for extraction diagnostics
@@ -1645,12 +1614,7 @@ function parseInvoiceData(document: any): InvoiceData {
       hasTables: !!(document.pages && document.pages[0]?.tables),
       tablesCount: document.pages?.[0]?.tables?.length || 0,
     });
-  }
-  
-  // #region agent log
-  fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'google-document-ai.ts:308',message:'OCR processing completed',data:extractionSummary,timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H3'})}).catch(()=>{});
-  // #endregion
-  return data;
+  }  return data;
 }
 
 /**
@@ -1796,22 +1760,6 @@ function parseAmount(value: string | undefined): number | undefined {
     const implied = `${cleaned.slice(0, -2)}.${cleaned.slice(-2)}`;
     const impliedAmount = parseFloat(implied);
     if (!isNaN(impliedAmount) && Math.abs(impliedAmount) <= MAX_REASONABLE_AMOUNT) {
-      // #region agent log
-      fetch("http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          location: "apps/portal/lib/ocr/google-document-ai.ts:parseAmount:impliedCents",
-          message: "Applied implied-cents heuristic for digit-only amount",
-          data: { original: originalTrimmed.slice(0, 60), cleaned, implied, impliedAmount },
-          timestamp: Date.now(),
-          sessionId: "debug-session",
-          runId: "run1",
-          hypothesisId: "AMT1",
-        }),
-      }).catch(() => {});
-      // #endregion
-
       cleaned = implied;
     }
   }

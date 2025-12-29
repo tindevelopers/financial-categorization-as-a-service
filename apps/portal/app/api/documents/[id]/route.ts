@@ -108,30 +108,6 @@ export async function PATCH(
       const errMsg = String(error.message || "");
       const match = errMsg.match(/financial_documents\.([a-zA-Z0-9_]+)/);
       const missingCol = match?.[1];
-
-      // #region agent log
-      fetch("http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          location: "apps/portal/app/api/documents/[id]/route.ts:patchRetry",
-          message: "Document PATCH failed; considering retry without missing column",
-          data: {
-            documentId: id,
-            attempt,
-            code: (error as any)?.code,
-            errorMessage: error.message,
-            missingCol,
-            updateKeys: Object.keys(pendingUpdates),
-          },
-          timestamp: Date.now(),
-          sessionId: "debug-session",
-          runId: "delete-1",
-          hypothesisId: "D3",
-        }),
-      }).catch(() => {});
-      // #endregion
-
       if ((error as any)?.code === "42703" && missingCol && pendingUpdates[missingCol] !== undefined) {
         const next = { ...pendingUpdates };
         delete next[missingCol];
@@ -169,23 +145,6 @@ export async function DELETE(
     if (authError || !user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
-
-    // #region agent log
-    fetch("http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        location: "apps/portal/app/api/documents/[id]/route.ts:delete:entry",
-        message: "DELETE document called",
-        data: { documentId: id, userId: `${user.id.slice(0, 8)}...` },
-        timestamp: Date.now(),
-        sessionId: "debug-session",
-        runId: "delete-1",
-        hypothesisId: "D3",
-      }),
-    }).catch(() => {});
-    // #endregion
-
     // Soft delete so download route respects it (download route checks is_deleted)
     const { error } = await supabase
       .from("financial_documents")
@@ -194,44 +153,11 @@ export async function DELETE(
       .eq("user_id", user.id);
 
     if (error) {
-      // #region agent log
-      fetch("http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          location: "apps/portal/app/api/documents/[id]/route.ts:delete:error",
-          message: "DELETE document failed",
-          data: { documentId: id, errorMessage: error.message, code: (error as any)?.code },
-          timestamp: Date.now(),
-          sessionId: "debug-session",
-          runId: "delete-1",
-          hypothesisId: "D3",
-        }),
-      }).catch(() => {});
-      // #endregion
-
       return NextResponse.json(
         { error: "Failed to delete document", details: error.message },
         { status: 500 }
       );
     }
-
-    // #region agent log
-    fetch("http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        location: "apps/portal/app/api/documents/[id]/route.ts:delete:ok",
-        message: "DELETE document ok",
-        data: { documentId: id },
-        timestamp: Date.now(),
-        sessionId: "debug-session",
-        runId: "delete-1",
-        hypothesisId: "D3",
-      }),
-    }).catch(() => {});
-    // #endregion
-
     return NextResponse.json({ success: true, message: "Document deleted" });
   } catch (error: any) {
     return NextResponse.json(

@@ -6,12 +6,23 @@ import { getUserOAuthTokens, createOAuthSheetsClient } from "@/lib/google-sheets
 import { detectUserAccountType, getRecommendedAuthMethod } from "@/lib/google-sheets/user-preference";
 import { VercelCredentialManager } from "@/lib/credentials/VercelCredentialManager";
 import { getWorkspaceAdminInfo, createWorkspaceAdminSheetsClient } from "@/lib/google-sheets/workspace-admin";
+import { 
+  getOrCreateMasterSpreadsheet, 
+  getExistingFingerprints, 
+  addUploadTab, 
+  appendFingerprints, 
+  rebuildAllTransactionsTab,
+  generateTabName,
+  findExistingJobTab,
+  syncUploadTab,
+  TransactionRow,
+} from "@/lib/google-sheets/master-spreadsheet";
 
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ jobId: string }> }
 ) {
-  try {
+  const reqId = Math.random().toString(36).substring(7);  try {
     const supabase = await createClient();
     const { data: { user }, error: authError } = await supabase.auth.getUser();
 
@@ -85,6 +96,15 @@ export async function POST(
       .single();
     
     const tenantId = userData?.tenant_id || null;
+
+    // Check for company shared drive configuration
+    const { data: companyProfile } = await supabase
+      .from("company_profiles")
+      .select("id, google_shared_drive_id, google_shared_drive_name, google_master_spreadsheet_id, google_master_spreadsheet_name")
+      .eq("user_id", user.id)
+      .single();
+    
+    const hasSharedDriveConfig = !!companyProfile?.google_shared_drive_id;
     
     // Check for Google authentication credentials using credential manager
     // Priority: Workspace Admin > Service Account > User OAuth
@@ -96,8 +116,7 @@ export async function POST(
     
     // Option A: Corporate/Company level - Service Account
     const serviceAccountCreds = await credentialManager.getBestGoogleServiceAccount(tenantId || undefined);
-    const hasServiceAccount = !!serviceAccountCreds;
-    
+    const hasServiceAccount = !!serviceAccountCreds;    
     // Option B: Individual level - OAuth (tenant-specific or platform-level)
     const tenantOAuthCreds = tenantId 
       ? await credentialManager.getBestGoogleOAuth(tenantId)
@@ -106,9 +125,10 @@ export async function POST(
     const hasOAuthCredentials = !!(tenantOAuthCreds || platformOAuthCreds);
 
     // Try to get user's OAuth tokens (Option B) using helper module
-    // Use tenant-specific OAuth credentials if available, otherwise platform credentials
+    // ALWAYS try to get user OAuth tokens - they take priority over service account
+    // because service accounts may lack permissions to create spreadsheets
     let userOAuthTokens = null;
-    if (!hasServiceAccount && hasOAuthCredentials) {
+    if (hasOAuthCredentials) {
       try {
         userOAuthTokens = await getUserOAuthTokens(user.id);
         if (userOAuthTokens) {
@@ -116,6 +136,7 @@ export async function POST(
             usingTenantCredentials: !!tenantOAuthCreds,
             tenantId: tenantId || "none",
             isWorkspaceAdmin,
+            hasServiceAccount,
           });
         }
       } catch (error: any) {
@@ -250,50 +271,33 @@ export async function POST(
     let sheets: ReturnType<typeof google.sheets>;
     
     try {
-      // Priority 1: Try Workspace Admin with domain-wide delegation
-      if (isWorkspaceAdmin && hasServiceAccount) {
+      // Priority 1: Try Workspace Admin with domain-wide delegation      if (isWorkspaceAdmin && hasServiceAccount) {
         console.log("Google Sheets export: Attempting Workspace Admin with domain-wide delegation", {
           workspaceDomain: workspaceAdminInfo?.workspaceDomain,
         });
         
         try {
-          const workspaceClient = await createWorkspaceAdminSheetsClient(user.id);
-          if (workspaceClient) {
+          const workspaceClient = await createWorkspaceAdminSheetsClient(user.id);          if (workspaceClient) {
             sheets = workspaceClient.sheets;
             auth = workspaceClient.auth;
-            authMethod = "workspace_admin";
-            console.log("Google Sheets export: Using Workspace Admin account");
+            authMethod = "workspace_admin";            console.log("Google Sheets export: Using Workspace Admin account");
           } else {
-            console.warn("Google Sheets export: Workspace Admin client creation failed, falling back to service account");
+            console.warn("Google Sheets export: Workspace Admin client creation failed, falling back");
             throw new Error("Workspace admin client creation failed");
           }
-        } catch (workspaceError: any) {
-          console.warn("Google Sheets export: Workspace Admin failed, falling back:", workspaceError.message);
-          // Fall through to service account
+        } catch (workspaceError: any) {          console.warn("Google Sheets export: Workspace Admin failed, falling back:", workspaceError.message);
+          // Fall through to next priority
         }
       }
       
-      // Priority 2: Use service account (corporate/company-level)
-      if (!auth && hasServiceAccount) {
-        console.log("Google Sheets export: Using service account (Option A)");
-        auth = new google.auth.GoogleAuth({
-          credentials: {
-            client_email: serviceAccountCreds!.email,
-            private_key: serviceAccountCreds!.privateKey.replace(/\\n/g, "\n"),
-          },
-          scopes: ["https://www.googleapis.com/auth/spreadsheets"],
-        });
-        authMethod = "service_account";
-        sheets = google.sheets({ version: "v4", auth });
-      } else if (!auth && userOAuthTokens) {
-        // Priority 3: Use user OAuth tokens (individual-level) via helper module
-        console.log("Google Sheets export: Using user OAuth (Option B)");
-        try {
+      // Priority 2: Use user OAuth tokens (individual-level) - PREFERRED over service account
+      // because service accounts often lack permissions to create spreadsheets without domain-wide delegation
+      if (!auth && userOAuthTokens) {
+        console.log("Google Sheets export: Using user OAuth (Option B - preferred)");        try {
           const { auth: oauthAuth, sheets: oauthSheets } = await createOAuthSheetsClient(user.id);
           auth = oauthAuth;
           sheets = oauthSheets;
-          authMethod = "oauth";
-        } catch (oauthError: any) {
+          authMethod = "oauth";        } catch (oauthError: any) {
           // Enhanced error handling with guidance
           const errorMessage = oauthError.message || "Failed to authenticate with Google";
           const requiresReconnect = errorMessage.includes("reconnect") || errorMessage.includes("expired");
@@ -311,9 +315,24 @@ export async function POST(
             { status: 401 }
           );
         }
-      } else {
-        // This should never happen due to check above, but TypeScript needs it
-        return NextResponse.json(
+      } else if (!auth && hasServiceAccount) {
+        // Priority 3: Use service account (corporate/company-level) - fallback only
+        console.log("Google Sheets export: Using service account (Option A - fallback)");        auth = new google.auth.GoogleAuth({
+          credentials: {
+            client_email: serviceAccountCreds!.email,
+            private_key: serviceAccountCreds!.privateKey.replace(/\\n/g, "\n"),
+          },
+          // Need both scopes: spreadsheets for editing, drive.file for creating new spreadsheets
+          scopes: [
+            "https://www.googleapis.com/auth/spreadsheets",
+            "https://www.googleapis.com/auth/drive.file",
+          ],
+        });
+        authMethod = "service_account";
+        sheets = google.sheets({ version: "v4", auth });      }
+      
+      // Final check: if no auth method succeeded, return error
+      if (!auth) {        return NextResponse.json(
           {
             error: "No Google authentication method available",
             error_code: "NO_AUTH_METHOD",
@@ -349,6 +368,154 @@ export async function POST(
     if (!sheets) {
       sheets = google.sheets({ version: "v4", auth });
     }
+
+    // ========== SHARED DRIVE EXPORT PATH ==========
+    // If company has shared drive configured, use master spreadsheet with tabs
+    if (hasSharedDriveConfig && companyProfile?.google_shared_drive_id) {
+      console.log("Google Sheets export: Using Shared Drive mode", {
+        driveId: companyProfile.google_shared_drive_id,
+        driveName: companyProfile.google_shared_drive_name,
+        existingSpreadsheetId: companyProfile.google_master_spreadsheet_id,
+      });
+
+      try {
+        // Get or create master spreadsheet in shared drive
+        const masterConfig = await getOrCreateMasterSpreadsheet(
+          auth,
+          companyProfile.google_shared_drive_id,
+          companyProfile.google_master_spreadsheet_id,
+          companyProfile.google_master_spreadsheet_name || undefined
+        );
+
+        // Update company profile with spreadsheet ID if it was newly created
+        if (masterConfig.spreadsheetId !== companyProfile.google_master_spreadsheet_id) {
+          await supabase
+            .from("company_profiles")
+            .update({
+              google_master_spreadsheet_id: masterConfig.spreadsheetId,
+              google_master_spreadsheet_name: masterConfig.spreadsheetName,
+            })
+            .eq("id", companyProfile.id);
+        }
+
+        // Generate fingerprint for each transaction
+        const transactionsWithFingerprints: TransactionRow[] = transactions
+          .map((tx: any) => {
+            // Create unique fingerprint from date + description + amount
+            const fingerprint = `${tx.date || ''}_${tx.original_description || ''}_${tx.amount || 0}`.toLowerCase().replace(/\s+/g, '_');
+            
+            return {
+              date: tx.date || '',
+              description: tx.original_description || '',
+              amount: tx.amount || 0,
+              category: tx.category || 'Uncategorized',
+              subcategory: tx.subcategory || '',
+              confidence: tx.confidence_score || 0,
+              status: tx.user_confirmed ? 'Confirmed' : 'Pending',
+              fingerprint,
+            };
+          });
+
+        // Check if a tab already exists for this job (sync mode)
+        const existingTab = await findExistingJobTab(auth, masterConfig.spreadsheetId, jobId);
+        
+        let finalTabName: string;
+        let rowCount: number;
+        let isSyncUpdate = false;
+
+        if (existingTab) {
+          // Sync/update existing tab
+          console.log(`Google Sheets export: Found existing tab "${existingTab.tabName}" for job ${jobId}, syncing...`);
+          isSyncUpdate = true;
+          
+          const result = await syncUploadTab(
+            auth,
+            masterConfig.spreadsheetId,
+            existingTab.tabName,
+            existingTab.sheetId,
+            transactionsWithFingerprints,
+            jobId
+          );
+          
+          finalTabName = existingTab.tabName;
+          rowCount = result.rowCount;
+        } else {
+          // Create new tab for this job
+          const tabName = generateTabName(
+            job.original_filename || `Upload_${jobId.substring(0, 8)}`,
+            new Date()
+          );
+
+          const result = await addUploadTab(
+            auth,
+            masterConfig.spreadsheetId,
+            tabName,
+            transactionsWithFingerprints,
+            jobId // Pass job ID for future sync lookups
+          );
+          
+          finalTabName = result.tabName;
+          rowCount = result.rowCount;
+
+          // Append fingerprints to tracking tab (only for new tabs)
+          const fingerprintRecords = transactionsWithFingerprints.map((tx, idx) => ({
+            fingerprint: tx.fingerprint,
+            tabName: finalTabName,
+            rowNumber: idx + 2, // +2 for 1-indexed and header row
+          }));
+          await appendFingerprints(auth, masterConfig.spreadsheetId, fingerprintRecords);
+        }
+
+        // Rebuild All Transactions tab
+        const { totalRows } = await rebuildAllTransactionsTab(auth, masterConfig.spreadsheetId);
+
+        // Store spreadsheet_id in job record for reference
+        await supabase
+          .from("categorization_jobs")
+          .update({ spreadsheet_id: masterConfig.spreadsheetId })
+          .eq("id", jobId)
+          .eq("user_id", user.id);
+
+        console.log(`Google Sheets export: Shared Drive export complete. Tab: ${finalTabName}, Rows: ${rowCount}, Total: ${totalRows}, Sync: ${isSyncUpdate}`);
+
+        return NextResponse.json({
+          success: true,
+          sheetUrl: `https://docs.google.com/spreadsheets/d/${masterConfig.spreadsheetId}`,
+          spreadsheetId: masterConfig.spreadsheetId,
+          message: isSyncUpdate 
+            ? `Synced ${rowCount} transaction(s) to existing "${finalTabName}" tab.`
+            : `Created "${finalTabName}" tab with ${rowCount} transaction(s).`,
+          isNewSheet: false,
+          isSyncUpdate,
+          tabName: finalTabName,
+          rowsAppended: rowCount,
+          totalTransactions: totalRows,
+          authMethod,
+          exportMode: "shared_drive",
+        });
+
+      } catch (sharedDriveError: any) {
+        console.error("Google Sheets export: Shared Drive export failed:", sharedDriveError);
+        
+        // Check if it's a permission error
+        if (sharedDriveError.code === 403) {
+          return NextResponse.json({
+            error: "Permission denied accessing Shared Drive",
+            error_code: "SHARED_DRIVE_PERMISSION_DENIED",
+            guidance: "Please ensure the service account has Manager access to the Shared Drive configured in Company Setup.",
+            helpUrl: "/dashboard/setup",
+          }, { status: 403 });
+        }
+
+        return NextResponse.json({
+          error: `Shared Drive export failed: ${sharedDriveError.message}`,
+          error_code: "SHARED_DRIVE_ERROR",
+          guidance: "You can try removing the Shared Drive configuration in Company Setup to use personal Drive instead.",
+          helpUrl: "/dashboard/setup",
+        }, { status: 500 });
+      }
+    }
+    // ========== END SHARED DRIVE EXPORT PATH ==========
 
     // Check if job already has a spreadsheet_id
     let spreadsheetId: string | null = null;
@@ -410,8 +577,7 @@ export async function POST(
           },
         });
       } catch (createError: any) {
-        console.error("Google Sheets export: Failed to create spreadsheet:", createError);
-        
+        console.error("Google Sheets export: Failed to create spreadsheet:", createError);        
         // Enhanced error handling based on error type
         const errorCode = createError.code || "UNKNOWN_ERROR";
         const isPermissionError = errorCode === 403 || createError.message?.includes("permission");
@@ -424,8 +590,8 @@ export async function POST(
           if (authMethod === "service_account") {
             errorMessage = "Service account does not have permission to create spreadsheets";
             guidance = accountType.isCorporate
-              ? "Corporate export requires domain-wide delegation setup. Please contact your Google Workspace administrator."
-              : "Service account needs proper permissions. Please contact your administrator.";
+              ? "The service account needs domain-wide delegation configured in Google Workspace Admin Console, or the Google Drive API may not be enabled. You can also connect your personal Google account as an alternative."
+              : "The service account lacks permissions. Please connect your personal Google account in Settings > Integrations > Google Sheets as an alternative.";
           } else {
             errorMessage = "Your Google account does not have permission to create spreadsheets";
             guidance = "Please ensure your Google account has permission to create Google Sheets, or try reconnecting in Settings > Integrations.";
@@ -441,7 +607,8 @@ export async function POST(
             error_code: isPermissionError ? "PERMISSION_DENIED" : isQuotaError ? "QUOTA_EXCEEDED" : "CREATE_ERROR",
             authMethod,
             guidance,
-            helpUrl: authMethod === "oauth" ? "/dashboard/integrations/google-sheets" : undefined,
+            helpUrl: "/dashboard/integrations/google-sheets",
+            fallbackAvailable: true,
           },
           { status: 500 }
         );
@@ -473,9 +640,10 @@ export async function POST(
       "Notes",
     ];
 
-    // Check if existing sheet has matching headers
+    // For existing sheets, we'll SYNC (replace all data) instead of appending
+    // This ensures the spreadsheet always reflects the current state of the job
     let shouldWriteHeaders = isNewSheet;
-    let startRow = 1; // 1-indexed for Google Sheets API
+    let isSyncUpdate = false;
     
     if (!isNewSheet && existingSheetData.length > 0) {
       const existingHeaders = existingSheetData[0];
@@ -487,10 +655,10 @@ export async function POST(
         );
       
       if (headersMatch) {
-        // Headers match, append data only
+        // Headers match, we'll sync (clear and replace data)
         shouldWriteHeaders = false;
-        startRow = lastRowWithData + 1; // Append after last row
-        console.log(`Google Sheets export: Headers match, appending to row ${startRow}`);
+        isSyncUpdate = true;
+        console.log(`Google Sheets export: Headers match, syncing data (replacing existing)`);
       } else {
         // Headers don't match - this is a problem
         console.warn("Google Sheets export: Existing sheet headers don't match expected format");
@@ -508,8 +676,22 @@ export async function POST(
     } else if (!isNewSheet && existingSheetData.length === 0) {
       // Sheet exists but is empty, write headers + data
       shouldWriteHeaders = true;
-      startRow = 1;
       console.log("Google Sheets export: Sheet exists but is empty, writing headers + data");
+    }
+
+    // If syncing, clear existing data first (keep header row)
+    if (isSyncUpdate && spreadsheetId) {
+      try {
+        // Clear all data from row 2 onwards
+        await sheets.spreadsheets.values.clear({
+          spreadsheetId,
+          range: "Sheet1!A2:Z10000",
+        });
+        console.log("Google Sheets export: Cleared existing data for sync");
+      } catch (clearError: any) {
+        console.warn("Google Sheets export: Could not clear existing data:", clearError.message);
+        // Continue anyway - overwrite will work
+      }
     }
 
     // Prepare transaction data rows
@@ -549,6 +731,8 @@ export async function POST(
     });
 
     // Prepare values to write
+    // For sync updates, we cleared the data but keep headers, so write from row 2
+    // For new sheets, write headers + data from row 1
     const values = shouldWriteHeaders 
       ? [expectedHeaders, ...transactionRows]
       : transactionRows;
@@ -561,7 +745,8 @@ export async function POST(
       );
     }
 
-    // Determine range based on start row
+    // Determine range: new sheet starts at row 1, sync updates start at row 2
+    const startRow = shouldWriteHeaders ? 1 : 2;
     const range = `Sheet1!A${startRow}`;
 
     // Write data to sheet
@@ -684,7 +869,7 @@ export async function POST(
 
     const sheetUrl = `https://docs.google.com/spreadsheets/d/${spreadsheetId}`;
 
-    console.log(`Google Sheets export: Export completed successfully using ${authMethod === "service_account" ? "service account (Option A - Corporate)" : "user OAuth (Option B - Individual)"}`);
+    console.log(`Google Sheets export: Export completed successfully using ${authMethod === "service_account" ? "service account (Option A - Corporate)" : "user OAuth (Option B - Individual)"}, sync=${isSyncUpdate}`);
 
     return NextResponse.json({
       success: true,
@@ -692,9 +877,12 @@ export async function POST(
       spreadsheetId,
       message: isNewSheet 
         ? "Google Sheet created successfully" 
-        : `Successfully appended ${transactionRows.length} transaction(s) to existing Google Sheet`,
+        : isSyncUpdate
+          ? `Successfully synced ${transactionRows.length} transaction(s) to existing Google Sheet`
+          : `Successfully updated Google Sheet with ${transactionRows.length} transaction(s)`,
       isNewSheet,
-      rowsAppended: transactionRows.length,
+      isSyncUpdate,
+      rowsWritten: transactionRows.length,
       authMethod, // Include which method was used for debugging
     });
   } catch (error: any) {

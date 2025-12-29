@@ -84,11 +84,7 @@ export async function GET(request: NextRequest) {
     
     const authUrl = new URL("https://accounts.google.com/o/oauth2/v2/auth");
     const clientIdForAuth = oauthCreds.clientId?.trim();
-    const redirectUriForAuth = redirectUriToUse.trim();
-    // #region agent log - Check values being sent to Google OAuth
-    fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'apps/portal/app/api/integrations/google-sheets/connect/route.ts:authUrl:before',message:'Values being sent to Google OAuth',data:{clientIdForAuth,clientIdLength:clientIdForAuth?.length,clientIdHasTrailingWs:clientIdForAuth?.[clientIdForAuth.length-1]===' '||clientIdForAuth?.[clientIdForAuth.length-1]==='\n',redirectUriForAuth,redirectUriLength:redirectUriForAuth.length,redirectUriHasTrailingWs:redirectUriForAuth[redirectUriForAuth.length-1]===' '||redirectUriForAuth[redirectUriForAuth.length-1]==='\n',hasNewlineInMiddle:redirectUriForAuth.includes('\n')},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'F'})}).catch(()=>{});
-    // #endregion
-    authUrl.searchParams.set("client_id", clientIdForAuth);
+    const redirectUriForAuth = redirectUriToUse.trim();    authUrl.searchParams.set("client_id", clientIdForAuth);
     authUrl.searchParams.set("redirect_uri", redirectUriForAuth);
     authUrl.searchParams.set("response_type", "code");
     authUrl.searchParams.set("scope", [

@@ -9,13 +9,7 @@ export default function AuthLayout({
   children,
 }: {
   children: React.ReactNode;
-}) {
-  // #region agent log
-  try {
-    fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'layout.tsx:14',message:'AuthLayout rendering',data:{hasChildren:!!children,env:typeof window==='undefined'?'server':'client'},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'A,B,E'})}).catch(()=>{});
-  } catch {}
-  // #endregion
-  
+}) {  
   try {
     return (
       <div className="relative p-6 bg-white z-1 dark:bg-gray-900 sm:p-0">
@@ -48,12 +42,6 @@ export default function AuthLayout({
         </ThemeProvider>
       </div>
     );
-  } catch (error) {
-    // #region agent log
-    try {
-      fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'layout.tsx:50',message:'AuthLayout error',data:{error:String(error),stack:error instanceof Error?error.stack:undefined},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'A,B,E'})}).catch(()=>{});
-    } catch {}
-    // #endregion
-    throw error;
+  } catch (error) {    throw error;
   }
 }

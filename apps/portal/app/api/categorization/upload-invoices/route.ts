@@ -214,11 +214,7 @@ export async function POST(request: NextRequest) {
       : (fileCount > 1 ? "async" : "sync"); // Async for multiple invoices, sync for single
 
     // Create categorization job
-    const jobTypeValue = fileCount === 1 ? "receipt" : "batch_receipt";
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'upload-invoices/route.ts:222',message:'About to insert job with job_type',data:{jobType:jobTypeValue,fileCount,effectiveBankAccountId:effectiveBankAccountId?.substring(0,8)+'...'},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H1'})}).catch(()=>{});
-    // #endregion
-    const { data: jobData, error: jobError } = await supabase
+    const jobTypeValue = fileCount === 1 ? "receipt" : "batch_receipt";    const { data: jobData, error: jobError } = await supabase
       .from("categorization_jobs")
       .insert({
         user_id: user.id,
@@ -235,11 +231,7 @@ export async function POST(request: NextRequest) {
       .select()
       .single();
 
-    if (jobError) {
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'upload-invoices/route.ts:234',message:'Job creation error details',data:{errorCode:jobError.code,errorMessage:jobError.message,jobTypeAttempted:jobTypeValue},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H1'})}).catch(()=>{});
-      // #endregion
-      console.error("Job creation error:", jobError);
+    if (jobError) {      console.error("Job creation error:", jobError);
       const errorCode = mapErrorToCode(jobError);
       const errorResponse = createJobErrorResponse(errorCode, jobError.message);
       return NextResponse.json(
@@ -302,11 +294,7 @@ export async function POST(request: NextRequest) {
       })
       .eq("id", jobData.id);
 
-    // Queue for async processing (Vercel Background Functions)
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'upload-invoices/route.ts:306',message:'About to trigger background processing',data:{jobId:jobData.id,origin:request.nextUrl.origin},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H1'})}).catch(()=>{});
-    // #endregion
-    try {
+    // Queue for async processing (Vercel Background Functions)    try {
       const bgResponse = await fetch(`${request.nextUrl.origin}/api/background/process-invoices`, {
         method: "POST",
         headers: {
@@ -314,22 +302,10 @@ export async function POST(request: NextRequest) {
           Cookie: request.headers.get("cookie") || "",
         },
         body: JSON.stringify({ jobId: jobData.id }),
-      });
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'upload-invoices/route.ts:314',message:'Background processing fetch response',data:{jobId:jobData.id,status:bgResponse.status,ok:bgResponse.ok},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H1'})}).catch(()=>{});
-      // #endregion
-      if (!bgResponse.ok) {
-        const errorText = await bgResponse.text().catch(() => 'Unknown error');
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'upload-invoices/route.ts:318',message:'Background processing fetch failed',data:{jobId:jobData.id,status:bgResponse.status,errorText},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H1'})}).catch(()=>{});
-        // #endregion
-        console.error("Failed to queue background processing:", bgResponse.status, errorText);
+      });      if (!bgResponse.ok) {
+        const errorText = await bgResponse.text().catch(() => 'Unknown error');        console.error("Failed to queue background processing:", bgResponse.status, errorText);
       }
-    } catch (processError: any) {
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'upload-invoices/route.ts:323',message:'Background processing fetch exception',data:{jobId:jobData.id,errorMessage:processError?.message,errorStack:processError?.stack?.substring(0,200)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H1'})}).catch(()=>{});
-      // #endregion
-      console.error("Failed to queue background processing:", processError);
+    } catch (processError: any) {      console.error("Failed to queue background processing:", processError);
     }
 
     return NextResponse.json({

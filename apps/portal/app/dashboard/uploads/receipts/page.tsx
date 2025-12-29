@@ -1,11 +1,22 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { createBrowserClient } from '@supabase/ssr'
 import { Heading, Text, Button } from '@/components/catalyst'
 import Link from 'next/link'
-import { ChevronLeftIcon, DocumentIcon, ArrowUpTrayIcon, CheckCircleIcon, XCircleIcon } from '@heroicons/react/24/outline'
+import { 
+  ChevronLeftIcon,
+  ArrowPathIcon,
+  TrashIcon,
+  CheckCircleIcon,
+  ClockIcon,
+  ExclamationTriangleIcon,
+  DocumentTextIcon,
+  ArrowUpTrayIcon,
+  DocumentIcon,
+  XCircleIcon
+} from '@heroicons/react/24/outline'
 import { useDropzone } from 'react-dropzone'
 
 interface BankAccount {
@@ -16,8 +27,65 @@ interface BankAccount {
   default_spreadsheet_id: string | null
 }
 
-export default function ReceiptsUploadPage() {
+interface Invoice {
+  id: string
+  original_filename: string
+  status: string
+  status_message?: string
+  created_at: string
+  job_type: string
+  file_type?: string | null
+  total_items?: number
+  processed_items?: number
+  failed_items?: number
+  error_code?: string
+  error_message?: string
+}
+
+function getStatusIcon(status: string) {
+  switch (status) {
+    case 'completed':
+    case 'reviewing':
+      return <CheckCircleIcon className="h-5 w-5 text-green-500" />
+    case 'processing':
+    case 'queued':
+    case 'received':
+      return <ClockIcon className="h-5 w-5 text-yellow-500 animate-pulse" />
+    case 'failed':
+      return <ExclamationTriangleIcon className="h-5 w-5 text-red-500" />
+    default:
+      return <DocumentTextIcon className="h-5 w-5 text-gray-400" />
+  }
+}
+
+function getStatusLabel(status: string, statusMessage?: string) {
+  switch (status) {
+    case 'completed':
+      return { text: 'Completed', color: 'text-green-600 dark:text-green-400' }
+    case 'reviewing':
+      return { text: 'Ready for Review', color: 'text-green-600 dark:text-green-400' }
+    case 'processing':
+      return { text: statusMessage || 'Processing...', color: 'text-yellow-600 dark:text-yellow-400' }
+    case 'queued':
+      return { text: 'Queued', color: 'text-yellow-600 dark:text-yellow-400' }
+    case 'received':
+      return { text: 'Received', color: 'text-blue-600 dark:text-blue-400' }
+    case 'failed':
+      return { text: 'Failed', color: 'text-red-600 dark:text-red-400' }
+    default:
+      return { text: status, color: 'text-gray-600 dark:text-gray-400' }
+  }
+}
+
+export default function InvoicesReceiptsPage() {
   const router = useRouter()
+  const [invoices, setInvoices] = useState<Invoice[]>([])
+  const [loading, setLoading] = useState(true)
+  const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [showUpload, setShowUpload] = useState(false)
+  const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null)
+
+  // Upload state
   const [files, setFiles] = useState<File[]>([])
   const [uploading, setUploading] = useState(false)
   const [progress, setProgress] = useState(0)
@@ -37,9 +105,7 @@ export default function ReceiptsUploadPage() {
         process.env.NEXT_PUBLIC_SUPABASE_URL!,
         process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
       )
-      const {
-        data: { user },
-      } = await supabase.auth.getUser()
+      const { data: { user } } = await supabase.auth.getUser()
 
       if (!user) {
         router.push('/signin')
@@ -86,16 +152,83 @@ export default function ReceiptsUploadPage() {
     }
   }
 
+  const fetchInvoices = async () => {
+    try {
+      const response = await fetch('/api/categorization/jobs?limit=50')
+      
+      if (!response.ok) {
+        throw new Error('Failed to fetch invoices')
+      }
+
+      const result = await response.json()
+      
+      // Filter for invoices/receipts only (file_type is 'invoice' or 'receipt' or job_type is 'invoice')
+      const invoiceJobs = (result.jobs || []).filter((job: Invoice) => 
+        job.file_type === 'invoice' || 
+        job.file_type === 'receipt' ||
+        job.job_type === 'invoice'
+      )
+      
+      setInvoices(invoiceJobs)
+    } catch (error: any) {
+      console.error('Error fetching invoices:', error)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    fetchInvoices()
+    
+    // Poll for updates every 3 seconds if there are processing jobs
+    pollingIntervalRef.current = setInterval(() => {
+      const hasProcessingJobs = invoices.some(inv => 
+        ['processing', 'queued', 'received'].includes(inv.status)
+      )
+      if (hasProcessingJobs) {
+        fetchInvoices()
+      }
+    }, 3000)
+
+    return () => {
+      if (pollingIntervalRef.current) {
+        clearInterval(pollingIntervalRef.current)
+      }
+    }
+  }, [])
+
+  const handleDelete = async (jobId: string) => {
+    if (!confirm('Are you sure you want to delete this invoice/receipt? This action cannot be undone.')) {
+      return
+    }
+    
+    setDeletingId(jobId)
+    try {
+      const response = await fetch(`/api/categorization/jobs/${jobId}`, {
+        method: 'DELETE',
+      })
+      
+      if (!response.ok) {
+        throw new Error('Failed to delete')
+      }
+      
+      setInvoices(prev => prev.filter(inv => inv.id !== jobId))
+    } catch (error: any) {
+      console.error('Error deleting:', error)
+      alert('Failed to delete')
+    } finally {
+      setDeletingId(null)
+    }
+  }
+
   const pollJobStatus = async (jobId: string) => {
-    const maxAttempts = 120 // 2 minutes max (1 second intervals)
+    const maxAttempts = 120
     let attempts = 0
 
     const poll = async () => {
       try {
         const response = await fetch(`/api/categorization/jobs/${jobId}`)
-        if (!response.ok) {
-          throw new Error('Failed to fetch job status')
-        }
+        if (!response.ok) throw new Error('Failed to fetch job status')
 
         const data = await response.json()
         const job = data.job
@@ -104,14 +237,10 @@ export default function ReceiptsUploadPage() {
           setJobStatus(job.status)
           setStatusMessage(job.status_message || job.error_message)
 
-          // Update progress based on status
           let newProgress = 0
-          if (job.status === 'received') {
-            newProgress = 10
-          } else if (job.status === 'queued') {
-            newProgress = 20
-          } else if (job.status === 'processing') {
-            // Calculate progress based on processed items
+          if (job.status === 'received') newProgress = 10
+          else if (job.status === 'queued') newProgress = 20
+          else if (job.status === 'processing') {
             const total = job.total_items || 1
             const processed = job.processed_items || 0
             const failed = job.failed_items || 0
@@ -119,28 +248,26 @@ export default function ReceiptsUploadPage() {
           } else if (job.status === 'reviewing' || job.status === 'completed') {
             newProgress = 100
             setUploading(false)
-            // Redirect after a short delay
-            setTimeout(() => {
-              window.location.href = '/dashboard/uploads'
-            }, 2000)
-            return // Stop polling
+            setFiles([])
+            setShowUpload(false)
+            fetchInvoices()
+            return
           } else if (job.status === 'failed') {
             newProgress = 100
             setUploading(false)
             setError(job.status_message || job.error_message || 'Processing failed')
-            return // Stop polling
+            return
           }
 
           setProgress(newProgress)
 
-          // Continue polling if not in final state
           if (!['reviewing', 'completed', 'failed'].includes(job.status)) {
             attempts++
             if (attempts < maxAttempts) {
-              setTimeout(poll, 1000) // Poll every second
+              setTimeout(poll, 1000)
             } else {
               setUploading(false)
-              setError('Processing is taking longer than expected. Please check the uploads page.')
+              setError('Processing is taking longer than expected.')
             }
           }
         }
@@ -151,7 +278,7 @@ export default function ReceiptsUploadPage() {
           setTimeout(poll, 1000)
         } else {
           setUploading(false)
-          setError('Failed to track processing status. Please check the uploads page.')
+          setError('Failed to track processing status.')
         }
       }
     }
@@ -160,7 +287,6 @@ export default function ReceiptsUploadPage() {
   }
 
   const onDrop = useCallback(async (acceptedFiles: File[]) => {
-    // Validate file types
     const validTypes = ['image/jpeg', 'image/png', 'image/jpg', 'application/pdf']
     
     const invalidFiles = acceptedFiles.filter(
@@ -172,8 +298,7 @@ export default function ReceiptsUploadPage() {
       return
     }
 
-    // Validate file sizes (max 10MB each)
-    const maxSize = 10 * 1024 * 1024 // 10MB
+    const maxSize = 10 * 1024 * 1024
     const oversizedFiles = acceptedFiles.filter(file => file.size > maxSize)
 
     if (oversizedFiles.length > 0) {
@@ -192,14 +317,13 @@ export default function ReceiptsUploadPage() {
     }
 
     if (!profileReady && !profileLoading) {
-      setError('Please complete your profile (individual/company name) before uploading.')
+      setError('Please complete your profile before uploading.')
       return
     }
 
-    // Bank account is optional - if selected, validate spreadsheet
     const selectedAccount = bankAccounts.find(acc => acc.id === selectedBankAccountId)
     if (selectedAccount && !selectedAccount.default_spreadsheet_id) {
-      setError('Please set a default spreadsheet for this bank account before uploading.')
+      setError('Please set a default spreadsheet for this bank account.')
       return
     }
 
@@ -213,7 +337,6 @@ export default function ReceiptsUploadPage() {
         formData.append(`file_${index}`, file)
       })
       formData.append('fileCount', files.length.toString())
-      // Bank account is optional - if not selected, backend will use suspense account
       if (selectedBankAccountId) {
         formData.append('bank_account_id', selectedBankAccountId)
       }
@@ -225,9 +348,7 @@ export default function ReceiptsUploadPage() {
 
       if (!response.ok) {
         const errorData = await response.json()
-        const error = new Error(errorData.error || errorData.message || 'Upload failed')
-        ;(error as any).data = errorData
-        throw error
+        throw new Error(errorData.error || 'Upload failed')
       }
 
       const data = await response.json()
@@ -236,7 +357,6 @@ export default function ReceiptsUploadPage() {
       setJobStatus(data.status || 'received')
       setStatusMessage(data.status_message || data.message)
       
-      // Start polling for job status
       if (data.jobId) {
         pollJobStatus(data.jobId)
       } else {
@@ -244,18 +364,8 @@ export default function ReceiptsUploadPage() {
         setProgress(100)
       }
     } catch (error: any) {
-      // Try to extract error message from response
-      let errorMessage = error.message || 'An error occurred during upload'
-      if (error.data) {
-        if (error.data.status_message) {
-          errorMessage = error.data.status_message
-        } else if (error.data.error) {
-          errorMessage = error.data.error
-        }
-      }
-      
       setUploading(false)
-      setError(errorMessage)
+      setError(error.message || 'An error occurred during upload')
     }
   }
 
@@ -272,43 +382,66 @@ export default function ReceiptsUploadPage() {
 
   return (
     <div className="space-y-6">
-      {/* Back link */}
-      <Link
-        href="/dashboard/uploads"
-        className="inline-flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white"
-      >
-        <ChevronLeftIcon className="h-4 w-4" />
-        Back to Uploads
-      </Link>
-
-      <div className="max-w-3xl mx-auto space-y-6">
-        <div className="text-center mb-8">
-          <Heading>Upload Receipts</Heading>
-          <Text>
-            Upload receipt images or PDFs to match with your bank transactions
-          </Text>
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-4">
+          <Link
+            href="/dashboard/uploads"
+            className="inline-flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white"
+          >
+            <ChevronLeftIcon className="h-4 w-4" />
+            Back to All Uploads
+          </Link>
         </div>
+        <div className="flex items-center gap-3">
+          <Button
+            onClick={() => fetchInvoices()}
+            color="white"
+            className="flex items-center gap-2"
+          >
+            <ArrowPathIcon className="h-4 w-4" />
+            Refresh
+          </Button>
+          <Button
+            onClick={() => setShowUpload(!showUpload)}
+            color="blue"
+            className="flex items-center gap-2"
+          >
+            {showUpload ? 'Hide Upload' : 'Upload Invoice/Receipt'}
+          </Button>
+        </div>
+      </div>
 
-        {/* Profile validation warning */}
-        {!profileLoading && !profileReady && (
-          <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-4">
-            <p className="text-sm text-yellow-800 dark:text-yellow-200">
-              Please complete your profile (individual/company name) before uploading.
-              <Link href="/dashboard/setup" className="underline ml-1">Go to setup</Link>
-            </p>
-          </div>
-        )}
+      {/* Page Title */}
+      <div>
+        <Heading level={1}>Invoices &amp; Receipts</Heading>
+        <Text className="mt-1 text-gray-600 dark:text-gray-400">
+          Manage invoices and receipts for matching with bank transactions
+        </Text>
+      </div>
 
-        {/* Bank Account Selection */}
-        {!uploading && (
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-              Select Account <span className="text-gray-400 text-xs font-normal">(optional)</span>
-            </label>
-            {loadingBankAccounts ? (
-              <div className="animate-pulse bg-gray-200 dark:bg-gray-700 h-10 rounded-lg"></div>
-            ) : (
-              <>
+      {/* Upload Section (Collapsible) */}
+      {showUpload && (
+        <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-6 space-y-4">
+          {/* Profile validation warning */}
+          {!profileLoading && !profileReady && (
+            <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-4">
+              <p className="text-sm text-yellow-800 dark:text-yellow-200">
+                Please complete your profile before uploading.
+                <Link href="/dashboard/setup" className="underline ml-1">Go to setup</Link>
+              </p>
+            </div>
+          )}
+
+          {/* Bank Account Selection */}
+          {!uploading && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                Select Account <span className="text-gray-400 text-xs font-normal">(optional)</span>
+              </label>
+              {loadingBankAccounts ? (
+                <div className="animate-pulse bg-gray-200 dark:bg-gray-700 h-10 rounded-lg"></div>
+              ) : (
                 <select
                   value={selectedBankAccountId}
                   onChange={(e) => setSelectedBankAccountId(e.target.value)}
@@ -317,150 +450,215 @@ export default function ReceiptsUploadPage() {
                   <option value="">-- Auto-match to any account --</option>
                   {bankAccounts.map(account => (
                     <option key={account.id} value={account.id}>
-                      {account.account_name} ({account.bank_name}) - {account.account_type}
+                      {account.account_name} ({account.bank_name})
                     </option>
                   ))}
                 </select>
-                <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                  {selectedBankAccountId 
-                    ? "Receipt will be linked to this account"
-                    : "We'll try to match this receipt to transactions across all your accounts"
-                  }
-                </p>
-              </>
-            )}
-          </div>
-        )}
+              )}
+            </div>
+          )}
 
-        {/* Upload Area */}
-        <div
-          {...getRootProps()}
-          className={`
-            border-2 border-dashed rounded-xl p-12 text-center cursor-pointer
-            transition-all duration-200
-            ${
-              isDragActive
-                ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
-                : 'border-gray-300 dark:border-gray-600 hover:border-gray-400 dark:hover:border-gray-500'
-            }
-            ${uploading ? 'opacity-50 cursor-not-allowed' : ''}
-          `}
-        >
-          <input {...getInputProps()} />
+          {/* Upload Area */}
+          <div
+            {...getRootProps()}
+            className={`
+              border-2 border-dashed rounded-xl p-8 text-center cursor-pointer
+              transition-all duration-200
+              ${isDragActive ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20' : 'border-gray-300 dark:border-gray-600 hover:border-gray-400'}
+              ${uploading ? 'opacity-50 cursor-not-allowed' : ''}
+            `}
+          >
+            <input {...getInputProps()} />
 
-          <div className="flex flex-col items-center">
-            {uploading ? (
-              <>
-                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mb-4"></div>
-                <p className="text-lg font-medium text-gray-900 dark:text-white mb-2">
-                  {statusMessage || `Uploading... ${progress}%`}
-                </p>
-                {jobStatus && (
-                  <p className="text-sm text-gray-500 dark:text-gray-400">
-                    Status: {jobStatus.charAt(0).toUpperCase() + jobStatus.slice(1)}
+            <div className="flex flex-col items-center">
+              {uploading ? (
+                <>
+                  <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-blue-500 mb-4"></div>
+                  <p className="text-lg font-medium text-gray-900 dark:text-white mb-2">
+                    {statusMessage || `Uploading... ${progress}%`}
                   </p>
-                )}
-                <div className="w-full max-w-xs mt-4 bg-gray-200 dark:bg-gray-700 rounded-full h-2">
-                  <div 
-                    className="bg-blue-500 h-2 rounded-full transition-all duration-300"
-                    style={{ width: `${progress}%` }}
-                  ></div>
-                </div>
-              </>
-            ) : files.length > 0 ? (
-              <>
-                <CheckCircleIcon className="h-12 w-12 text-green-500 mb-4" />
-                <p className="text-lg font-medium text-gray-900 dark:text-white mb-2">
-                  {files.length} file{files.length > 1 ? 's' : ''} selected
-                </p>
-                <div className="space-y-1 mb-4 max-h-40 overflow-y-auto">
-                  {files.map((file, index) => (
-                    <p key={index} className="text-sm text-gray-500 dark:text-gray-400">
-                      {file.name} ({(file.size / 1024 / 1024).toFixed(2)} MB)
-                    </p>
-                  ))}
-                </div>
-                <Button
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    handleUpload()
-                  }}
-                  className="mt-4"
-                >
-                  Upload & Process
-                </Button>
-                <Button
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    setFiles([])
-                    setError(null)
-                  }}
-                  outline
-                  className="mt-2"
-                >
-                  Clear Files
-                </Button>
-              </>
-            ) : (
-              <>
-                <ArrowUpTrayIcon className="h-12 w-12 text-gray-400 dark:text-gray-500 mb-4" />
-                <p className="text-lg font-medium text-gray-900 dark:text-white mb-2">
-                  {isDragActive
-                    ? 'Drop your files here'
-                    : 'Drag & drop your receipts'}
-                </p>
-                <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
-                  or click to browse
-                </p>
-                <div className="flex items-center gap-2 text-xs text-gray-400 dark:text-gray-500">
-                  <DocumentIcon className="h-4 w-4" />
-                  <span>Supports .jpg, .png, .pdf (max 10MB each)</span>
-                </div>
-              </>
-            )}
-          </div>
-        </div>
-
-        {/* Error Message */}
-        {error && (
-          <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4 flex items-start gap-3">
-            <XCircleIcon className="h-5 w-5 text-red-500 flex-shrink-0 mt-0.5" />
-            <div>
-              <p className="text-sm font-medium text-red-800 dark:text-red-200">
-                Upload Error
-              </p>
-              <p className="text-sm text-red-600 dark:text-red-300 mt-1">
-                {error}
-              </p>
+                  <div className="w-full max-w-xs mt-2 bg-gray-200 dark:bg-gray-700 rounded-full h-2">
+                    <div 
+                      className="bg-blue-500 h-2 rounded-full transition-all duration-300"
+                      style={{ width: `${progress}%` }}
+                    ></div>
+                  </div>
+                </>
+              ) : files.length > 0 ? (
+                <>
+                  <CheckCircleIcon className="h-10 w-10 text-green-500 mb-4" />
+                  <p className="text-lg font-medium text-gray-900 dark:text-white mb-2">
+                    {files.length} file{files.length > 1 ? 's' : ''} selected
+                  </p>
+                  <div className="space-y-1 mb-4 max-h-32 overflow-y-auto">
+                    {files.map((file, index) => (
+                      <p key={index} className="text-sm text-gray-500 dark:text-gray-400">
+                        {file.name} ({(file.size / 1024 / 1024).toFixed(2)} MB)
+                      </p>
+                    ))}
+                  </div>
+                  <div className="flex gap-2">
+                    <Button
+                      onClick={(e) => { e.stopPropagation(); handleUpload() }}
+                    >
+                      Upload & Process
+                    </Button>
+                    <Button
+                      onClick={(e) => { e.stopPropagation(); setFiles([]); setError(null) }}
+                      outline
+                    >
+                      Clear
+                    </Button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <ArrowUpTrayIcon className="h-10 w-10 text-gray-400 mb-4" />
+                  <p className="text-lg font-medium text-gray-900 dark:text-white mb-2">
+                    {isDragActive ? 'Drop files here' : 'Drag & drop invoices/receipts'}
+                  </p>
+                  <p className="text-sm text-gray-500 dark:text-gray-400 mb-2">or click to browse</p>
+                  <div className="flex items-center gap-2 text-xs text-gray-400">
+                    <DocumentIcon className="h-4 w-4" />
+                    <span>Supports .jpg, .png, .pdf (max 10MB each)</span>
+                  </div>
+                </>
+              )}
             </div>
           </div>
-        )}
 
-        {/* Success Message */}
-        {jobId && !uploading && (
-          <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg p-4">
-            <p className="text-sm font-medium text-green-800 dark:text-green-200">
-              Upload successful! Redirecting to view processing status...
-            </p>
+          {/* Error Message */}
+          {error && (
+            <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4 flex items-start gap-3">
+              <XCircleIcon className="h-5 w-5 text-red-500 flex-shrink-0 mt-0.5" />
+              <p className="text-sm text-red-600 dark:text-red-300">{error}</p>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Invoices List */}
+      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700">
+        {loading ? (
+          <div className="p-8 text-center">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
+            <Text className="mt-4 text-gray-500">Loading invoices...</Text>
           </div>
-        )}
-
-        {/* Instructions */}
-        {files.length === 0 && !uploading && (
-          <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-6">
-            <h3 className="text-lg font-semibold text-blue-900 dark:text-blue-200 mb-3">
-              How it works
-            </h3>
-            <ul className="text-sm text-blue-800 dark:text-blue-300 space-y-2 list-disc list-inside">
-              <li>Upload receipt images or PDFs</li>
-              <li>We'll extract transaction details using OCR</li>
-              <li>Match receipts with your bank transactions</li>
-              <li>Keep organized records for tax purposes</li>
-            </ul>
+        ) : invoices.length === 0 ? (
+          <div className="p-8 text-center">
+            <DocumentTextIcon className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+            <Heading level={3} className="text-gray-600 dark:text-gray-400">No invoices or receipts yet</Heading>
+            <Text className="mt-2 text-gray-500 dark:text-gray-500">
+              Upload your first invoice or receipt to get started
+            </Text>
+            <Button
+              onClick={() => setShowUpload(true)}
+              color="blue"
+              className="mt-4"
+            >
+              Upload Invoice/Receipt
+            </Button>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+              <thead className="bg-gray-50 dark:bg-gray-900">
+                <tr>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                    Filename
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                    Type
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                    Status
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                    Items
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                    Uploaded
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                    Actions
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+                {invoices.map((invoice) => {
+                  const statusInfo = getStatusLabel(invoice.status, invoice.status_message)
+                  
+                  return (
+                    <tr key={invoice.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
+                      <td className="px-6 py-4">
+                        <div className="text-sm font-medium text-gray-900 dark:text-white truncate max-w-xs" title={invoice.original_filename}>
+                          {invoice.original_filename}
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900/20 dark:text-blue-300">
+                          {invoice.file_type === 'receipt' ? 'Receipt' : 'Invoice'}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="flex items-center gap-2">
+                          {getStatusIcon(invoice.status)}
+                          <span className={`text-sm ${statusInfo.color}`}>
+                            {statusInfo.text}
+                          </span>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
+                        {invoice.processed_items !== undefined ? (
+                          <span>
+                            {invoice.processed_items}
+                            {invoice.failed_items ? ` (${invoice.failed_items} failed)` : ''}
+                          </span>
+                        ) : (
+                          '—'
+                        )}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
+                        {new Date(invoice.created_at).toLocaleDateString('en-GB', {
+                          day: 'numeric',
+                          month: 'short',
+                          year: 'numeric',
+                          hour: '2-digit',
+                          minute: '2-digit'
+                        })}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="flex items-center gap-2">
+                          {(invoice.status === 'reviewing' || invoice.status === 'completed') && (
+                            <Link
+                              href={`/dashboard/review/${invoice.id}`}
+                              className="inline-flex items-center px-3 py-1.5 text-sm font-medium text-blue-700 bg-blue-50 hover:bg-blue-100 dark:text-blue-400 dark:bg-blue-900/20 dark:hover:bg-blue-900/40 rounded-md"
+                            >
+                              Review
+                            </Link>
+                          )}
+                          <button
+                            onClick={() => handleDelete(invoice.id)}
+                            disabled={deletingId === invoice.id}
+                            className="inline-flex items-center px-3 py-1.5 text-sm font-medium text-red-700 bg-red-50 hover:bg-red-100 dark:text-red-400 dark:bg-red-900/20 dark:hover:bg-red-900/40 rounded-md disabled:opacity-50"
+                          >
+                            {deletingId === invoice.id ? (
+                              <ArrowPathIcon className="h-4 w-4 animate-spin" />
+                            ) : (
+                              <TrashIcon className="h-4 w-4" />
+                            )}
+                            <span className="ml-1">Delete</span>
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
           </div>
         )}
       </div>
     </div>
   )
 }
-
