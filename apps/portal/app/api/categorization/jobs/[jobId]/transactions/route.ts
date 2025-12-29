@@ -155,7 +155,7 @@ export async function GET(
       // Fetch documents
       const documentsMap = new Map();
       if (documentIds.length > 0) {
-        const { data: documents } = await adminClientForQuery
+        const { data: documents, error: documentsError } = await adminClientForQuery
           .from("financial_documents")
           .select(`
             id,
@@ -183,19 +183,24 @@ export async function GET(
             ocr_field_confidence,
             ocr_extraction_methods,
             ocr_needs_review,
-            ocr_confidence,
+            ocr_confidence_score,
             notes
           `)
           .in("id", documentIds);
 
         // #region agent log
         fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'apps/portal/app/api/categorization/jobs/[jobId]/transactions/route.ts:docsFetch',message:'Fetched documents for transaction document_ids',data:{jobId,documentIdsCount:documentIds.length,documentsFetched:documents?.length||0,docIdsSample:documentIds.slice(0,3)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H2'})}).catch(()=>{});
+        fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'apps/portal/app/api/categorization/jobs/[jobId]/transactions/route.ts:docsFetchError',message:'Documents fetch error (if any)',data:{jobId,hasError:!!documentsError,errorMessage:documentsError?.message,code:(documentsError as any)?.code,details:(documentsError as any)?.details,hint:(documentsError as any)?.hint},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H1'})}).catch(()=>{});
         // #endregion
         
         documents?.forEach((doc: any) => {
           // Back-compat: older pipeline writes document_number, UI expects invoice_number
           if (!doc.invoice_number && doc.document_number) {
             doc.invoice_number = doc.document_number;
+          }
+          // Back-compat: older code expects `ocr_confidence`
+          if (doc.ocr_confidence_score !== undefined && doc.ocr_confidence === undefined) {
+            doc.ocr_confidence = doc.ocr_confidence_score;
           }
           documentsMap.set(doc.id, doc);
         });
