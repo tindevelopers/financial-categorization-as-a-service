@@ -37,310 +37,190 @@ interface InvoiceFieldsDisplayProps {
   compact?: boolean;
 }
 
+// Helper functions (stable, outside component)
+const toDateInputValue = (v: unknown): string => {
+  if (v === null || v === undefined) return "";
+  if (typeof v === "string") {
+    if (/^\d{4}-\d{2}-\d{2}$/.test(v)) return v;
+    if (/^\d{4}-\d{2}-\d{2}T/.test(v)) return v.slice(0, 10);
+    const d = new Date(v);
+    if (!isNaN(d.getTime())) return d.toISOString().slice(0, 10);
+    return "";
+  }
+  if (v instanceof Date && !isNaN(v.getTime())) return v.toISOString().slice(0, 10);
+  return "";
+};
+
+const toDisplayDate = (v: unknown): string => {
+  const input = toDateInputValue(v);
+  if (!input) return "";
+  const d = new Date(`${input}T00:00:00`);
+  if (isNaN(d.getTime())) return "";
+  return d.toLocaleDateString();
+};
+
+// Stable component defined OUTSIDE main component
+const ConfidenceBadge = React.memo(function ConfidenceBadge({
+  confidence,
+  method,
+}: {
+  confidence?: number;
+  method?: string;
+}) {
+  if (confidence === undefined) return null;
+
+  const confidenceColor =
+    confidence >= 0.8
+      ? "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400"
+      : confidence >= 0.5
+      ? "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400"
+      : "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400";
+
+  return (
+    <span
+      className={`ml-2 text-xs px-1.5 py-0.5 rounded ${confidenceColor}`}
+      title={`${method || "unknown"} extraction, ${Math.round(confidence * 100)}% confidence`}
+    >
+      {Math.round(confidence * 100)}%
+    </span>
+  );
+});
+
+// Stable FieldRow component defined OUTSIDE main component
+const FieldRow = React.memo(function FieldRow({
+  label,
+  field,
+  value,
+  type = "text",
+  placeholder,
+  editMode,
+  compact,
+  confidence,
+  method,
+  onFieldChange,
+}: {
+  label: string;
+  field: string;
+  value: any;
+  type?: "text" | "date" | "number";
+  placeholder?: string;
+  editMode: boolean;
+  compact: boolean;
+  confidence?: number;
+  method?: string;
+  onFieldChange: (field: string, value: any) => void;
+}) {
+  const displayValue =
+    type === "date"
+      ? editMode
+        ? toDateInputValue(value)
+        : toDisplayDate(value)
+      : value !== null && value !== undefined
+      ? String(value)
+      : "";
+
+  return (
+    <div className={compact ? "mb-2" : "mb-4"}>
+      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+        {label}
+        <ConfidenceBadge confidence={confidence} method={method} />
+      </label>
+      {editMode ? (
+        <input
+          type={type}
+          step={type === "number" ? "0.01" : undefined}
+          value={displayValue}
+          onChange={(e) => {
+            let newValue: any = e.target.value;
+            if (type === "number") {
+              newValue = e.target.value ? parseFloat(e.target.value) : null;
+            }
+            onFieldChange(field, newValue);
+          }}
+          placeholder={placeholder || `Enter ${label.toLowerCase()}`}
+          className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-700 dark:text-white text-sm"
+        />
+      ) : (
+        <p className="text-gray-900 dark:text-white text-sm">
+          {displayValue || "-"}
+        </p>
+      )}
+    </div>
+  );
+});
+
+// Stable AmountField component defined OUTSIDE main component
+const AmountField = React.memo(function AmountField({
+  label,
+  field,
+  value,
+  currency,
+  editMode,
+  compact,
+  confidence,
+  method,
+  onFieldChange,
+}: {
+  label: string;
+  field: string;
+  value: number | null | undefined;
+  currency?: string | null;
+  editMode: boolean;
+  compact: boolean;
+  confidence?: number;
+  method?: string;
+  onFieldChange: (field: string, value: any) => void;
+}) {
+  const displayValue =
+    value !== null && value !== undefined
+      ? `${currency || "USD"} ${value.toFixed(2)}`
+      : "-";
+
+  return (
+    <div className={compact ? "mb-2" : "mb-4"}>
+      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+        {label}
+        <ConfidenceBadge confidence={confidence} method={method} />
+      </label>
+      {editMode ? (
+        <div className="flex items-center gap-2">
+          <select
+            value={currency || "USD"}
+            onChange={(e) => onFieldChange("currency", e.target.value)}
+            className="px-2 py-2 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-700 dark:text-white text-sm"
+          >
+            <option value="USD">USD</option>
+            <option value="GBP">GBP</option>
+            <option value="EUR">EUR</option>
+          </select>
+          <input
+            type="number"
+            step="0.01"
+            value={value ?? ""}
+            onChange={(e) =>
+              onFieldChange(field, e.target.value ? parseFloat(e.target.value) : null)
+            }
+            placeholder="0.00"
+            className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-700 dark:text-white text-sm"
+          />
+        </div>
+      ) : (
+        <p className="text-gray-900 dark:text-white text-sm font-medium">
+          {displayValue}
+        </p>
+      )}
+    </div>
+  );
+});
+
 export default function InvoiceFieldsDisplay({
   invoiceData,
   editMode,
   onFieldChange,
   compact = false,
 }: InvoiceFieldsDisplayProps) {
-  // #region agent log
-  React.useEffect(() => {
-    fetch("http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        location: "apps/portal/components/invoice/InvoiceFieldsDisplay.tsx:mount",
-        message: "InvoiceFieldsDisplay mounted",
-        data: {
-          editMode,
-          compact,
-          hasInvoiceData: !!invoiceData,
-          invoiceNumber: invoiceData?.invoice_number,
-        },
-        timestamp: Date.now(),
-        sessionId: "debug-session",
-        runId: "layer-1",
-        hypothesisId: "LAYER4",
-      }),
-    }).catch(() => {});
-  }, [editMode, compact, invoiceData?.invoice_number]);
-  // #endregion
-  const toDateInputValue = (v: unknown): string => {
-    if (v === null || v === undefined) return "";
-    if (typeof v === "string") {
-      if (/^\d{4}-\d{2}-\d{2}$/.test(v)) return v;
-      if (/^\d{4}-\d{2}-\d{2}T/.test(v)) return v.slice(0, 10);
-      const d = new Date(v);
-      if (!isNaN(d.getTime())) return d.toISOString().slice(0, 10);
-      return "";
-    }
-    if (v instanceof Date && !isNaN(v.getTime())) return v.toISOString().slice(0, 10);
-    return "";
-  };
-
-  const toDisplayDate = (v: unknown): string => {
-    const input = toDateInputValue(v);
-    if (!input) return "";
-    const d = new Date(`${input}T00:00:00`);
-    if (isNaN(d.getTime())) return "";
-    return d.toLocaleDateString();
-  };
-
-  const isValidDateInputValue = (v: unknown) =>
-    typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v);
-
-  const getFieldConfidence = (field: string): number | undefined => {
-    return invoiceData.field_confidence?.[field];
-  };
-
-  const getExtractionMethod = (field: string): string | undefined => {
-    return invoiceData.extraction_methods?.[field];
-  };
-
-  const ConfidenceBadge = ({ field }: { field: string }) => {
-    const confidence = getFieldConfidence(field);
-    const method = getExtractionMethod(field);
-    if (confidence === undefined) return null;
-
-    const confidenceColor =
-      confidence >= 0.8
-        ? "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400"
-        : confidence >= 0.5
-        ? "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400"
-        : "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400";
-
-    return (
-      <span
-        className={`ml-2 text-xs px-1.5 py-0.5 rounded ${confidenceColor}`}
-        title={`${method || "unknown"} extraction, ${Math.round(confidence * 100)}% confidence`}
-      >
-        {Math.round(confidence * 100)}%
-      </span>
-    );
-  };
-
-  const FieldRow = ({
-    label,
-    field,
-    value,
-    type = "text",
-    placeholder,
-  }: {
-    label: string;
-    field: string;
-    value: any;
-    type?: "text" | "date" | "number";
-    placeholder?: string;
-  }) => {
-    const displayValue =
-      type === "date"
-        ? editMode
-          ? toDateInputValue(value)
-          : toDisplayDate(value)
-        : value !== null && value !== undefined
-        ? String(value)
-        : "";
-
-    return (
-      <div className={compact ? "mb-2" : "mb-4"}>
-        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-          {label}
-          <ConfidenceBadge field={field} />
-        </label>
-        {editMode ? (
-          <input
-            type={type}
-            step={type === "number" ? "0.01" : undefined}
-            value={displayValue}
-            onFocus={(e) => {
-              // #region agent log
-              fetch("http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                  location: "apps/portal/components/invoice/InvoiceFieldsDisplay.tsx:inputFocus",
-                  message: "Input focused",
-                  data: {
-                    field,
-                    type,
-                    editMode,
-                    displayValue,
-                    inputDisabled: e.target.disabled,
-                    inputReadOnly: e.target.readOnly,
-                    computedStyle: window.getComputedStyle(e.target).pointerEvents,
-                    zIndex: window.getComputedStyle(e.target).zIndex,
-                    parentZIndex: e.target.parentElement ? window.getComputedStyle(e.target.parentElement).zIndex : null,
-                  },
-                  timestamp: Date.now(),
-                  sessionId: "debug-session",
-                  runId: "layer-1",
-                  hypothesisId: "LAYER1",
-                }),
-              }).catch(() => {});
-              // #endregion
-              if (type === "date") {
-                // #region agent log
-                fetch("http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e", {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({
-                    location: "apps/portal/components/invoice/InvoiceFieldsDisplay.tsx:dateFocus",
-                    message: "Date input focused",
-                    data: {
-                      field,
-                      rawValueType: typeof value,
-                      rawValue: typeof value === "string" ? value.slice(0, 32) : value,
-                      displayValue: toDateInputValue(value),
-                      displayValueValidForDateInput: isValidDateInputValue(toDateInputValue(value)),
-                    },
-                    timestamp: Date.now(),
-                    sessionId: "debug-session",
-                    runId: "date-1",
-                    hypothesisId: "DATE1",
-                  }),
-                }).catch(() => {});
-                // #endregion
-              }
-            }}
-            onClick={(e) => {
-              // #region agent log
-              fetch("http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                  location: "apps/portal/components/invoice/InvoiceFieldsDisplay.tsx:inputClick",
-                  message: "Input clicked",
-                  data: {
-                    field,
-                    type,
-                    editMode,
-                    targetTag: (e.target as HTMLElement).tagName,
-                    targetType: (e.target as HTMLInputElement).type,
-                    clickX: e.clientX,
-                    clickY: e.clientY,
-                    elementAtPoint: document.elementFromPoint(e.clientX, e.clientY)?.tagName,
-                  },
-                  timestamp: Date.now(),
-                  sessionId: "debug-session",
-                  runId: "layer-1",
-                  hypothesisId: "LAYER2",
-                }),
-              }).catch(() => {});
-              // #endregion
-            }}
-            onChange={(e) => {
-              // #region agent log
-              fetch("http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                  location: "apps/portal/components/invoice/InvoiceFieldsDisplay.tsx:inputChange",
-                  message: "Input changed",
-                  data: {
-                    field,
-                    type,
-                    editMode,
-                    newValue: e.target.value,
-                    valueLength: e.target.value.length,
-                  },
-                  timestamp: Date.now(),
-                  sessionId: "debug-session",
-                  runId: "layer-1",
-                  hypothesisId: "LAYER3",
-                }),
-              }).catch(() => {});
-              // #endregion
-              let newValue: any = e.target.value;
-              if (type === "number") {
-                newValue = e.target.value ? parseFloat(e.target.value) : null;
-              }
-              if (type === "date") {
-                // #region agent log
-                fetch("http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e", {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({
-                    location: "apps/portal/components/invoice/InvoiceFieldsDisplay.tsx:dateChange",
-                    message: "Date input changed",
-                    data: {
-                      field,
-                      newValue,
-                      newValueValidForDateInput: isValidDateInputValue(newValue),
-                    },
-                    timestamp: Date.now(),
-                    sessionId: "debug-session",
-                    runId: "date-1",
-                    hypothesisId: "DATE1",
-                  }),
-                }).catch(() => {});
-                // #endregion
-              }
-              onFieldChange(field, newValue);
-            }}
-            placeholder={placeholder || `Enter ${label.toLowerCase()}`}
-            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-700 dark:text-white text-sm"
-          />
-        ) : (
-          <p className="text-gray-900 dark:text-white text-sm">
-            {displayValue || "-"}
-          </p>
-        )}
-      </div>
-    );
-  };
-
-  const AmountField = ({
-    label,
-    field,
-    value,
-    currency,
-  }: {
-    label: string;
-    field: string;
-    value: number | null | undefined;
-    currency?: string | null;
-  }) => {
-    const displayValue =
-      value !== null && value !== undefined
-        ? `${currency || "USD"} ${value.toFixed(2)}`
-        : "-";
-
-    return (
-      <div className={compact ? "mb-2" : "mb-4"}>
-        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-          {label}
-          <ConfidenceBadge field={field} />
-        </label>
-        {editMode ? (
-          <div className="flex items-center gap-2">
-            <select
-              value={currency || "USD"}
-              onChange={(e) => onFieldChange("currency", e.target.value)}
-              className="px-2 py-2 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-700 dark:text-white text-sm"
-            >
-              <option value="USD">USD</option>
-              <option value="GBP">GBP</option>
-              <option value="EUR">EUR</option>
-            </select>
-            <input
-              type="number"
-              step="0.01"
-              value={value || ""}
-              onChange={(e) =>
-                onFieldChange(field, e.target.value ? parseFloat(e.target.value) : null)
-              }
-              placeholder="0.00"
-              className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-700 dark:text-white text-sm"
-            />
-          </div>
-        ) : (
-          <p className="text-gray-900 dark:text-white text-sm font-medium">
-            {displayValue}
-          </p>
-        )}
-      </div>
-    );
-  };
+  const getConfidence = (field: string) => invoiceData.field_confidence?.[field];
+  const getMethod = (field: string) => invoiceData.extraction_methods?.[field];
 
   return (
     <div className="space-y-6">
@@ -354,33 +234,63 @@ export default function InvoiceFieldsDisplay({
             label="Invoice Number"
             field="invoice_number"
             value={invoiceData.invoice_number}
+            editMode={editMode}
+            compact={compact}
+            confidence={getConfidence("invoice_number")}
+            method={getMethod("invoice_number")}
+            onFieldChange={onFieldChange}
           />
           <FieldRow
             label="Supplier/Vendor"
             field="vendor_name"
             value={invoiceData.vendor_name}
+            editMode={editMode}
+            compact={compact}
+            confidence={getConfidence("vendor_name")}
+            method={getMethod("vendor_name")}
+            onFieldChange={onFieldChange}
           />
           <FieldRow
             label="Invoice Date"
             field="document_date"
             value={invoiceData.document_date}
             type="date"
+            editMode={editMode}
+            compact={compact}
+            confidence={getConfidence("document_date")}
+            method={getMethod("document_date")}
+            onFieldChange={onFieldChange}
           />
           <FieldRow
             label="Order Number"
             field="order_number"
             value={invoiceData.order_number}
+            editMode={editMode}
+            compact={compact}
+            confidence={getConfidence("order_number")}
+            method={getMethod("order_number")}
+            onFieldChange={onFieldChange}
           />
           <FieldRow
             label="PO Number"
             field="po_number"
             value={invoiceData.po_number}
+            editMode={editMode}
+            compact={compact}
+            confidence={getConfidence("po_number")}
+            method={getMethod("po_number")}
+            onFieldChange={onFieldChange}
           />
           <FieldRow
             label="Delivery Date"
             field="delivery_date"
             value={invoiceData.delivery_date}
             type="date"
+            editMode={editMode}
+            compact={compact}
+            confidence={getConfidence("delivery_date")}
+            method={getMethod("delivery_date")}
+            onFieldChange={onFieldChange}
           />
         </div>
       </div>
@@ -396,30 +306,55 @@ export default function InvoiceFieldsDisplay({
             field="subtotal_amount"
             value={invoiceData.subtotal_amount}
             currency={invoiceData.currency}
+            editMode={editMode}
+            compact={compact}
+            confidence={getConfidence("subtotal_amount")}
+            method={getMethod("subtotal_amount")}
+            onFieldChange={onFieldChange}
           />
           <AmountField
             label="VAT/Tax"
             field="tax_amount"
             value={invoiceData.tax_amount}
             currency={invoiceData.currency}
+            editMode={editMode}
+            compact={compact}
+            confidence={getConfidence("tax_amount")}
+            method={getMethod("tax_amount")}
+            onFieldChange={onFieldChange}
           />
           <AmountField
             label="Fees"
             field="fee_amount"
             value={invoiceData.fee_amount}
             currency={invoiceData.currency}
+            editMode={editMode}
+            compact={compact}
+            confidence={getConfidence("fee_amount")}
+            method={getMethod("fee_amount")}
+            onFieldChange={onFieldChange}
           />
           <AmountField
             label="Shipping"
             field="shipping_amount"
             value={invoiceData.shipping_amount}
             currency={invoiceData.currency}
+            editMode={editMode}
+            compact={compact}
+            confidence={getConfidence("shipping_amount")}
+            method={getMethod("shipping_amount")}
+            onFieldChange={onFieldChange}
           />
           <AmountField
             label="Total Amount"
             field="total_amount"
             value={invoiceData.total_amount}
             currency={invoiceData.currency}
+            editMode={editMode}
+            compact={compact}
+            confidence={getConfidence("total_amount")}
+            method={getMethod("total_amount")}
+            onFieldChange={onFieldChange}
           />
         </div>
       </div>
@@ -484,12 +419,22 @@ export default function InvoiceFieldsDisplay({
             field="payment_method"
             value={invoiceData.payment_method}
             placeholder="e.g., Credit Card, Bank Transfer"
+            editMode={editMode}
+            compact={compact}
+            confidence={getConfidence("payment_method")}
+            method={getMethod("payment_method")}
+            onFieldChange={onFieldChange}
           />
           <FieldRow
             label="Paid Date"
             field="paid_date"
             value={invoiceData.paid_date}
             type="date"
+            editMode={editMode}
+            compact={compact}
+            confidence={getConfidence("paid_date")}
+            method={getMethod("paid_date")}
+            onFieldChange={onFieldChange}
           />
           <div className={compact ? "col-span-1" : "col-span-1 md:col-span-2"}>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
@@ -514,4 +459,3 @@ export default function InvoiceFieldsDisplay({
     </div>
   );
 }
-
