@@ -84,9 +84,6 @@ export default function TransactionReview({ jobId }: TransactionReviewProps) {
   const isEditingRef = React.useRef(isEditing);
   React.useEffect(() => {
     isEditingRef.current = isEditing;
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'apps/portal/components/categorization/TransactionReview.tsx:isEditingChange',message:'isEditing state changed',data:{isEditing},timestamp:Date.now(),sessionId:'debug-session',runId:'poll-1',hypothesisId:'POLL1'})}).catch(()=>{});
-    // #endregion
   }, [isEditing]);
 
   // Initial load and polling
@@ -94,11 +91,8 @@ export default function TransactionReview({ jobId }: TransactionReviewProps) {
     loadTransactions();
     // Poll for updates if job is still processing, but pause while editing
     const interval = setInterval(() => {
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'apps/portal/components/categorization/TransactionReview.tsx:pollTick',message:'Polling tick',data:{isEditingRef:isEditingRef.current,willFetch:!isEditingRef.current},timestamp:Date.now(),sessionId:'debug-session',runId:'poll-1',hypothesisId:'POLL2'})}).catch(()=>{});
-      // #endregion
       if (!isEditingRef.current) {
-        loadTransactions();
+      loadTransactions();
       }
     }, 3000); // Poll every 3 seconds
 

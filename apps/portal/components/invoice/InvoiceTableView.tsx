@@ -418,9 +418,28 @@ export default function InvoiceTableView({
 
                             {/* Right Column - Invoice Fields */}
                             <div>
-                              <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
-                                Extracted Data
-                              </h3>
+                              <div className="flex items-center justify-between mb-4">
+                                <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+                                  Extracted Data
+                                </h3>
+                                {isEditing && (
+                                  <div className="flex items-center gap-2">
+                                    <button
+                                      onClick={() => cancelEdit(tx.id)}
+                                      className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-lg transition-colors"
+                                    >
+                                      Cancel
+                                    </button>
+                                    <button
+                                      onClick={() => saveEdit(tx.id)}
+                                      className="px-4 py-2 text-sm font-medium text-white bg-green-600 hover:bg-green-700 rounded-lg transition-colors flex items-center gap-2"
+                                    >
+                                      <CheckCircleIcon className="h-4 w-4" />
+                                      Save Changes
+                                    </button>
+                                  </div>
+                                )}
+                              </div>
                               <InvoiceFieldsDisplay
                                 invoiceData={invoiceData}
                                 editMode={isEditing}
@@ -429,6 +448,36 @@ export default function InvoiceTableView({
                                 }
                                 compact={false}
                               />
+                              {/* Prominent Save Bar when editing */}
+                              {isEditing && (
+                                <div className="mt-6 p-4 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg">
+                                  <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-2">
+                                      <svg className="h-5 w-5 text-yellow-600 dark:text-yellow-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                                      </svg>
+                                      <span className="text-sm font-medium text-yellow-800 dark:text-yellow-200">
+                                        You have unsaved changes
+                                      </span>
+                                    </div>
+                                    <div className="flex items-center gap-3">
+                                      <button
+                                        onClick={() => cancelEdit(tx.id)}
+                                        className="px-4 py-2 text-sm font-medium text-yellow-800 dark:text-yellow-200 hover:text-yellow-900 dark:hover:text-yellow-100 underline"
+                                      >
+                                        Discard
+                                      </button>
+                                      <button
+                                        onClick={() => saveEdit(tx.id)}
+                                        className="px-6 py-2 text-sm font-semibold text-white bg-green-600 hover:bg-green-700 rounded-lg shadow-sm transition-colors flex items-center gap-2"
+                                      >
+                                        <CheckCircleIcon className="h-5 w-5" />
+                                        Save Changes
+                                      </button>
+                                    </div>
+                                  </div>
+                                </div>
+                              )}
                             </div>
                           </div>
                         </td>
