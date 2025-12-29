@@ -38,6 +38,7 @@ interface Document {
     total: number;
   }> | null;
   payment_method?: string | null;
+  category?: string | null;
   notes?: string | null;
   field_confidence?: Record<string, number> | null;
   extraction_methods?: Record<string, string> | null;
@@ -106,7 +107,11 @@ export default function InvoiceTableView({
     setEditingRows(new Set([...editingRows, transaction.id]));
     setEditData({
       ...editData,
-      [transaction.id]: { ...transaction.document },
+      [transaction.id]: { 
+        ...transaction.document,
+        // Include transaction-level category in edit data
+        category: transaction.category || transaction.document.category,
+      },
     });
     // Auto-expand if not already expanded
     if (!expandedRows.has(transaction.id)) {
@@ -197,7 +202,9 @@ export default function InvoiceTableView({
                 const isEditing = editingRows.has(tx.id);
                 const doc = tx.document;
                 const documentUrl = doc?.id ? documentUrls[doc.id] : null;
-                const invoiceData = isEditing && editData[tx.id] ? editData[tx.id] : doc;
+                // Merge transaction category into document data for display
+                const docWithCategory = doc ? { ...doc, category: tx.category || doc.category } : doc;
+                const invoiceData = isEditing && editData[tx.id] ? editData[tx.id] : docWithCategory;
                 const lineItemCount = tx.group_transaction_ids?.length || 1;
                 const displayAmount = typeof doc?.total_amount === "number"
                   ? doc.total_amount

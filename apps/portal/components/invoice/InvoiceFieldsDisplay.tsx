@@ -25,6 +25,7 @@ interface InvoiceData {
   line_items?: LineItem[] | null;
   payment_method?: string | null;
   paid_date?: string | null;
+  category?: string | null;
   notes?: string | null;
   field_confidence?: Record<string, number> | null;
   extraction_methods?: Record<string, string> | null;
@@ -83,6 +84,142 @@ const ConfidenceBadge = React.memo(function ConfidenceBadge({
     >
       {Math.round(confidence * 100)}%
     </span>
+  );
+});
+
+// Common payment methods
+const PAYMENT_METHODS = [
+  "Cash",
+  "Credit Card",
+  "Debit Card",
+  "Bank Transfer",
+  "PayPal",
+  "Direct Debit",
+  "Cheque",
+  "Other",
+];
+
+// Common UK business expense categories
+const EXPENSE_CATEGORIES = [
+  "Advertising & Marketing",
+  "Bank Charges & Fees",
+  "Business Insurance",
+  "Business Rates",
+  "Car & Vehicle Expenses",
+  "Cleaning & Maintenance",
+  "Computer Equipment",
+  "Consultancy Fees",
+  "Cost of Goods Sold",
+  "Entertainment",
+  "Equipment & Machinery",
+  "Health & Safety",
+  "IT & Software",
+  "Legal & Professional Fees",
+  "Meals & Subsistence",
+  "Office Supplies",
+  "Postage & Delivery",
+  "Printing & Stationery",
+  "Professional Subscriptions",
+  "Rent",
+  "Repairs & Maintenance",
+  "Staff Training",
+  "Telephone & Internet",
+  "Travel & Accommodation",
+  "Utilities",
+  "Wages & Salaries",
+  "Other Expenses",
+];
+
+// Stable SelectField component for dropdowns
+const SelectField = React.memo(function SelectField({
+  label,
+  field,
+  value,
+  options,
+  allowCustom = false,
+  placeholder,
+  editMode,
+  compact,
+  confidence,
+  method,
+  onFieldChange,
+}: {
+  label: string;
+  field: string;
+  value: any;
+  options: string[];
+  allowCustom?: boolean;
+  placeholder?: string;
+  editMode: boolean;
+  compact: boolean;
+  confidence?: number;
+  method?: string;
+  onFieldChange: (field: string, value: any) => void;
+}) {
+  const [isCustom, setIsCustom] = React.useState(
+    value && !options.includes(value)
+  );
+  const displayValue = value !== null && value !== undefined ? String(value) : "";
+
+  return (
+    <div className={compact ? "mb-2" : "mb-4"}>
+      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+        {label}
+        <ConfidenceBadge confidence={confidence} method={method} />
+      </label>
+      {editMode ? (
+        <div className="space-y-2">
+          {!isCustom ? (
+            <select
+              value={displayValue}
+              onChange={(e) => {
+                if (e.target.value === "__custom__") {
+                  setIsCustom(true);
+                  onFieldChange(field, "");
+                } else {
+                  onFieldChange(field, e.target.value || null);
+                }
+              }}
+              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-700 dark:text-white text-sm"
+            >
+              <option value="">{placeholder || `Select ${label.toLowerCase()}`}</option>
+              {options.map((opt) => (
+                <option key={opt} value={opt}>
+                  {opt}
+                </option>
+              ))}
+              {allowCustom && (
+                <option value="__custom__">+ Add custom...</option>
+              )}
+            </select>
+          ) : (
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={displayValue}
+                onChange={(e) => onFieldChange(field, e.target.value || null)}
+                placeholder={`Enter custom ${label.toLowerCase()}`}
+                className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-700 dark:text-white text-sm"
+              />
+              <button
+                type="button"
+                onClick={() => {
+                  setIsCustom(false);
+                  onFieldChange(field, "");
+                }}
+                className="px-3 py-2 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 border border-gray-300 dark:border-gray-600 rounded-lg"
+              >
+                Cancel
+              </button>
+            </div>
+          )}
+        </div>
+      ) : (
+        <p className="text-gray-900 dark:text-white text-sm">
+          {displayValue || "-"}
+        </p>
+      )}
+    </div>
   );
 });
 
@@ -408,17 +545,41 @@ export default function InvoiceFieldsDisplay({
         </div>
       )}
 
+      {/* Categorization */}
+      <div>
+        <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
+          Categorization
+        </h3>
+        <div className={compact ? "grid grid-cols-1 gap-2" : "grid grid-cols-1 md:grid-cols-2 gap-4"}>
+          <SelectField
+            label="Expense Category"
+            field="category"
+            value={invoiceData.category}
+            options={EXPENSE_CATEGORIES}
+            allowCustom={true}
+            placeholder="Select category"
+            editMode={editMode}
+            compact={compact}
+            confidence={getConfidence("category")}
+            method={getMethod("category")}
+            onFieldChange={onFieldChange}
+          />
+        </div>
+      </div>
+
       {/* Payment Information */}
       <div>
         <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
           Payment Information
         </h3>
         <div className={compact ? "grid grid-cols-1 gap-2" : "grid grid-cols-1 md:grid-cols-2 gap-4"}>
-          <FieldRow
+          <SelectField
             label="Payment Method"
             field="payment_method"
             value={invoiceData.payment_method}
-            placeholder="e.g., Credit Card, Bank Transfer"
+            options={PAYMENT_METHODS}
+            allowCustom={true}
+            placeholder="Select payment method"
             editMode={editMode}
             compact={compact}
             confidence={getConfidence("payment_method")}

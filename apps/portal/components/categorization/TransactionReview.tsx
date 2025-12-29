@@ -212,16 +212,37 @@ export default function TransactionReview({ jobId }: TransactionReviewProps) {
     }
 
     try {
-      const response = await fetch(`/api/documents/${transaction.document_id}`, {
+      // Separate category updates (goes to transaction) from document updates
+      const { category, ...documentUpdates } = updates as any;
+      
+      // Update document fields
+      if (Object.keys(documentUpdates).length > 0) {
+        const response = await fetch(`/api/documents/${transaction.document_id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify(documentUpdates),
+        });
+
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.error || "Failed to update invoice");
+        }
+      }
+      
+      // Update transaction category if changed
+      if (category !== undefined) {
+        const txResponse = await fetch(`/api/categorization/transactions/${transactionId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify(updates),
-      });
+          credentials: "include",
+          body: JSON.stringify({ category }),
+        });
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || "Failed to update invoice");
+        if (!txResponse.ok) {
+          const errorData = await txResponse.json();
+          throw new Error(errorData.error || "Failed to update category");
+        }
       }
 
       await loadTransactions();

@@ -35,6 +35,7 @@ interface Document {
     total: number;
   }> | null;
   payment_method?: string | null;
+  category?: string | null;
   notes?: string | null;
   field_confidence?: Record<string, number> | null;
   extraction_methods?: Record<string, string> | null;
@@ -102,17 +103,25 @@ export default function InvoiceSplitView({
   const selectedDoc = selectedTransaction?.document;
   const selectedDocumentUrl = selectedDoc?.id ? documentUrls[selectedDoc.id] : null;
   const isEditing = editingTransactionId === selectedTransactionId;
+  // Merge transaction category into document data for display
+  const docWithCategory = selectedDoc && selectedTransaction 
+    ? { ...selectedDoc, category: selectedTransaction.category || selectedDoc.category } 
+    : selectedDoc;
   const invoiceData =
     isEditing && editData[selectedTransactionId || ""]
       ? editData[selectedTransactionId || ""]
-      : selectedDoc;
+      : docWithCategory;
 
   const startEdit = () => {
     if (!selectedTransaction || !selectedDoc) return;
     setEditingTransactionId(selectedTransaction.id);
     setEditData({
       ...editData,
-      [selectedTransaction.id]: { ...selectedDoc },
+      [selectedTransaction.id]: { 
+        ...selectedDoc,
+        // Include transaction-level category in edit data
+        category: selectedTransaction.category || selectedDoc.category,
+      },
     });
   };
 
