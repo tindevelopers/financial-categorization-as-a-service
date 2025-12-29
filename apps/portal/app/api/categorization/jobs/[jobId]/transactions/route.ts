@@ -155,38 +155,69 @@ export async function GET(
       // Fetch documents
       const documentsMap = new Map();
       if (documentIds.length > 0) {
-        const { data: documents, error: documentsError } = await adminClientForQuery
-          .from("financial_documents")
-          .select(`
-            id,
-            original_filename,
-            supabase_path,
-            storage_tier,
-            mime_type,
-            vendor_name,
-            document_number,
-            invoice_number,
-            po_number,
-            order_number,
-            document_date,
-            delivery_date,
-            paid_date,
-            total_amount,
-            tax_amount,
-            subtotal_amount,
-            fee_amount,
-            shipping_amount,
-            currency,
-            line_items,
-            payment_method,
-            extracted_data,
-            ocr_field_confidence,
-            ocr_extraction_methods,
-            ocr_needs_review,
-            ocr_confidence_score,
-            notes
-          `)
-          .in("id", documentIds);
+        // Some environments may not yet have newer invoice columns (e.g. shipping_amount).
+        // If a column is missing, PostgREST fails the whole select. We retry without missing columns.
+        let docSelectColumns = [
+          "id",
+          "original_filename",
+          "supabase_path",
+          "storage_tier",
+          "mime_type",
+          "vendor_name",
+          "document_number",
+          "invoice_number",
+          "po_number",
+          "order_number",
+          "document_date",
+          "delivery_date",
+          "paid_date",
+          "total_amount",
+          "tax_amount",
+          "subtotal_amount",
+          "fee_amount",
+          "shipping_amount",
+          "currency",
+          "line_items",
+          "payment_method",
+          "extracted_data",
+          "ocr_field_confidence",
+          "ocr_extraction_methods",
+          "ocr_needs_review",
+          "ocr_confidence_score",
+          "notes",
+        ];
+
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        let documents: any[] | null = null;
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        let documentsError: any = null;
+
+        for (let attempt = 1; attempt <= 3; attempt++) {
+          const result = await adminClientForQuery
+            .from("financial_documents")
+            .select(docSelectColumns.join(","))
+            .in("id", documentIds);
+
+          documents = (result as any).data ?? null;
+          documentsError = (result as any).error ?? null;
+
+          if (!documentsError) break;
+
+          const errMsg = String(documentsError?.message || "");
+          const match = errMsg.match(/financial_documents\.([a-zA-Z0-9_]+)/);
+          const missingCol = match?.[1];
+
+          // #region agent log
+          fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'apps/portal/app/api/categorization/jobs/[jobId]/transactions/route.ts:docsFetchRetry',message:'Documents select failed; considering retry without missing column',data:{jobId,attempt,code:(documentsError as any)?.code,errorMessage:documentsError?.message,missingCol,columnsCount:docSelectColumns.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H1'})}).catch(()=>{});
+          // #endregion
+
+          if ((documentsError as any)?.code === "42703" && missingCol && docSelectColumns.includes(missingCol)) {
+            docSelectColumns = docSelectColumns.filter((c) => c !== missingCol);
+            continue;
+          }
+
+          break;
+        }
 
         // #region agent log
         fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'apps/portal/app/api/categorization/jobs/[jobId]/transactions/route.ts:docsFetch',message:'Fetched documents for transaction document_ids',data:{jobId,documentIdsCount:documentIds.length,documentsFetched:documents?.length||0,docIdsSample:documentIds.slice(0,3)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H2'})}).catch(()=>{});
