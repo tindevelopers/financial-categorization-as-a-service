@@ -254,6 +254,28 @@ export async function GET(
           if (doc.ocr_confidence_score !== undefined && doc.ocr_confidence === undefined) {
             doc.ocr_confidence = doc.ocr_confidence_score;
           }
+
+          // VAT sanity check for older stored docs: if tax is implausibly large vs total, swap subtotal/tax.
+          if (
+            typeof doc.total_amount === "number" &&
+            typeof doc.subtotal_amount === "number" &&
+            typeof doc.tax_amount === "number"
+          ) {
+            const total = doc.total_amount;
+            const subtotal = doc.subtotal_amount;
+            const tax = doc.tax_amount;
+            const ratio = total !== 0 ? Math.abs(tax) / Math.abs(total) : 0;
+            const swappedRatio = total !== 0 ? Math.abs(subtotal) / Math.abs(total) : 0;
+            const sumMatches = Math.abs((subtotal + tax) - total) <= 0.02;
+            const looksSwapped = ratio > 0.5 && swappedRatio < 0.5 && tax > subtotal;
+            if (sumMatches && looksSwapped) {
+              doc.subtotal_amount = tax;
+              doc.tax_amount = subtotal;
+              // #region agent log
+              fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'apps/portal/app/api/categorization/jobs/[jobId]/transactions/route.ts:vatSanity:swap',message:'Swapped subtotal_amount and tax_amount for response',data:{jobId,documentId:doc.id,total,prevSubtotal:subtotal,prevTax:tax,ratio},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'VAT1'})}).catch(()=>{});
+              // #endregion
+            }
+          }
           documentsMap.set(doc.id, doc);
         });
       }

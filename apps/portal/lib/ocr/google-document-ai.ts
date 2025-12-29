@@ -1571,6 +1571,48 @@ function parseInvoiceData(document: any): InvoiceData {
     });
   }
   
+  // ---- VAT / totals sanity check ----
+  // Document AI can mislabel net vs tax (e.g. "Total excl. VAT" tagged as tax_amount).
+  // Heuristic: if "tax" is implausibly large compared to total, swap subtotal and tax.
+  if (typeof data.total === "number" && typeof data.subtotal === "number" && typeof data.tax === "number") {
+    const total = data.total;
+    const subtotal = data.subtotal;
+    const tax = data.tax;
+    const ratio = total !== 0 ? Math.abs(tax) / Math.abs(total) : 0;
+    const swappedRatio = total !== 0 ? Math.abs(subtotal) / Math.abs(total) : 0;
+    const eps = 0.02;
+
+    const sumMatches = Math.abs((subtotal + tax) - total) <= eps;
+    const looksSwapped = ratio > 0.5 && swappedRatio < 0.5 && tax > subtotal;
+
+    if (sumMatches && looksSwapped) {
+      data.subtotal = tax;
+      data.tax = subtotal;
+
+      // #region agent log
+      fetch("http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          location: "apps/portal/lib/ocr/google-document-ai.ts:vatSanity:swap",
+          message: "Swapped subtotal and tax after sanity check",
+          data: {
+            invoiceNumber: (data.invoice_number || "").toString().slice(0, 40),
+            total,
+            prevSubtotal: subtotal,
+            prevTax: tax,
+            ratio,
+          },
+          timestamp: Date.now(),
+          sessionId: "debug-session",
+          runId: "run1",
+          hypothesisId: "VAT1",
+        }),
+      }).catch(() => {});
+      // #endregion
+    }
+  }
+
   // Debug logging for extraction diagnostics
   const extractionSummary = {
     hasTotal: !!data.total,
