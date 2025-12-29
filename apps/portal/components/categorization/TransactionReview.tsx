@@ -192,12 +192,21 @@ export default function TransactionReview({ jobId }: TransactionReviewProps) {
   const handleDelete = async (transactionId: string, documentId: string) => {
     try {
       // Delete the transaction first
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'apps/portal/components/categorization/TransactionReview.tsx:handleDelete:start',message:'Attempting delete transaction+document',data:{transactionId,documentId},timestamp:Date.now(),sessionId:'debug-session',runId:'delete-1',hypothesisId:'D1'})}).catch(()=>{});
+      // #endregion
+
       const txResponse = await fetch(`/api/categorization/transactions/${transactionId}`, {
         method: "DELETE",
         credentials: "include",
       });
       
       if (!txResponse.ok) {
+        // #region agent log
+        let bodyText = "";
+        try { bodyText = await txResponse.clone().text(); } catch {}
+        fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'apps/portal/components/categorization/TransactionReview.tsx:handleDelete:txFail',message:'Transaction delete failed',data:{transactionId,status:txResponse.status,statusText:txResponse.statusText,bodyText:bodyText.slice(0,500)},timestamp:Date.now(),sessionId:'debug-session',runId:'delete-1',hypothesisId:'D2'})}).catch(()=>{});
+        // #endregion
         throw new Error("Failed to delete transaction");
       }
 
@@ -208,6 +217,11 @@ export default function TransactionReview({ jobId }: TransactionReviewProps) {
       });
       
       if (!docResponse.ok) {
+        // #region agent log
+        let bodyText = "";
+        try { bodyText = await docResponse.clone().text(); } catch {}
+        fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'apps/portal/components/categorization/TransactionReview.tsx:handleDelete:docFail',message:'Document delete failed (tx deleted already)',data:{documentId,status:docResponse.status,statusText:docResponse.statusText,bodyText:bodyText.slice(0,500)},timestamp:Date.now(),sessionId:'debug-session',runId:'delete-1',hypothesisId:'D3'})}).catch(()=>{});
+        // #endregion
         console.warn("Failed to delete document, transaction was deleted");
       }
 
