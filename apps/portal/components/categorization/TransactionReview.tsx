@@ -1,15 +1,14 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { 
-  CheckCircleIcon, 
-  ArrowDownTrayIcon,
-  PencilIcon,
-  EyeIcon,
-  XMarkIcon,
-  PlusIcon,
-  TrashIcon,
-} from "@heroicons/react/24/outline";
+import { ArrowDownTrayIcon } from "@heroicons/react/24/outline";
+import ViewSwitcher, {
+  getStoredViewPreference,
+  type ViewType,
+} from "@/components/invoice/ViewSwitcher";
+import InvoiceCardView from "@/components/invoice/InvoiceCardView";
+import InvoiceSplitView from "@/components/invoice/InvoiceSplitView";
+import InvoiceTableView from "@/components/invoice/InvoiceTableView";
 
 interface Document {
   id: string;
@@ -17,13 +16,29 @@ interface Document {
   supabase_path: string | null;
   storage_tier: string;
   mime_type: string | null;
-}
-
-interface Supplier {
-  id: string;
-  name: string;
-  email: string | null;
-  phone: string | null;
+  vendor_name?: string | null;
+  invoice_number?: string | null;
+  po_number?: string | null;
+  order_number?: string | null;
+  document_date?: string | null;
+  delivery_date?: string | null;
+  paid_date?: string | null;
+  total_amount?: number | null;
+  tax_amount?: number | null;
+  subtotal_amount?: number | null;
+  fee_amount?: number | null;
+  shipping_amount?: number | null;
+  currency?: string | null;
+  line_items?: Array<{
+    description: string;
+    quantity?: number;
+    unit_price?: number;
+    total: number;
+  }> | null;
+  payment_method?: string | null;
+  notes?: string | null;
+  field_confidence?: Record<string, number> | null;
+  extraction_methods?: Record<string, string> | null;
 }
 
 interface Transaction {
@@ -37,10 +52,8 @@ interface Transaction {
   user_confirmed: boolean;
   user_notes: string | null;
   invoice_number: string | null;
-  supplier_id: string | null;
   document_id: string | null;
   document?: Document | null;
-  supplier?: Supplier | null;
 }
 
 interface TransactionReviewProps {
@@ -51,25 +64,20 @@ export default function TransactionReview({ jobId }: TransactionReviewProps) {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [editCategory, setEditCategory] = useState("");
-  const [editSubcategory, setEditSubcategory] = useState("");
-  const [editSupplierId, setEditSupplierId] = useState<string>("");
   const [exporting, setExporting] = useState(false);
-  const [viewingDocumentId, setViewingDocumentId] = useState<string | null>(null);
-  const [documentUrl, setDocumentUrl] = useState<string | null>(null);
-  const [categories, setCategories] = useState<string[]>([]);
-  const [subcategories, setSubcategories] = useState<Record<string, string[]>>({});
-  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
-  const [showNewSupplierForm, setShowNewSupplierForm] = useState(false);
-  const [newSupplierName, setNewSupplierName] = useState("");
-  const [deletingId, setDeletingId] = useState<string | null>(null);
-  const [deletingAll, setDeletingAll] = useState(false);
+  
+  // Initialize view from stored preference (safe for SSR)
+  const [currentView, setCurrentView] = useState<ViewType>("table");
+  const [documentUrls, setDocumentUrls] = useState<Record<string, string>>({});
+  const [loadingUrls, setLoadingUrls] = useState<Set<string>>(new Set());
+
+  // Load stored preference on client-side
+  useEffect(() => {
+    setCurrentView(getStoredViewPreference());
+  }, []);
 
   useEffect(() => {
     loadTransactions();
-    loadCategories();
-    loadSuppliers();
     // Poll for updates if job is still processing
     const interval = setInterval(() => {
       loadTransactions();
@@ -79,89 +87,74 @@ export default function TransactionReview({ jobId }: TransactionReviewProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [jobId]);
 
+  useEffect(() => {
+    // Load document URLs for all transactions with documents
+    const loadDocumentUrls = async () => {
+      const transactionsWithDocs = transactions.filter(
+        (tx) => tx.document_id && !documentUrls[tx.document_id]
+      );
+
+      if (transactionsWithDocs.length === 0) return;
+
+      const newUrls: Record<string, string> = {};
+      const newLoadingUrls = new Set(loadingUrls);
+
+      for (const tx of transactionsWithDocs) {
+        if (!tx.document_id || documentUrls[tx.document_id]) continue;
+
+        newLoadingUrls.add(tx.document_id);
+        try {
+          const response = await fetch(`/api/documents/${tx.document_id}/download`, {
+            credentials: "include",
+          });
+          if (response.ok) {
+            const data = await response.json();
+            if (data.downloadUrl) {
+              newUrls[tx.document_id] = data.downloadUrl;
+            }
+          }
+        } catch (e) {
+          console.error("Failed to load document URL:", e);
+        }
+        newLoadingUrls.delete(tx.document_id);
+      }
+
+      if (Object.keys(newUrls).length > 0) {
+        setDocumentUrls((prev) => ({ ...prev, ...newUrls }));
+      }
+      setLoadingUrls(newLoadingUrls);
+    };
+
+    loadDocumentUrls();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [transactions]);
+
   const loadTransactions = async () => {
     try {
-      const response = await fetch(`/api/categorization/jobs/${jobId}/transactions`, {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        credentials: 'include',
-      });
-      
+      const response = await fetch(`/api/categorization/jobs/${jobId}/transactions`);
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ error: `HTTP ${response.status}` }));
-        throw new Error(errorData.error || errorData.details || "Failed to load transactions");
+        throw new Error("Failed to load transactions");
       }
-      
       const data = await response.json();
       const newTransactions = data.transactions || [];
-      
-      setTransactions(newTransactions);
-      setLoading(false);
-      
-      if (newTransactions.length === 0) {
-        console.log('No transactions found for job:', jobId);
+
+      // Only update if we have transactions or if we're still loading
+      if (newTransactions.length > 0 || loading) {
+        setTransactions(newTransactions);
+        setLoading(false);
       }
+      // If no transactions yet but job exists, keep loading state
     } catch (err: any) {
-      console.error("Error loading transactions:", err);
       setError(err.message);
       setLoading(false);
     }
   };
 
-  const loadCategories = async () => {
+  const handleConfirm = async (transactionId: string) => {
     try {
-      const response = await fetch('/api/categorization/categories', {
-        credentials: 'include',
-      });
-      if (response.ok) {
-        const data = await response.json();
-        setCategories(data.categories || []);
-        setSubcategories(data.subcategories || {});
-      }
-    } catch (err) {
-      console.error("Error loading categories:", err);
-    }
-  };
-
-  const loadSuppliers = async () => {
-    try {
-      const response = await fetch('/api/categorization/suppliers', {
-        credentials: 'include',
-      });
-      if (response.ok) {
-        const data = await response.json();
-        setSuppliers(data.suppliers || []);
-      }
-    } catch (err) {
-      console.error("Error loading suppliers:", err);
-    }
-  };
-
-  const handleViewDocument = async (documentId: string) => {
-    try {
-      const response = await fetch(`/api/documents/${documentId}/download`, {
-        credentials: 'include',
-      });
-      if (response.ok) {
-        const data = await response.json();
-        setDocumentUrl(data.downloadUrl);
-        setViewingDocumentId(documentId);
-      } else {
-        alert("Failed to load document");
-      }
-    } catch (err) {
-      console.error("Error loading document:", err);
-      alert("Failed to load document");
-    }
-  };
-
-  const handleConfirm = async (id: string) => {
-    try {
-      const response = await fetch(`/api/categorization/transactions/${id}/confirm`, {
+      const response = await fetch(`/api/categorization/transactions/${transactionId}/confirm`, {
         method: "POST",
-        credentials: 'include',
+        credentials: "include",
       });
       if (!response.ok) throw new Error("Failed to confirm");
       await loadTransactions();
@@ -170,162 +163,87 @@ export default function TransactionReview({ jobId }: TransactionReviewProps) {
     }
   };
 
-  const handleUpdateTransaction = async (id: string) => {
+  const handleEdit = async (transactionId: string, updates: Partial<Document>) => {
+    const transaction = transactions.find((tx) => tx.id === transactionId);
+    if (!transaction?.document_id) {
+      throw new Error("Transaction or document not found");
+    }
+
     try {
-      const response = await fetch(`/api/categorization/transactions/${id}`, {
+      const response = await fetch(`/api/documents/${transaction.document_id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        credentials: 'include',
-        body: JSON.stringify({
-          category: editCategory,
-          subcategory: editSubcategory || null,
-          supplier_id: editSupplierId || null,
-        }),
+        credentials: "include",
+        body: JSON.stringify(updates),
       });
-      if (!response.ok) throw new Error("Failed to update");
-      setEditingId(null);
-      await loadTransactions();
-      await loadSuppliers(); // Refresh suppliers in case a new one was created
-    } catch (err: any) {
-      setError(err.message);
-    }
-  };
 
-  const handleCreateSupplier = async () => {
-    if (!newSupplierName.trim()) {
-      alert("Please enter a supplier name");
-      return;
-    }
-
-    try {
-      const response = await fetch('/api/categorization/suppliers', {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: 'include',
-        body: JSON.stringify({
-          name: newSupplierName.trim(),
-        }),
-      });
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.error || "Failed to create supplier");
-      }
-      const data = await response.json();
-      setSuppliers([...suppliers, data.supplier]);
-      setEditSupplierId(data.supplier.id);
-      setNewSupplierName("");
-      setShowNewSupplierForm(false);
-    } catch (err: any) {
-      alert(`Failed to create supplier: ${err.message}`);
-    }
-  };
-
-  const handleDeleteTransaction = async (transactionId: string) => {
-    if (!confirm("Are you sure you want to delete this transaction?")) {
-      return;
-    }
-
-    setDeletingId(transactionId);
-    try {
-      const response = await fetch(`/api/categorization/transactions/${transactionId}`, {
-        method: "DELETE",
-        credentials: 'include',
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ error: `HTTP ${response.status}` }));
-        throw new Error(errorData.error || "Failed to delete transaction");
+        throw new Error(errorData.error || "Failed to update invoice");
       }
 
-      // Reload transactions
       await loadTransactions();
     } catch (err: any) {
-      alert(`Failed to delete transaction: ${err.message}`);
-    } finally {
-      setDeletingId(null);
+      setError(err.message);
+      throw err;
     }
   };
 
-  const handleDeleteAllTransactions = async () => {
-    if (!confirm(`Are you sure you want to delete all ${transactions.length} transactions? This cannot be undone.`)) {
-      return;
-    }
-
-    setDeletingAll(true);
+  const handleDelete = async (transactionId: string, documentId: string) => {
     try {
-      const response = await fetch(`/api/categorization/jobs/${jobId}/transactions`, {
+      // Delete the transaction first
+      const txResponse = await fetch(`/api/categorization/transactions/${transactionId}`, {
         method: "DELETE",
-        credentials: 'include',
+        credentials: "include",
       });
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ error: `HTTP ${response.status}` }));
-        throw new Error(errorData.error || "Failed to delete transactions");
+      
+      if (!txResponse.ok) {
+        throw new Error("Failed to delete transaction");
       }
 
-      // Clear transactions from state
-      setTransactions([]);
-      alert("All transactions deleted successfully.");
+      // Then delete the document
+      const docResponse = await fetch(`/api/documents/${documentId}`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+      
+      if (!docResponse.ok) {
+        console.warn("Failed to delete document, transaction was deleted");
+      }
+
+      await loadTransactions();
     } catch (err: any) {
-      alert(`Failed to delete transactions: ${err.message}`);
-    } finally {
-      setDeletingAll(false);
+      setError(err.message);
+      throw err;
+    }
+  };
+
+  const handleViewDocument = (documentId: string) => {
+    const url = documentUrls[documentId];
+    if (url) {
+      window.open(url, "_blank");
     }
   };
 
   const handleExportToGoogleSheets = async () => {
-    setExporting(true);
     try {
-      const response = await fetch(`/api/categorization/jobs/${jobId}/export/google-sheets`, {
-        method: "POST",
-        credentials: 'include',
-      });
-
-      const contentType = response.headers.get("content-type") || "unknown";
-
-      if (contentType.includes("text/csv") || contentType.includes("application/csv")) {
-        const csvData = await response.text();
-        const blob = new Blob([csvData], { type: 'text/csv' });
-        const url = window.URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `transactions-${jobId}.csv`;
-        document.body.appendChild(a);
-        a.click();
-        window.URL.revokeObjectURL(url);
-        document.body.removeChild(a);
-        alert("Google Sheets export is not configured. Downloaded as CSV instead.");
-        return;
-      }
+      setExporting(true);
+      const response = await fetch(
+        `/api/categorization/jobs/${jobId}/export/google-sheets`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+        }
+      );
 
       if (!response.ok) {
-        try {
-          const errorData = await response.json();
-          const errorMessage = errorData.error || errorData.message || "Export failed";
-          const guidance = errorData.guidance;
-          const helpUrl = errorData.helpUrl;
-          
-          let fullMessage = errorMessage;
-          if (guidance) {
-            fullMessage += `\n\n${guidance}`;
-          }
-          
-          if (helpUrl && errorData.error_code === "OAUTH_REQUIRED") {
-            const shouldRedirect = confirm(`${fullMessage}\n\nWould you like to connect your Google account now?`);
-            if (shouldRedirect) {
-              window.location.href = helpUrl;
-              return;
-            }
-          }
-          
-          throw new Error(fullMessage);
-        } catch (jsonError) {
-          throw new Error(`Export failed: ${response.statusText || response.status}`);
-        }
+        const data = await response.json();
+        throw new Error(data.error || "Failed to export");
       }
-      
+
       const data = await response.json();
-      
+
       if (data.sheetUrl) {
         window.open(data.sheetUrl, "_blank");
         alert("Google Sheet created successfully! Opening in new tab...");
@@ -342,8 +260,12 @@ export default function TransactionReview({ jobId }: TransactionReviewProps) {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-12">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500"></div>
+      <div className="flex flex-col items-center justify-center py-12">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mb-4"></div>
+        <p className="text-gray-600 dark:text-gray-400">Processing your transactions...</p>
+        <p className="text-sm text-gray-500 dark:text-gray-500 mt-2">
+          This may take a few moments
+        </p>
       </div>
     );
   }
@@ -352,12 +274,57 @@ export default function TransactionReview({ jobId }: TransactionReviewProps) {
     return (
       <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4">
         <p className="text-red-800 dark:text-red-200">{error}</p>
+        <button
+          onClick={() => {
+            setError(null);
+            loadTransactions();
+          }}
+          className="mt-2 text-sm text-red-600 hover:text-red-800 underline"
+        >
+          Try again
+        </button>
       </div>
     );
   }
 
-  const confirmedCount = transactions.filter(t => t.user_confirmed).length;
-  const totalAmount = transactions.reduce((sum, t) => sum + t.amount, 0);
+  if (transactions.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center py-12">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mb-4"></div>
+        <p className="text-gray-600 dark:text-gray-400">
+          Waiting for transactions to be processed...
+        </p>
+        <p className="text-sm text-gray-500 dark:text-gray-500 mt-2">
+          The AI is categorizing your transactions
+        </p>
+      </div>
+    );
+  }
+
+  const confirmedCount = transactions.filter((t) => t.user_confirmed).length;
+  const totalAmount = transactions.reduce((sum, t) => sum + Math.abs(t.amount), 0);
+
+  const renderView = () => {
+    const commonProps = {
+      transactions,
+      documentUrls,
+      onEdit: handleEdit,
+      onDelete: handleDelete,
+      onConfirm: handleConfirm,
+      onViewDocument: handleViewDocument,
+    };
+
+    switch (currentView) {
+      case "card":
+        return <InvoiceCardView {...commonProps} />;
+      case "split":
+        return <InvoiceSplitView {...commonProps} />;
+      case "table":
+        return <InvoiceTableView {...commonProps} />;
+      default:
+        return <InvoiceTableView {...commonProps} />;
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -385,16 +352,9 @@ export default function TransactionReview({ jobId }: TransactionReviewProps) {
         </div>
       </div>
 
-      {/* Action Buttons */}
-      <div className="flex justify-between items-center">
-        <button
-          onClick={handleDeleteAllTransactions}
-          disabled={deletingAll || transactions.length === 0}
-          className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          <TrashIcon className="h-5 w-5" />
-          {deletingAll ? "Deleting..." : "Delete All Transactions"}
-        </button>
+      {/* View Switcher and Export */}
+      <div className="flex items-center justify-between flex-wrap gap-4">
+        <ViewSwitcher currentView={currentView} onViewChange={setCurrentView} />
         <button
           onClick={handleExportToGoogleSheets}
           disabled={exporting || transactions.length === 0}
@@ -405,287 +365,8 @@ export default function TransactionReview({ jobId }: TransactionReviewProps) {
         </button>
       </div>
 
-      {/* Transactions Table */}
-      <div className="bg-white dark:bg-gray-800 rounded-lg shadow overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-            <thead className="bg-gray-50 dark:bg-gray-900">
-              <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                  Date
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                  Invoice #
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                  Supplier
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                  Description
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                  Amount
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                  Category
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                  Confidence
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                  Actions
-                </th>
-              </tr>
-            </thead>
-            <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
-              {transactions.map((tx) => (
-                <tr
-                  key={tx.id}
-                  className={tx.user_confirmed ? "bg-green-50 dark:bg-green-900/20" : ""}
-                >
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
-                    {new Date(tx.date).toLocaleDateString()}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
-                    {tx.invoice_number || "-"}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
-                    {editingId === tx.id ? (
-                      <div className="space-y-2 min-w-[200px]">
-                        <select
-                          value={editSupplierId}
-                          onChange={(e) => setEditSupplierId(e.target.value)}
-                          className="w-full px-2 py-1 border rounded text-sm"
-                        >
-                          <option value="">Select supplier...</option>
-                          {suppliers.map((s) => (
-                            <option key={s.id} value={s.id}>
-                              {s.name}
-                            </option>
-                          ))}
-                        </select>
-                        {showNewSupplierForm ? (
-                          <div className="flex gap-2">
-                            <input
-                              type="text"
-                              value={newSupplierName}
-                              onChange={(e) => setNewSupplierName(e.target.value)}
-                              placeholder="New supplier name"
-                              className="flex-1 px-2 py-1 border rounded text-sm"
-                              onKeyPress={(e) => {
-                                if (e.key === 'Enter') {
-                                  handleCreateSupplier();
-                                }
-                              }}
-                            />
-                            <button
-                              onClick={handleCreateSupplier}
-                              className="px-2 py-1 bg-green-600 text-white rounded text-sm"
-                              title="Create supplier"
-                            >
-                              <PlusIcon className="h-4 w-4" />
-                            </button>
-                            <button
-                              onClick={() => {
-                                setShowNewSupplierForm(false);
-                                setNewSupplierName("");
-                              }}
-                              className="px-2 py-1 bg-gray-300 text-gray-700 rounded text-sm"
-                            >
-                              <XMarkIcon className="h-4 w-4" />
-                            </button>
-                          </div>
-                        ) : (
-                          <button
-                            onClick={() => setShowNewSupplierForm(true)}
-                            className="text-xs text-blue-600 hover:text-blue-900"
-                          >
-                            + Add new supplier
-                          </button>
-                        )}
-                      </div>
-                    ) : (
-                      <div>
-                        {tx.supplier ? (
-                          <span className="font-medium">{tx.supplier.name}</span>
-                        ) : (
-                          <span className="text-gray-400">-</span>
-                        )}
-                      </div>
-                    )}
-                  </td>
-                  <td className="px-6 py-4 text-sm text-gray-900 dark:text-white">
-                    {tx.original_description}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-white">
-                    ${tx.amount.toFixed(2)}
-                  </td>
-                  <td className="px-6 py-4 text-sm text-gray-900 dark:text-white">
-                    {editingId === tx.id ? (
-                      <div className="space-y-2 min-w-[200px]">
-                        <select
-                          value={editCategory}
-                          onChange={(e) => {
-                            setEditCategory(e.target.value);
-                            setEditSubcategory(""); // Reset subcategory when category changes
-                          }}
-                          className="w-full px-2 py-1 border rounded text-sm"
-                        >
-                          <option value="">Select category...</option>
-                          {categories.map((cat) => (
-                            <option key={cat} value={cat}>
-                              {cat}
-                            </option>
-                          ))}
-                        </select>
-                        {editCategory && subcategories[editCategory] && subcategories[editCategory].length > 0 && (
-                          <select
-                            value={editSubcategory}
-                            onChange={(e) => setEditSubcategory(e.target.value)}
-                            className="w-full px-2 py-1 border rounded text-sm"
-                          >
-                            <option value="">Select subcategory...</option>
-                            {subcategories[editCategory].map((sub) => (
-                              <option key={sub} value={sub}>
-                                {sub}
-                              </option>
-                            ))}
-                          </select>
-                        )}
-                        <div className="flex gap-2">
-                          <button
-                            onClick={() => handleUpdateTransaction(tx.id)}
-                            className="text-xs px-2 py-1 bg-blue-600 text-white rounded"
-                          >
-                            Save
-                          </button>
-                          <button
-                            onClick={() => {
-                              setEditingId(null);
-                              setEditCategory("");
-                              setEditSubcategory("");
-                              setEditSupplierId("");
-                              setShowNewSupplierForm(false);
-                              setNewSupplierName("");
-                            }}
-                            className="text-xs px-2 py-1 bg-gray-300 text-gray-700 rounded"
-                          >
-                            Cancel
-                          </button>
-                        </div>
-                      </div>
-                    ) : (
-                      <div>
-                        <div className="font-medium">{tx.category || "Uncategorized"}</div>
-                        {tx.subcategory && (
-                          <div className="text-xs text-gray-500 dark:text-gray-400">
-                            {tx.subcategory}
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="flex items-center">
-                      <div
-                        className={`h-2 w-16 rounded-full ${
-                          tx.confidence_score >= 0.7
-                            ? "bg-green-500"
-                            : tx.confidence_score >= 0.5
-                            ? "bg-yellow-500"
-                            : "bg-red-500"
-                        }`}
-                      />
-                      <span className="ml-2 text-xs text-gray-500 dark:text-gray-400">
-                        {Math.round(tx.confidence_score * 100)}%
-                      </span>
-                    </div>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                    <div className="flex items-center gap-2">
-                      {tx.document_id && (
-                        <button
-                          onClick={() => handleViewDocument(tx.document_id!)}
-                          className="text-blue-600 hover:text-blue-900"
-                          title="View invoice"
-                        >
-                          <EyeIcon className="h-4 w-4" />
-                        </button>
-                      )}
-                      <button
-                        onClick={() => handleDeleteTransaction(tx.id)}
-                        disabled={deletingId === tx.id}
-                        className="text-red-600 hover:text-red-900 disabled:opacity-50"
-                        title="Delete transaction"
-                      >
-                        {deletingId === tx.id ? (
-                          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-red-600"></div>
-                        ) : (
-                          <TrashIcon className="h-4 w-4" />
-                        )}
-                      </button>
-                      {!tx.user_confirmed && (
-                        <>
-                          <button
-                            onClick={() => {
-                              setEditingId(tx.id);
-                              setEditCategory(tx.category || "");
-                              setEditSubcategory(tx.subcategory || "");
-                              setEditSupplierId(tx.supplier_id || "");
-                              setShowNewSupplierForm(false);
-                            }}
-                            className="text-blue-600 hover:text-blue-900"
-                            title="Edit"
-                          >
-                            <PencilIcon className="h-4 w-4" />
-                          </button>
-                          <button
-                            onClick={() => handleConfirm(tx.id)}
-                            className="text-green-600 hover:text-green-900"
-                            title="Confirm"
-                          >
-                            <CheckCircleIcon className="h-5 w-5" />
-                          </button>
-                        </>
-                      )}
-                      {tx.user_confirmed && (
-                        <CheckCircleIcon className="h-5 w-5 text-green-500" />
-                      )}
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {/* Document Viewer Modal */}
-      {viewingDocumentId && documentUrl && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-gray-800 rounded-lg max-w-4xl w-full max-h-[90vh] flex flex-col">
-            <div className="flex justify-between items-center p-4 border-b">
-              <h3 className="text-lg font-semibold">Invoice Document</h3>
-              <button
-                onClick={() => {
-                  setViewingDocumentId(null);
-                  setDocumentUrl(null);
-                }}
-                className="text-gray-500 hover:text-gray-700"
-              >
-                <XMarkIcon className="h-6 w-6" />
-              </button>
-            </div>
-            <div className="flex-1 overflow-auto p-4">
-              <iframe
-                src={documentUrl}
-                className="w-full h-full min-h-[600px] border-0"
-                title="Invoice Document"
-              />
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Selected View */}
+      {renderView()}
     </div>
   );
 }
