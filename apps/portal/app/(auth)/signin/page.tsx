@@ -46,7 +46,7 @@ export default function SignInPage() {
         return;
       }
 
-      router.push("/upload");
+      router.push("/dashboard");
       router.refresh();
     } catch (err: any) {
       setError(err.message || "An error occurred");
