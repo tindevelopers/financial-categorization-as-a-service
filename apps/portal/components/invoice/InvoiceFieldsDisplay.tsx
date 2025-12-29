@@ -43,6 +43,9 @@ export default function InvoiceFieldsDisplay({
   onFieldChange,
   compact = false,
 }: InvoiceFieldsDisplayProps) {
+  const isValidDateInputValue = (v: unknown) =>
+    typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v);
+
   const getFieldConfidence = (field: string): number | undefined => {
     return invoiceData.field_confidence?.[field];
   };
@@ -104,10 +107,56 @@ export default function InvoiceFieldsDisplay({
             type={type}
             step={type === "number" ? "0.01" : undefined}
             value={displayValue}
+            onFocus={() => {
+              if (type === "date") {
+                // #region agent log
+                fetch("http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    location: "apps/portal/components/invoice/InvoiceFieldsDisplay.tsx:dateFocus",
+                    message: "Date input focused",
+                    data: {
+                      field,
+                      rawValueType: typeof value,
+                      rawValue: typeof value === "string" ? value.slice(0, 32) : value,
+                      displayValue,
+                      displayValueValidForDateInput: isValidDateInputValue(displayValue),
+                    },
+                    timestamp: Date.now(),
+                    sessionId: "debug-session",
+                    runId: "date-1",
+                    hypothesisId: "DATE1",
+                  }),
+                }).catch(() => {});
+                // #endregion
+              }
+            }}
             onChange={(e) => {
               let newValue: any = e.target.value;
               if (type === "number") {
                 newValue = e.target.value ? parseFloat(e.target.value) : null;
+              }
+              if (type === "date") {
+                // #region agent log
+                fetch("http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    location: "apps/portal/components/invoice/InvoiceFieldsDisplay.tsx:dateChange",
+                    message: "Date input changed",
+                    data: {
+                      field,
+                      newValue,
+                      newValueValidForDateInput: isValidDateInputValue(newValue),
+                    },
+                    timestamp: Date.now(),
+                    sessionId: "debug-session",
+                    runId: "date-1",
+                    hypothesisId: "DATE1",
+                  }),
+                }).catch(() => {});
+                // #endregion
               }
               onFieldChange(field, newValue);
             }}
