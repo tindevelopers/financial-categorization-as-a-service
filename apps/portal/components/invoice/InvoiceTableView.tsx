@@ -192,8 +192,9 @@ export default function InvoiceTableView({
                 const documentUrl = doc?.id ? documentUrls[doc.id] : null;
                 const invoiceData = isEditing && editData[tx.id] ? editData[tx.id] : doc;
                 const lineItemCount = tx.group_transaction_ids?.length || 1;
-                const displayAmount =
-                  typeof tx.amount === "number" ? tx.amount : Number(tx.amount) || 0;
+                const displayAmount = typeof doc?.total_amount === "number"
+                  ? doc.total_amount
+                  : (typeof tx.amount === "number" ? tx.amount : Number(tx.amount) || 0);
 
                 if (!doc) return null;
 
@@ -246,7 +247,7 @@ export default function InvoiceTableView({
                           </span>
                           {lineItemCount > 1 && (
                             <span className="inline-flex items-center rounded-full bg-gray-100 dark:bg-gray-700 px-2 py-0.5 text-xs text-gray-700 dark:text-gray-200">
-                              Sum
+                              Invoice total
                             </span>
                           )}
                         </div>

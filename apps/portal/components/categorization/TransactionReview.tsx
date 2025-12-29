@@ -354,7 +354,11 @@ export default function TransactionReview({ jobId }: TransactionReviewProps) {
   }
 
   const confirmedCount = transactions.filter((t) => t.user_confirmed).length;
-  const totalAmount = transactions.reduce((sum, t) => sum + Math.abs(t.amount), 0);
+  const totalAmount = transactions.reduce((sum, t) => {
+    const docTotal = typeof t.document?.total_amount === "number" ? t.document.total_amount : null;
+    const amt = docTotal !== null ? docTotal : Math.abs(Number(t.amount) || 0);
+    return sum + amt;
+  }, 0);
 
   const renderView = () => {
     const commonProps = {

@@ -1743,6 +1743,36 @@ function parseAmount(value: string | undefined): number | undefined {
   if (parts.length > 2) {
     cleaned = parts.slice(0, -1).join('') + '.' + parts[parts.length - 1];
   }
+
+  // Some OCR outputs drop separators entirely (e.g. "2024" meaning "20.24").
+  // If the original had no explicit separator and we ended up with a long digit-only string,
+  // treat the last 2 digits as cents.
+  const originalTrimmed = value.trim();
+  const hasExplicitSeparator = /[.,]/.test(originalTrimmed);
+  const digitOnly = /^[0-9]+$/.test(cleaned);
+  if (!hasExplicitSeparator && digitOnly && cleaned.length >= 4) {
+    const implied = `${cleaned.slice(0, -2)}.${cleaned.slice(-2)}`;
+    const impliedAmount = parseFloat(implied);
+    if (!isNaN(impliedAmount) && Math.abs(impliedAmount) <= MAX_REASONABLE_AMOUNT) {
+      // #region agent log
+      fetch("http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          location: "apps/portal/lib/ocr/google-document-ai.ts:parseAmount:impliedCents",
+          message: "Applied implied-cents heuristic for digit-only amount",
+          data: { original: originalTrimmed.slice(0, 60), cleaned, implied, impliedAmount },
+          timestamp: Date.now(),
+          sessionId: "debug-session",
+          runId: "run1",
+          hypothesisId: "AMT1",
+        }),
+      }).catch(() => {});
+      // #endregion
+
+      cleaned = implied;
+    }
+  }
   
   const amount = parseFloat(cleaned);
   
