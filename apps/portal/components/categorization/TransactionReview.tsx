@@ -149,7 +149,14 @@ export default function TransactionReview({ jobId }: TransactionReviewProps) {
         }
         const existing = grouped.get(tx.document_id);
         if (!existing) {
-          grouped.set(tx.document_id, { ...tx, group_transaction_ids: [tx.id] });
+          const initialSum = Math.abs(Number(tx.amount) || 0);
+          grouped.set(tx.document_id, {
+            ...tx,
+            // Show invoice once, but keep the list of underlying tx ids
+            group_transaction_ids: [tx.id],
+            // Amount on the grouped row is the sum of line-item tx amounts (used for display + summary)
+            amount: initialSum,
+          });
         } else {
           existing.group_transaction_ids = [
             ...(existing.group_transaction_ids || []),
@@ -157,17 +164,16 @@ export default function TransactionReview({ jobId }: TransactionReviewProps) {
           ];
           // Consider the invoice confirmed only if all underlying tx are confirmed
           existing.user_confirmed = Boolean(existing.user_confirmed && tx.user_confirmed);
+          // Keep the grouped row amount as the sum of underlying tx amounts
+          existing.amount = (Number(existing.amount) || 0) + Math.abs(Number(tx.amount) || 0);
         }
       }
 
       const newTransactions = Array.from(grouped.values());
 
       // Only update if we have transactions or if we're still loading
-      if (newTransactions.length > 0 || loading) {
       setTransactions(newTransactions);
       setLoading(false);
-      }
-      // If no transactions yet but job exists, keep loading state
     } catch (err: any) {
       setError(err.message);
       setLoading(false);
@@ -337,12 +343,11 @@ export default function TransactionReview({ jobId }: TransactionReviewProps) {
   if (transactions.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-12">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mb-4"></div>
         <p className="text-gray-600 dark:text-gray-400">
-          Waiting for transactions to be processed...
+          No invoices found for this review job.
         </p>
         <p className="text-sm text-gray-500 dark:text-gray-500 mt-2">
-          The AI is categorizing your transactions
+          If you just uploaded, give it a moment and refresh. If you deleted the last invoice, this is expected.
         </p>
       </div>
     );

@@ -56,6 +56,7 @@ interface Transaction {
   invoice_number: string | null;
   document_id: string | null;
   document?: Document | null;
+  group_transaction_ids?: string[];
 }
 
 interface InvoiceTableViewProps {
@@ -190,6 +191,9 @@ export default function InvoiceTableView({
                 const doc = tx.document;
                 const documentUrl = doc?.id ? documentUrls[doc.id] : null;
                 const invoiceData = isEditing && editData[tx.id] ? editData[tx.id] : doc;
+                const lineItemCount = tx.group_transaction_ids?.length || 1;
+                const displayAmount =
+                  typeof tx.amount === "number" ? tx.amount : Number(tx.amount) || 0;
 
                 if (!doc) return null;
 
@@ -223,13 +227,29 @@ export default function InvoiceTableView({
                           : "-"}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
-                        {doc.invoice_number || "-"}
+                        <div className="flex flex-col">
+                          <span>{doc.invoice_number || "-"}</span>
+                          {lineItemCount > 1 && (
+                            <span className="text-xs text-gray-500 dark:text-gray-400">
+                              {lineItemCount} line items
+                            </span>
+                          )}
+                        </div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
                         {doc.vendor_name || "-"}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-white">
-                        {doc.currency || "USD"} {doc.total_amount?.toFixed(2) || "0.00"}
+                        <div className="flex items-center gap-2">
+                          <span>
+                            {doc.currency || "USD"} {displayAmount.toFixed(2)}
+                          </span>
+                          {lineItemCount > 1 && (
+                            <span className="inline-flex items-center rounded-full bg-gray-100 dark:bg-gray-700 px-2 py-0.5 text-xs text-gray-700 dark:text-gray-200">
+                              Sum
+                            </span>
+                          )}
+                        </div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
                         {doc.currency || "USD"} {doc.tax_amount?.toFixed(2) || "0.00"}
