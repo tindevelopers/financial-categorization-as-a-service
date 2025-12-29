@@ -43,6 +43,28 @@ export default function InvoiceFieldsDisplay({
   onFieldChange,
   compact = false,
 }: InvoiceFieldsDisplayProps) {
+  // #region agent log
+  React.useEffect(() => {
+    fetch("http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        location: "apps/portal/components/invoice/InvoiceFieldsDisplay.tsx:mount",
+        message: "InvoiceFieldsDisplay mounted",
+        data: {
+          editMode,
+          compact,
+          hasInvoiceData: !!invoiceData,
+          invoiceNumber: invoiceData?.invoice_number,
+        },
+        timestamp: Date.now(),
+        sessionId: "debug-session",
+        runId: "layer-1",
+        hypothesisId: "LAYER4",
+      }),
+    }).catch(() => {});
+  }, [editMode, compact, invoiceData?.invoice_number]);
+  // #endregion
   const isValidDateInputValue = (v: unknown) =>
     typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v);
 
@@ -107,7 +129,32 @@ export default function InvoiceFieldsDisplay({
             type={type}
             step={type === "number" ? "0.01" : undefined}
             value={displayValue}
-            onFocus={() => {
+            onFocus={(e) => {
+              // #region agent log
+              fetch("http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  location: "apps/portal/components/invoice/InvoiceFieldsDisplay.tsx:inputFocus",
+                  message: "Input focused",
+                  data: {
+                    field,
+                    type,
+                    editMode,
+                    displayValue,
+                    inputDisabled: e.target.disabled,
+                    inputReadOnly: e.target.readOnly,
+                    computedStyle: window.getComputedStyle(e.target).pointerEvents,
+                    zIndex: window.getComputedStyle(e.target).zIndex,
+                    parentZIndex: e.target.parentElement ? window.getComputedStyle(e.target.parentElement).zIndex : null,
+                  },
+                  timestamp: Date.now(),
+                  sessionId: "debug-session",
+                  runId: "layer-1",
+                  hypothesisId: "LAYER1",
+                }),
+              }).catch(() => {});
+              // #endregion
               if (type === "date") {
                 // #region agent log
                 fetch("http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e", {
@@ -132,7 +179,54 @@ export default function InvoiceFieldsDisplay({
                 // #endregion
               }
             }}
+            onClick={(e) => {
+              // #region agent log
+              fetch("http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  location: "apps/portal/components/invoice/InvoiceFieldsDisplay.tsx:inputClick",
+                  message: "Input clicked",
+                  data: {
+                    field,
+                    type,
+                    editMode,
+                    targetTag: (e.target as HTMLElement).tagName,
+                    targetType: (e.target as HTMLInputElement).type,
+                    clickX: e.clientX,
+                    clickY: e.clientY,
+                    elementAtPoint: document.elementFromPoint(e.clientX, e.clientY)?.tagName,
+                  },
+                  timestamp: Date.now(),
+                  sessionId: "debug-session",
+                  runId: "layer-1",
+                  hypothesisId: "LAYER2",
+                }),
+              }).catch(() => {});
+              // #endregion
+            }}
             onChange={(e) => {
+              // #region agent log
+              fetch("http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  location: "apps/portal/components/invoice/InvoiceFieldsDisplay.tsx:inputChange",
+                  message: "Input changed",
+                  data: {
+                    field,
+                    type,
+                    editMode,
+                    newValue: e.target.value,
+                    valueLength: e.target.value.length,
+                  },
+                  timestamp: Date.now(),
+                  sessionId: "debug-session",
+                  runId: "layer-1",
+                  hypothesisId: "LAYER3",
+                }),
+              }).catch(() => {});
+              // #endregion
               let newValue: any = e.target.value;
               if (type === "number") {
                 newValue = e.target.value ? parseFloat(e.target.value) : null;
