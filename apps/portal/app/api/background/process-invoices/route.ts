@@ -407,6 +407,18 @@ async function processSingleInvoice(
         // #region agent log
         fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'process-invoices/route.ts:263',message:'Transactions inserted successfully',data:{docId:doc.id,jobId,insertedCount:insertedTransactionIds.length,insertedIds:insertedTransactionIds.slice(0,3)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H2'})}).catch(()=>{});
         // #endregion
+
+        // #region agent log
+        // Verify document_id persisted on inserted rows (common root cause of UI showing 0/unknown)
+        if (insertedTransactionIds.length > 0) {
+          const { data: insertedCheck } = await adminClient
+            .from("categorized_transactions")
+            .select("id, document_id, supplier_id, invoice_number, amount, date")
+            .in("id", insertedTransactionIds.slice(0, 5));
+          fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'process-invoices/route.ts:insertCheck',message:'Post-insert check of document_id on categorized_transactions',data:{docId:doc.id,jobId,sample:insertedCheck?.map((r:any)=>({id:r.id,document_id:r.document_id,supplier_id:r.supplier_id,invoice_number:r.invoice_number,amount:r.amount}))||[]},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H1'})}).catch(()=>{});
+        }
+        // #endregion
+
         // Categorize the transactions
         await categorizeInvoiceTransactions(insertedTransactions || transactions, userId, adminClient);
         

@@ -137,6 +137,12 @@ export async function GET(
       .eq("job_id", jobId)
       .order("date", { ascending: false });
 
+    // #region agent log
+    const txDocIdCount = (transactions || []).filter((t: any) => Boolean(t.document_id)).length;
+    const txSample = (transactions || [])[0] || null;
+    fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'apps/portal/app/api/categorization/jobs/[jobId]/transactions/route.ts:txShape',message:'Raw transactions shape (before enrichment)',data:{jobId,transactionsCount:transactions?.length||0,txDocIdCount,txKeys:txSample?Object.keys(txSample).slice(0,30):[],txSampleDocumentId:txSample?.document_id,txSampleId:txSample?.id},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H1'})}).catch(()=>{});
+    // #endregion
+
     // If we have transactions, enrich them with document and supplier info
     if (transactions && transactions.length > 0) {
       const documentIds = transactions
@@ -181,6 +187,10 @@ export async function GET(
             notes
           `)
           .in("id", documentIds);
+
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'apps/portal/app/api/categorization/jobs/[jobId]/transactions/route.ts:docsFetch',message:'Fetched documents for transaction document_ids',data:{jobId,documentIdsCount:documentIds.length,documentsFetched:documents?.length||0,docIdsSample:documentIds.slice(0,3)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H2'})}).catch(()=>{});
+        // #endregion
         
         documents?.forEach((doc: any) => {
           // Back-compat: older pipeline writes document_number, UI expects invoice_number
