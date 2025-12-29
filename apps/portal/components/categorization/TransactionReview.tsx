@@ -54,6 +54,7 @@ interface Transaction {
   invoice_number: string | null;
   document_id: string | null;
   document?: Document | null;
+  group_transaction_ids?: string[];
 }
 
 interface TransactionReviewProps {
@@ -136,12 +137,31 @@ export default function TransactionReview({ jobId }: TransactionReviewProps) {
         throw new Error("Failed to load transactions");
       }
       const data = await response.json();
-      const newTransactions = data.transactions || [];
+      const rawTransactions: Transaction[] = data.transactions || [];
+
+      // Group by document_id so one uploaded invoice shows once (instead of 1 row per line item transaction)
+      const grouped = new Map<string, Transaction>();
+      for (const tx of rawTransactions) {
+        if (!tx.document_id) continue;
+        const existing = grouped.get(tx.document_id);
+        if (!existing) {
+          grouped.set(tx.document_id, { ...tx, group_transaction_ids: [tx.id] });
+        } else {
+          existing.group_transaction_ids = [
+            ...(existing.group_transaction_ids || []),
+            tx.id,
+          ];
+          // Consider the invoice confirmed only if all underlying tx are confirmed
+          existing.user_confirmed = Boolean(existing.user_confirmed && tx.user_confirmed);
+        }
+      }
+
+      const newTransactions = Array.from(grouped.values());
 
       // Only update if we have transactions or if we're still loading
       if (newTransactions.length > 0 || loading) {
-        setTransactions(newTransactions);
-        setLoading(false);
+      setTransactions(newTransactions);
+      setLoading(false);
       }
       // If no transactions yet but job exists, keep loading state
     } catch (err: any) {
@@ -196,7 +216,8 @@ export default function TransactionReview({ jobId }: TransactionReviewProps) {
       fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'apps/portal/components/categorization/TransactionReview.tsx:handleDelete:start',message:'Attempting delete transaction+document',data:{transactionId,documentId},timestamp:Date.now(),sessionId:'debug-session',runId:'delete-1',hypothesisId:'D1'})}).catch(()=>{});
       // #endregion
 
-      const txResponse = await fetch(`/api/categorization/transactions/${transactionId}`, {
+      // Delete ALL line-item transactions for this invoice (document_id) within this job.
+      const txResponse = await fetch(`/api/categorization/jobs/${jobId}/transactions?documentId=${encodeURIComponent(documentId)}`, {
         method: "DELETE",
         credentials: "include",
       });
@@ -245,7 +266,7 @@ export default function TransactionReview({ jobId }: TransactionReviewProps) {
       const response = await fetch(
         `/api/categorization/jobs/${jobId}/export/google-sheets`,
         {
-          method: "POST",
+        method: "POST",
           headers: { "Content-Type": "application/json" },
           credentials: "include",
         }
@@ -255,9 +276,9 @@ export default function TransactionReview({ jobId }: TransactionReviewProps) {
         const data = await response.json();
         throw new Error(data.error || "Failed to export");
       }
-
+      
       const data = await response.json();
-
+      
       if (data.sheetUrl) {
         window.open(data.sheetUrl, "_blank");
         alert("Google Sheet created successfully! Opening in new tab...");

@@ -33,6 +33,7 @@ export async function DELETE(
     }
 
     const { jobId } = await params;
+    const documentId = request.nextUrl.searchParams.get("documentId");
 
     // Verify job belongs to user
     const { data: job, error: jobError } = await supabase
@@ -49,23 +50,32 @@ export async function DELETE(
       );
     }
 
-    // Delete all transactions for this job
-    const { error: deleteError } = await supabase
+    // Use admin client so delete works even if categorized_transactions has restrictive RLS.
+    // Security is enforced above by verifying job ownership.
+    const admin = createAdminClient();
+
+    // Delete transactions for this job (optionally scoped to a single document_id)
+    let deleteQuery = admin
       .from("categorized_transactions")
       .delete()
       .eq("job_id", jobId);
+    if (documentId) {
+      deleteQuery = deleteQuery.eq("document_id", documentId);
+    }
+
+    const { error: deleteError } = await deleteQuery;
 
     if (deleteError) {
       console.error("Error deleting transactions:", deleteError);
       return NextResponse.json(
-        { error: "Failed to delete transactions" },
+        { error: "Failed to delete transactions", details: deleteError.message },
         { status: 500 }
       );
     }
 
     return NextResponse.json({
       success: true,
-      message: "All transactions deleted",
+      message: documentId ? "Invoice transactions deleted" : "All transactions deleted",
     });
   } catch (error: any) {
     console.error("Error:", error);
