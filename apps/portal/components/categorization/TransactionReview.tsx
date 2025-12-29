@@ -142,7 +142,11 @@ export default function TransactionReview({ jobId }: TransactionReviewProps) {
       // Group by document_id so one uploaded invoice shows once (instead of 1 row per line item transaction)
       const grouped = new Map<string, Transaction>();
       for (const tx of rawTransactions) {
-        if (!tx.document_id) continue;
+        if (!tx.document_id) {
+          // Keep any orphan/placeholder transactions visible
+          grouped.set(tx.id, { ...tx, group_transaction_ids: [tx.id] });
+          continue;
+        }
         const existing = grouped.get(tx.document_id);
         if (!existing) {
           grouped.set(tx.document_id, { ...tx, group_transaction_ids: [tx.id] });
@@ -231,6 +235,10 @@ export default function TransactionReview({ jobId }: TransactionReviewProps) {
         throw new Error("Failed to delete transaction");
       }
 
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'apps/portal/components/categorization/TransactionReview.tsx:handleDelete:txOk',message:'Transaction(s) delete ok',data:{transactionId,documentId,status:txResponse.status},timestamp:Date.now(),sessionId:'debug-session',runId:'delete-1',hypothesisId:'D2'})}).catch(()=>{});
+      // #endregion
+
       // Then delete the document
       const docResponse = await fetch(`/api/documents/${documentId}`, {
         method: "DELETE",
@@ -245,6 +253,10 @@ export default function TransactionReview({ jobId }: TransactionReviewProps) {
         // #endregion
         console.warn("Failed to delete document, transaction was deleted");
       }
+
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'apps/portal/components/categorization/TransactionReview.tsx:handleDelete:docOk',message:'Document delete ok',data:{documentId,status:docResponse.status},timestamp:Date.now(),sessionId:'debug-session',runId:'delete-1',hypothesisId:'D3'})}).catch(()=>{});
+      // #endregion
 
       await loadTransactions();
     } catch (err: any) {

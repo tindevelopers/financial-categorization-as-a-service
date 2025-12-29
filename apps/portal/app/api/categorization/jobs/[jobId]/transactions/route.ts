@@ -25,6 +25,10 @@ export async function DELETE(
     const supabase = await createClient();
     const { data: { user }, error: authError } = await supabase.auth.getUser();
 
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'apps/portal/app/api/categorization/jobs/[jobId]/transactions/route.ts:delete:entry',message:'DELETE job transactions called',data:{hasUser:!!user,hasAuthError:!!authError},timestamp:Date.now(),sessionId:'debug-session',runId:'delete-1',hypothesisId:'D2'})}).catch(()=>{});
+    // #endregion
+
     if (authError || !user) {
       return NextResponse.json(
         { error: "Unauthorized" },
@@ -67,11 +71,18 @@ export async function DELETE(
 
     if (deleteError) {
       console.error("Error deleting transactions:", deleteError);
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'apps/portal/app/api/categorization/jobs/[jobId]/transactions/route.ts:delete:error',message:'DELETE job transactions failed',data:{jobId,documentId,errorMessage:deleteError.message,code:(deleteError as any)?.code},timestamp:Date.now(),sessionId:'debug-session',runId:'delete-1',hypothesisId:'D2'})}).catch(()=>{});
+      // #endregion
       return NextResponse.json(
         { error: "Failed to delete transactions", details: deleteError.message },
         { status: 500 }
       );
     }
+
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'apps/portal/app/api/categorization/jobs/[jobId]/transactions/route.ts:delete:ok',message:'DELETE job transactions ok',data:{jobId,documentId},timestamp:Date.now(),sessionId:'debug-session',runId:'delete-1',hypothesisId:'D2'})}).catch(()=>{});
+    // #endregion
 
     return NextResponse.json({
       success: true,
