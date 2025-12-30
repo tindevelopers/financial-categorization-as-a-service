@@ -107,14 +107,14 @@ export async function validateOAuthConfig(tenantId?: string): Promise<OAuthConfi
 /**
  * Get OAuth error guidance based on error code
  */
-export function getOAuthErrorGuidance(errorCode: string, errorDescription?: string): {
+export function getOAuthErrorGuidance(errorCode: string, errorDescription?: string, expectedRedirectUriOverride?: string): {
   message: string;
   actionableSteps: string[];
   helpUrl?: string;
 } {
   const baseUrl = (process.env.NEXT_PUBLIC_APP_URL?.trim() || 
     (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL.trim()}` : 'http://localhost:3002')).trim();
-  const expectedRedirectUri = `${baseUrl}/api/integrations/google-sheets/callback`.trim();
+  const expectedRedirectUri = expectedRedirectUriOverride || `${baseUrl}/api/integrations/google-sheets/callback`.trim();
 
   switch (errorCode) {
     case "invalid_request":
@@ -155,11 +155,16 @@ export function getOAuthErrorGuidance(errorCode: string, errorDescription?: stri
 
     case "invalid_client":
       return {
-        message: "The OAuth client ID or secret is invalid or not configured correctly.",
+        message: "The OAuth client ID or secret is invalid or not configured correctly. This error typically means: (1) The Client ID or Client Secret is missing or incorrect, (2) The redirect URI doesn't match what's configured in Google Cloud Console, or (3) The OAuth credentials need to be updated.",
         actionableSteps: [
-          "1. Verify OAuth credentials are configured in Supabase Secrets or Vercel environment variables",
-          "2. Check that the Client ID and Client Secret match your Google Cloud Console settings",
-          "3. Contact your administrator if credentials need to be updated",
+          `1. Verify the redirect URI matches exactly: ${expectedRedirectUri}`,
+          "2. Go to Google Cloud Console: https://console.cloud.google.com/apis/credentials",
+          "3. Find your OAuth 2.0 Client ID and verify:",
+          "   - The Client ID matches what's configured in your system",
+          "   - The Client Secret matches what's configured in your system",
+          `   - The redirect URI "${expectedRedirectUri}" is listed in 'Authorized redirect URIs'`,
+          "4. If credentials are incorrect, update them in Supabase Secrets or Vercel environment variables",
+          "5. Contact your administrator if you need help updating credentials",
         ],
         helpUrl: "https://console.cloud.google.com/apis/credentials",
       };

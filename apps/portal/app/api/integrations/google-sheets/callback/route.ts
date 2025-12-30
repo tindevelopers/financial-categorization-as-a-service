@@ -73,7 +73,11 @@ export async function GET(request: NextRequest) {
 
     // Handle OAuth errors from Google
     if (errorParam) {
-      const guidance = getOAuthErrorGuidance(errorParam, errorDescription || undefined);
+      const guidance = getOAuthErrorGuidance(
+        errorParam, 
+        errorDescription || undefined,
+        configValidationForError?.expectedRedirectUri
+      );
       console.error(`OAuth error from Google: ${errorParam}`, {
         errorDescription,
         guidance,
