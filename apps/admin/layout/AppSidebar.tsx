@@ -138,6 +138,7 @@ const navItems: NavItem[] = [
     icon: <LockIcon />,
     subItems: [
       { name: "Organization Admins", path: "/saas/admin/system-admin/organization-admins" },
+      { name: "Platform Settings", path: "/saas/admin/system-admin/platform-settings" },
       { name: "API Configuration", path: "/saas/admin/system-admin/api-configuration" },
       { name: "Multi-Tenant", path: "/multi-tenant", new: true },
       {

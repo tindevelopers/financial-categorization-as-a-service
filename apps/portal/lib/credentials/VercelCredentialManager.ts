@@ -19,6 +19,8 @@ import {
   getSupabaseCredentialManager,
   type TenantOAuthCredentials as SupabaseTenantOAuthCredentials 
 } from './SupabaseCredentialManager';
+import { createAdminClient } from "@/lib/database/admin-client";
+import { safeDecrypt } from "@/lib/encryption";
 
 export interface GoogleOAuthCredentials {
   clientId: string;
@@ -68,27 +70,65 @@ export class VercelCredentialManager {
     const clientId = process.env.GOOGLE_CLIENT_ID?.trim();
     const clientSecret = process.env.GOOGLE_CLIENT_SECRET?.trim();
     
-    if (!clientId || !clientSecret) {
-      return null;
+    // Prefer env vars if present
+    if (clientId && clientSecret) {
+      // Construct redirect URI
+      // Portal app runs on port 3002 by default
+      const defaultPort = process.env.PORT || '3002';
+      const baseUrl = process.env.NEXT_PUBLIC_APP_URL?.trim() || 
+        (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL.trim()}` : `http://localhost:${defaultPort}`);
+      const redirectUri = (process.env.GOOGLE_SHEETS_REDIRECT_URI?.trim() || 
+        process.env.GOOGLE_REDIRECT_URI?.trim() || 
+        `${baseUrl}/api/integrations/google-sheets/callback`).trim();
+
+      const credentials: GoogleOAuthCredentials = {
+        clientId,
+        clientSecret,
+        redirectUri,
+      };
+
+      this.cache.set(cacheKey, credentials);
+      return credentials;
     }
 
-    // Construct redirect URI
-    // Portal app runs on port 3002 by default
-    const defaultPort = process.env.PORT || '3002';
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL?.trim() || 
-      (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL.trim()}` : `http://localhost:${defaultPort}`);
-    const redirectUri = (process.env.GOOGLE_SHEETS_REDIRECT_URI?.trim() || 
-      process.env.GOOGLE_REDIRECT_URI?.trim() || 
-      `${baseUrl}/api/integrations/google-sheets/callback`).trim();
+    // Fallback to platform_settings (encrypted at rest)
+    try {
+      const admin = createAdminClient();
+      const { data } = await (admin as any)
+        .from("platform_settings")
+        .select("setting_value")
+        .eq("setting_key", "google_oauth_credentials")
+        .maybeSingle();
 
-    const credentials: GoogleOAuthCredentials = {
-      clientId,
-      clientSecret,
-      redirectUri,
-    };
+      const sv = (data as any)?.setting_value || {};
+      const psClientId = typeof sv.clientId === "string" ? sv.clientId.trim() : "";
+      const psRedirectUri = typeof sv.redirectUri === "string" ? sv.redirectUri.trim() : "";
+      const secretEnc = typeof sv.clientSecretEncrypted === "string" ? sv.clientSecretEncrypted : "";
+      const psClientSecret = secretEnc ? safeDecrypt(secretEnc).trim() : "";
 
-    this.cache.set(cacheKey, credentials);
-    return credentials;
+      if (psClientId && psClientSecret) {
+        // If redirect not set in platform settings, fall back to computed default
+        const defaultPort = process.env.PORT || '3002';
+        const baseUrl = process.env.NEXT_PUBLIC_APP_URL?.trim() || 
+          (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL.trim()}` : `http://localhost:${defaultPort}`);
+        const defaultRedirectUri = (process.env.GOOGLE_SHEETS_REDIRECT_URI?.trim() || 
+          process.env.GOOGLE_REDIRECT_URI?.trim() || 
+          `${baseUrl}/api/integrations/google-sheets/callback`).trim();
+
+        const credentials: GoogleOAuthCredentials = {
+          clientId: psClientId,
+          clientSecret: psClientSecret,
+          redirectUri: psRedirectUri || defaultRedirectUri,
+        };
+
+        this.cache.set(cacheKey, credentials);
+        return credentials;
+      }
+    } catch {
+      // ignore and return null below
+    }
+
+    return null;
   }
 
   /**
@@ -113,20 +153,46 @@ export class VercelCredentialManager {
     const email = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL;
     const privateKey = process.env.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY;
 
-    if (!email || !privateKey) {
-      return null;
+    // Prefer env vars if present
+    if (email && privateKey) {
+      // Normalize private key (handle escaped newlines)
+      const normalizedPrivateKey = privateKey.replace(/\\n/g, '\n');
+
+      const credentials: GoogleServiceAccountCredentials = {
+        email,
+        privateKey: normalizedPrivateKey,
+      };
+
+      this.cache.set(cacheKey, credentials);
+      return credentials;
     }
 
-    // Normalize private key (handle escaped newlines)
-    const normalizedPrivateKey = privateKey.replace(/\\n/g, '\n');
+    // Fallback to platform_settings (encrypted at rest)
+    try {
+      const admin = createAdminClient();
+      const { data } = await (admin as any)
+        .from("platform_settings")
+        .select("setting_value")
+        .eq("setting_key", "google_service_account_credentials")
+        .maybeSingle();
 
-    const credentials: GoogleServiceAccountCredentials = {
-      email,
-      privateKey: normalizedPrivateKey,
-    };
+      const sv = (data as any)?.setting_value || {};
+      const psEmail = typeof sv.email === "string" ? sv.email.trim() : "";
+      const keyEnc = typeof sv.privateKeyEncrypted === "string" ? sv.privateKeyEncrypted : "";
+      const psKey = keyEnc ? safeDecrypt(keyEnc) : "";
+      if (psEmail && psKey) {
+        const credentials: GoogleServiceAccountCredentials = {
+          email: psEmail,
+          privateKey: psKey.replace(/\\n/g, "\n"),
+        };
+        this.cache.set(cacheKey, credentials);
+        return credentials;
+      }
+    } catch {
+      // ignore and return null below
+    }
 
-    this.cache.set(cacheKey, credentials);
-    return credentials;
+    return null;
   }
 
   /**
