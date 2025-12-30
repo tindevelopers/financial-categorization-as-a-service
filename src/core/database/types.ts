@@ -16,6 +16,7 @@ export interface Database {
           email_settings: Record<string, any> | null;
           custom_css: string | null;
           custom_domains: any[] | null;
+          subscription_type: "individual" | "company" | "enterprise" | null;
           created_at: string;
           updated_at: string;
         };
@@ -33,6 +34,7 @@ export interface Database {
           email_settings?: Record<string, any> | null;
           custom_css?: string | null;
           custom_domains?: any[] | null;
+          subscription_type?: "individual" | "company" | "enterprise" | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -50,6 +52,7 @@ export interface Database {
           email_settings?: Record<string, any> | null;
           custom_css?: string | null;
           custom_domains?: any[] | null;
+          subscription_type?: "individual" | "company" | "enterprise" | null;
           created_at?: string;
           updated_at?: string;
         };

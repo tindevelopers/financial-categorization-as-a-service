@@ -19,14 +19,14 @@ export async function GET(request: NextRequest) {
 
     // Get query parameters
     const { searchParams } = new URL(request.url);
-    const status = searchParams.get('status') || 'unreconciled';
+    const statusFilter = searchParams.get('status'); // 'unreconciled', 'matched', or null for all
     const limit = parseInt(searchParams.get('limit') || '100');
     const offset = parseInt(searchParams.get('offset') || '0');
 
     // Get source filter if provided
     const sourceType = searchParams.get('sourceType'); // 'upload', 'google_sheets', 'manual', 'api'
 
-    // Get unreconciled transactions with potential matches
+    // Get transactions (all or filtered by status)
     // Now includes source tracking fields for sync-aware reconciliation
     let txQuery = db
       .from('categorized_transactions')
@@ -39,9 +39,13 @@ export async function GET(request: NextRequest) {
         )
       `)
       .eq('job.user_id', user.id)
-      .eq('reconciliation_status', status)
       .order('date', { ascending: false })
       .range(offset, offset + limit - 1);
+
+    // Filter by status if specified
+    if (statusFilter) {
+      txQuery = txQuery.eq('reconciliation_status', statusFilter);
+    }
 
     // Filter by source type if specified
     if (sourceType) {
@@ -58,7 +62,7 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Get unreconciled documents
+    // Get unreconciled documents (for potential matches)
     const { data: documents, error: docError } = await db
       .from('financial_documents')
       .select(`
@@ -66,7 +70,9 @@ export async function GET(request: NextRequest) {
         total_amount, subtotal_amount, tax_amount, fee_amount, net_amount, 
         tax_rate, line_items, payment_method, po_number,
         reconciliation_status, matched_transaction_id, 
-        storage_path, mime_type, file_size, ocr_status, extracted_text
+        file_type, mime_type, file_size_bytes, ocr_status, extracted_text,
+        supabase_path, storage_tier, extracted_data, category, subcategory,
+        tags, description, notes
       `)
       .eq('user_id', user.id)
       .eq('reconciliation_status', 'unreconciled')
@@ -81,9 +87,53 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Find potential matches for each transaction
+    // Get matched documents for transactions that have matched_document_id
+    const matchedTxIds = (transactions || [])
+      .filter((tx: any) => tx.matched_document_id)
+      .map((tx: any) => tx.matched_document_id);
+    
+    let matchedDocuments: any[] = [];
+    if (matchedTxIds.length > 0) {
+      const { data: docs } = await db
+        .from('financial_documents')
+        .select(`
+          id,
+          original_filename,
+          vendor_name,
+          document_date,
+          total_amount,
+          file_type,
+          mime_type,
+          supabase_path,
+          storage_tier,
+          extracted_text,
+          extracted_data,
+          category,
+          subcategory,
+          tags,
+          description,
+          notes
+        `)
+        .in('id', matchedTxIds);
+      
+      matchedDocuments = docs || [];
+    }
+
+    // Create a map for quick lookup
+    const matchedDocsMap = new Map(matchedDocuments.map((doc: any) => [doc.id, doc]));
+
+    // Process transactions: add potential matches for unreconciled, include matched document for matched
     const transactionsWithMatches = (transactions || []).map((tx: any) => {
-      const potentialMatches = (documents || [])
+      // If transaction is matched, get the matched document
+      const matchedDocument = tx.matched_document_id && matchedDocsMap.has(tx.matched_document_id)
+        ? {
+            ...matchedDocsMap.get(tx.matched_document_id),
+            invoice_date: matchedDocsMap.get(tx.matched_document_id)?.document_date, // Alias for backward compatibility
+          }
+        : null;
+
+      // For unreconciled transactions, find potential matches
+      const potentialMatches = tx.reconciliation_status === 'unreconciled' && (documents || [])
         .filter((doc: any) => {
           const amountDiff = Math.abs((tx.amount || 0) - (doc.total_amount || 0));
           const dateDiff = doc.document_date 
@@ -131,9 +181,11 @@ export async function GET(request: NextRequest) {
           return a.amount_difference - b.amount_difference;
         })
         .slice(0, 5); // Top 5 matches per transaction
+      : [];
 
       return {
         ...tx,
+        matched_document: matchedDocument,
         potential_matches: potentialMatches,
         // Include sync status info for UI
         sync_info: {
@@ -154,8 +206,13 @@ export async function GET(request: NextRequest) {
 
     const hasSyncInProgress = (activeSyncs?.length || 0) > 0;
 
-    // Get summary stats
-    const jobIds = (transactions || []).map((t: any) => t.job_id);
+    // Get summary stats - need to get all user's jobs first
+    const { data: userJobs } = await db
+      .from('categorization_jobs')
+      .select('id')
+      .eq('user_id', user.id);
+    
+    const jobIds = (userJobs || []).map((j: any) => j.id);
     
     const { count: totalUnreconciled } = await db
       .from('categorized_transactions')

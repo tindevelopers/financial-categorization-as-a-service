@@ -87,7 +87,8 @@ export default function UploadsPage() {
         throw new Error('Failed to fetch uploads')
       }
 
-      const result = await response.json()      setUploads(result.jobs || [])
+      const result = await response.json()
+      setUploads(result.jobs || [])
     } catch (error: any) {
       console.error('Error fetching uploads:', error)
     } finally {

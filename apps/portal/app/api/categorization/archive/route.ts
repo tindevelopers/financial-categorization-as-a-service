@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/database/server";
+import { archiveToGCS, isGCSConfigured } from "@/lib/storage/gcs-archive";
 
 /**
  * POST /api/categorization/archive
@@ -88,9 +89,52 @@ export async function POST(request: NextRequest) {
     // and provide the path where they should be moved
 
     const archivedDocs = [];
+    const errors: string[] = [];
+    
     for (const doc of documents) {
       const gcsArchivePath = `archive/${user.id}/${doc.id}/${doc.original_filename}`;
       
+      // If GCS is configured, transfer the file
+      if (isGCSConfigured() && doc.supabase_path) {
+        try {
+          // Use the archiveToGCS utility to handle the transfer
+          const archiveResult = await archiveToGCS(
+            supabase,
+            doc.supabase_path,
+            gcsArchivePath
+          );
+
+          if (!archiveResult.success) {
+            console.error(`Failed to transfer document ${doc.id} to GCS:`, archiveResult.error);
+            errors.push(`Failed to transfer ${doc.original_filename}: ${archiveResult.error}`);
+            // Continue to mark as archived even if transfer fails (will be retried later)
+          } else {
+            // After successful GCS upload, delete from Supabase Storage to save space
+            try {
+              const bucketName = doc.supabase_path.includes('categorization-uploads') 
+                ? 'categorization-uploads' 
+                : 'documents';
+              
+              const { error: deleteError } = await supabase.storage
+                .from(bucketName)
+                .remove([doc.supabase_path]);
+
+              if (deleteError) {
+                console.warn(`Failed to delete ${doc.id} from Supabase Storage after GCS transfer:`, deleteError);
+                // Don't fail - file is safely in GCS
+              }
+            } catch (deleteErr) {
+              console.warn(`Error deleting ${doc.id} from Supabase:`, deleteErr);
+              // Don't fail - file is safely in GCS
+            }
+          }
+        } catch (transferError) {
+          console.error(`Error transferring document ${doc.id} to GCS:`, transferError);
+          errors.push(`Failed to transfer ${doc.original_filename}: ${transferError instanceof Error ? transferError.message : 'Unknown error'}`);
+          // Continue to mark as archived even if transfer fails
+        }
+      }
+
       // Update document record to show it's archived
       const { error: updateError } = await supabase
         .from("financial_documents")
@@ -103,6 +147,7 @@ export async function POST(request: NextRequest) {
 
       if (updateError) {
         console.error(`Failed to archive document ${doc.id}:`, updateError);
+        errors.push(`Failed to update ${doc.original_filename}: ${updateError.message}`);
         continue;
       }
 
@@ -112,30 +157,22 @@ export async function POST(request: NextRequest) {
         supabase_path: doc.supabase_path,
         gcs_archive_path: gcsArchivePath,
       });
-
-      // TODO: In production, implement actual file transfer:
-      // 1. Download file from Supabase Storage
-      // 2. Upload to GCS with Archive storage class
-      // 3. Delete from Supabase Storage after verification
-      // Example:
-      // const { data: fileData } = await supabase.storage
-      //   .from('categorization-uploads')
-      //   .download(doc.supabase_path);
-      // 
-      // await uploadToGCSArchive(fileData, gcsArchivePath);
-      // 
-      // await supabase.storage
-      //   .from('categorization-uploads')
-      //   .remove([doc.supabase_path]);
     }
+
+    const responseMessage = errors.length > 0
+      ? `Archived ${archivedDocs.length} documents. ${errors.length} error(s) occurred during transfer.`
+      : `Successfully archived ${archivedDocs.length} documents`;
 
     return NextResponse.json({
       success: true,
-      message: `Successfully archived ${archivedDocs.length} documents`,
+      message: responseMessage,
       archived_count: archivedDocs.length,
       total_size_bytes: documents.reduce((sum, d) => sum + (d.file_size_bytes || 0), 0),
       archived_documents: archivedDocs,
-      note: "Files marked as archived. Implement GCS transfer in production.",
+      errors: errors.length > 0 ? errors : undefined,
+      note: isGCSConfigured() 
+        ? "Files transferred to GCS Archive storage." 
+        : "Files marked as archived. Configure GOOGLE_CLOUD_PROJECT_ID and GOOGLE_CLOUD_STORAGE_BUCKET to enable GCS transfer.",
     });
 
   } catch (error: any) {

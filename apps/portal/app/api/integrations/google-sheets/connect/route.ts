@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/database/server";
 import { getCredentialManager } from "@/lib/credentials/VercelCredentialManager";
 import { validateOAuthConfig } from "@/lib/google-sheets/oauth-config";
+import { getTenantGoogleIntegrationConfig } from "@/lib/google-sheets/tier-config";
 import crypto from "crypto";
 
 export async function GET(request: NextRequest) {
@@ -87,11 +88,18 @@ export async function GET(request: NextRequest) {
     const redirectUriForAuth = redirectUriToUse.trim();    authUrl.searchParams.set("client_id", clientIdForAuth);
     authUrl.searchParams.set("redirect_uri", redirectUriForAuth);
     authUrl.searchParams.set("response_type", "code");
-    authUrl.searchParams.set("scope", [
+    const tierCfg = await getTenantGoogleIntegrationConfig();
+    const isCompany = tierCfg?.entityType === "company";
+
+    // Consumer/Personal: drive.readonly is enough for listing Sheets; write is done via Sheets API.
+    // Business tiers: require Drive scope to create Shared Drives and folders.
+    const scopes = [
       "https://www.googleapis.com/auth/spreadsheets",
-      "https://www.googleapis.com/auth/drive.readonly",
-      "https://www.googleapis.com/auth/userinfo.email"
-    ].join(" "));
+      isCompany ? "https://www.googleapis.com/auth/drive" : "https://www.googleapis.com/auth/drive.readonly",
+      "https://www.googleapis.com/auth/userinfo.email",
+    ];
+
+    authUrl.searchParams.set("scope", scopes.join(" "));
     authUrl.searchParams.set("access_type", "offline"); // Get refresh token
     authUrl.searchParams.set("prompt", "consent"); // Force consent to get refresh token
     authUrl.searchParams.set("state", state);

@@ -1,6 +1,7 @@
 import { createClient } from '@/core/database/server'
 import { NextRequest, NextResponse } from 'next/server'
 import { nanoid } from 'nanoid'
+import { sendEmail } from '@/core/email'
 
 /**
  * Team Invitations API
@@ -147,10 +148,46 @@ export async function POST(request: NextRequest) {
       throw inviteError
     }
 
-    // TODO: Send invitation email
-    // For now, just return the invitation with the link
+    // Send invitation email
     const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
     const inviteLink = `${baseUrl}/join?token=${inviteToken}`
+    const fromAddress = process.env.EMAIL_FROM_ADDRESS || 'noreply@example.com'
+
+    try {
+      const emailSubject = `You've been invited to join ${userData.full_name || 'a team'}`
+      const htmlContent = `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+          <h2 style="color: #333;">Team Invitation</h2>
+          <p>You've been invited to join a team for financial categorization and reconciliation.</p>
+          ${message ? `<div style="background-color: #f5f5f5; padding: 15px; border-radius: 5px; margin: 20px 0;">
+            <p style="margin: 0; font-style: italic;">"${message}"</p>
+          </div>` : ''}
+          <div style="margin: 30px 0;">
+            <a href="${inviteLink}" style="background-color: #007bff; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; display: inline-block;">
+              Accept Invitation
+            </a>
+          </div>
+          <p style="color: #666; font-size: 12px;">
+            Or copy and paste this link into your browser:<br/>
+            <a href="${inviteLink}" style="color: #007bff; word-break: break-all;">${inviteLink}</a>
+          </p>
+          <p style="margin-top: 30px; color: #666; font-size: 12px;">
+            This invitation will expire in 7 days. If you didn't expect this invitation, you can safely ignore this email.
+          </p>
+        </div>
+      `
+
+      await sendEmail({
+        to: email.toLowerCase(),
+        from: fromAddress,
+        subject: emailSubject,
+        html: htmlContent,
+      })
+    } catch (emailError) {
+      console.error('Failed to send invitation email:', emailError)
+      // Don't fail the invitation creation if email fails
+      // Return the invitation with the link so it can be sent manually
+    }
 
     return NextResponse.json({
       success: true,

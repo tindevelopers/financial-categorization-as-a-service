@@ -4,6 +4,8 @@ import { createClient } from '@/lib/database/server';
 export async function GET(request: NextRequest) {
   try {
     const supabase = await createClient();
+    // Cast to any for tables not in generated types
+    const db = supabase as any;
     
     // Get current user
     const { data: { user }, error: userError } = await supabase.auth.getUser();
@@ -17,12 +19,16 @@ export async function GET(request: NextRequest) {
 
     // Get query parameters
     const { searchParams } = new URL(request.url);
-    const status = searchParams.get('status') || 'unreconciled';
+    const statusFilter = searchParams.get('status'); // 'unreconciled', 'matched', or null for all
     const limit = parseInt(searchParams.get('limit') || '100');
     const offset = parseInt(searchParams.get('offset') || '0');
 
-    // Get unreconciled transactions with potential matches
-    const { data: transactions, error: txError } = await supabase
+    // Get source filter if provided
+    const sourceType = searchParams.get('sourceType'); // 'upload', 'google_sheets', 'manual', 'api'
+
+    // Get transactions (all or filtered by status)
+    // Now includes source tracking fields for sync-aware reconciliation
+    let txQuery = db
       .from('categorized_transactions')
       .select(`
         *,
@@ -33,9 +39,20 @@ export async function GET(request: NextRequest) {
         )
       `)
       .eq('job.user_id', user.id)
-      .eq('reconciliation_status', status)
       .order('date', { ascending: false })
       .range(offset, offset + limit - 1);
+
+    // Filter by status if specified
+    if (statusFilter) {
+      txQuery = txQuery.eq('reconciliation_status', statusFilter);
+    }
+
+    // Filter by source type if specified
+    if (sourceType) {
+      txQuery = txQuery.eq('source_type', sourceType);
+    }
+
+    const { data: transactions, error: txError } = await txQuery;
 
     if (txError) {
       console.error('Error fetching transactions:', txError);
@@ -45,13 +62,23 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Get unreconciled documents
-    const { data: documents, error: docError } = await supabase
-      .from('documents')
-      .select('*')
+    // Get unreconciled documents (for potential matches)
+    // Try financial_documents first, fallback to documents for backward compatibility
+    const { data: documents, error: docError } = await db
+      .from('financial_documents')
+      .select(`
+        id, original_filename, vendor_name, document_date, 
+        total_amount, subtotal_amount, tax_amount, fee_amount, net_amount, 
+        tax_rate, line_items, payment_method, po_number,
+        reconciliation_status, matched_transaction_id, 
+        file_type, mime_type, file_size_bytes, ocr_status, extracted_text,
+        supabase_path, storage_tier, extracted_data, category, subcategory,
+        tags, description, notes
+      `)
       .eq('user_id', user.id)
       .eq('reconciliation_status', 'unreconciled')
-      .order('invoice_date', { ascending: false });
+      .is('matched_transaction_id', null)
+      .order('document_date', { ascending: false });
 
     if (docError) {
       console.error('Error fetching documents:', docError);
@@ -61,81 +88,144 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Find potential matches for each transaction
-    const transactionsWithMatches = transactions.map(tx => {
-      const potentialMatches = documents
-        .filter(doc => {
-          const amountDiff = Math.abs((tx.amount || 0) - (doc.total_amount || 0));
-          const dateDiff = doc.invoice_date 
-            ? Math.abs(
-                (new Date(tx.date).getTime() - new Date(doc.invoice_date).getTime()) / 
-                (1000 * 60 * 60 * 24)
-              )
-            : 999;
-          
-          // Only show matches within reasonable thresholds
-          return amountDiff < 100 && dateDiff <= 60;
-        })
-        .map(doc => {
-          const amountDiff = Math.abs((tx.amount || 0) - (doc.total_amount || 0));
-          const dateDiff = doc.invoice_date
-            ? Math.abs(
-                (new Date(tx.date).getTime() - new Date(doc.invoice_date).getTime()) / 
-                (1000 * 60 * 60 * 24)
-              )
-            : 999;
-          
-          // Calculate match confidence
-          let matchConfidence: 'high' | 'medium' | 'low' = 'low';
-          if (amountDiff < 0.01 && dateDiff <= 7) {
-            matchConfidence = 'high';
-          } else if (amountDiff < 1.00 && dateDiff <= 30) {
-            matchConfidence = 'medium';
+    // Get matched documents for transactions that have matched_document_id
+    const matchedTxIds = (transactions || [])
+      .filter((tx: any) => tx.matched_document_id)
+      .map((tx: any) => tx.matched_document_id);
+    
+    let matchedDocuments: any[] = [];
+    if (matchedTxIds.length > 0) {
+      const { data: docs } = await db
+        .from('financial_documents')
+        .select(`
+          id,
+          original_filename,
+          vendor_name,
+          document_date,
+          total_amount,
+          file_type,
+          mime_type,
+          supabase_path,
+          storage_tier,
+          extracted_text,
+          extracted_data,
+          category,
+          subcategory,
+          tags,
+          description,
+          notes
+        `)
+        .in('id', matchedTxIds);
+      
+      matchedDocuments = docs || [];
+    }
+
+    // Create a map for quick lookup
+    const matchedDocsMap = new Map(matchedDocuments.map((doc: any) => [doc.id, doc]));
+
+    // Process transactions: add potential matches for unreconciled, include matched document for matched
+    const transactionsWithMatches = (transactions || []).map((tx: any) => {
+      // If transaction is matched, get the matched document
+      const matchedDocument = tx.matched_document_id && matchedDocsMap.has(tx.matched_document_id)
+        ? {
+            ...matchedDocsMap.get(tx.matched_document_id),
+            invoice_date: matchedDocsMap.get(tx.matched_document_id)?.document_date, // Alias for backward compatibility
           }
-          
-          return {
-            ...doc,
-            match_confidence: matchConfidence,
-            amount_difference: amountDiff,
-            days_difference: dateDiff,
-          };
-        })
-        .sort((a, b) => {
-          // Sort by confidence, then by amount difference
-          const confidenceScore: Record<string, number> = { high: 3, medium: 2, low: 1 };
-          const aScore = confidenceScore[a.match_confidence as string] || 0;
-          const bScore = confidenceScore[b.match_confidence as string] || 0;
-          
-          if (aScore !== bScore) return bScore - aScore;
-          return a.amount_difference - b.amount_difference;
-        })
-        .slice(0, 5); // Top 5 matches per transaction
+        : null;
+
+      // For unreconciled transactions, find potential matches
+      let potentialMatches: any[] = [];
+      if (tx.reconciliation_status === 'unreconciled') {
+        potentialMatches = (documents || [])
+          .filter((doc: any) => {
+            const amountDiff = Math.abs((tx.amount || 0) - (doc.total_amount || 0));
+            const dateDiff = doc.document_date 
+              ? Math.abs(
+                  (new Date(tx.date).getTime() - new Date(doc.document_date).getTime()) / 
+                  (1000 * 60 * 60 * 24)
+                )
+              : 999;
+            
+            // Only show matches within reasonable thresholds
+            return amountDiff < 100 && dateDiff <= 60;
+          })
+          .map((doc: any) => {
+            const amountDiff = Math.abs((tx.amount || 0) - (doc.total_amount || 0));
+            const dateDiff = doc.document_date
+              ? Math.abs(
+                  (new Date(tx.date).getTime() - new Date(doc.document_date).getTime()) / 
+                  (1000 * 60 * 60 * 24)
+                )
+              : 999;
+            
+            // Calculate match confidence
+            let matchConfidence: 'high' | 'medium' | 'low' = 'low';
+            if (amountDiff < 0.01 && dateDiff <= 7) {
+              matchConfidence = 'high';
+            } else if (amountDiff < 1.00 && dateDiff <= 30) {
+              matchConfidence = 'medium';
+            }
+            
+            return {
+              ...doc,
+              invoice_date: doc.document_date,  // Alias for backward compatibility
+              match_confidence: matchConfidence,
+              amount_difference: amountDiff,
+              days_difference: dateDiff,
+            };
+          })
+          .sort((a: any, b: any) => {
+            // Sort by confidence, then by amount difference
+            const confidenceScore: { [key: string]: number } = { high: 3, medium: 2, low: 1 };
+            const aScore = confidenceScore[a.match_confidence] || 0;
+            const bScore = confidenceScore[b.match_confidence] || 0;
+            
+            if (aScore !== bScore) return bScore - aScore;
+            return a.amount_difference - b.amount_difference;
+          })
+          .slice(0, 5); // Top 5 matches per transaction
+      }
 
       return {
         ...tx,
+        matched_document: matchedDocument,
         potential_matches: potentialMatches,
+        // Include sync status info for UI
+        sync_info: {
+          source_type: tx.source_type || 'upload',
+          source_identifier: tx.source_identifier,
+          last_synced_at: tx.last_synced_at,
+          sync_version: tx.sync_version || 1,
+        },
       };
     });
 
-    // Get summary stats
-    const { count: totalUnreconciled } = await supabase
+    // Get summary stats - need to get all user's jobs first
+    const { data: userJobs } = await db
+      .from('categorization_jobs')
+      .select('id')
+      .eq('user_id', user.id);
+    
+    const jobIds = (userJobs || []).map((j: any) => j.id);
+    
+    const { count: totalUnreconciled } = await db
       .from('categorized_transactions')
       .select('*', { count: 'exact', head: true })
       .eq('reconciliation_status', 'unreconciled')
-      .in('job_id', transactions.map(t => t.job_id));
+      .in('job_id', jobIds.length > 0 ? jobIds : ['']);
 
-    const { count: totalMatched } = await supabase
+    const { count: totalMatched } = await db
       .from('categorized_transactions')
       .select('*', { count: 'exact', head: true })
       .eq('reconciliation_status', 'matched')
-      .in('job_id', transactions.map(t => t.job_id));
+      .in('job_id', jobIds.length > 0 ? jobIds : ['']);
 
     return NextResponse.json({
       transactions: transactionsWithMatches,
       summary: {
         total_unreconciled: totalUnreconciled || 0,
         total_matched: totalMatched || 0,
-        total_documents: documents.length,
+        total_documents: (documents || []).length,
       },
     });
   } catch (error) {
@@ -146,4 +236,3 @@ export async function GET(request: NextRequest) {
     );
   }
 }
-

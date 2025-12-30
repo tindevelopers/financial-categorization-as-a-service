@@ -15,7 +15,7 @@ export default function CTASection() {
             Join thousands of users who are saving time with automated transaction categorization.
           </p>
           <Link
-            href="/signup"
+            href="/pricing"
             className="inline-flex items-center gap-2 px-8 py-4 bg-white text-blue-600 font-semibold rounded-lg shadow-lg hover:shadow-xl transition-all duration-200 text-lg hover:bg-gray-50"
           >
             Start Free Trial

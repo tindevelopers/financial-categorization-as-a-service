@@ -80,8 +80,8 @@ export default function SignInPage() {
             </div>
           )}
 
-          <div className="rounded-md shadow-sm -space-y-px">
-            <div>
+          <div className="rounded-md shadow-sm -space-y-px" suppressHydrationWarning>
+            <div suppressHydrationWarning>
               <label htmlFor="email" className="sr-only">
                 Email address
               </label>
@@ -95,9 +95,10 @@ export default function SignInPage() {
                 onChange={(e) => setEmail(e.target.value)}
                 className="appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 dark:border-gray-600 placeholder-gray-500 dark:placeholder-gray-400 text-gray-900 dark:text-white dark:bg-gray-800 rounded-t-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 focus:z-10 sm:text-sm"
                 placeholder="Email address"
+                suppressHydrationWarning
               />
             </div>
-            <div>
+            <div suppressHydrationWarning>
               <label htmlFor="password" className="sr-only">
                 Password
               </label>
@@ -111,6 +112,7 @@ export default function SignInPage() {
                 onChange={(e) => setPassword(e.target.value)}
                 className="appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 dark:border-gray-600 placeholder-gray-500 dark:placeholder-gray-400 text-gray-900 dark:text-white dark:bg-gray-800 rounded-b-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 focus:z-10 sm:text-sm"
                 placeholder="Password"
+                suppressHydrationWarning
               />
             </div>
           </div>

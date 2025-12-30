@@ -486,16 +486,21 @@ export async function POST(request: NextRequest) {
           .eq("id", jobData.id);
       }
 
-      // Trigger background processing (don't wait for completion)      fetch(bgUrl, {
+      // Trigger background processing (don't wait for completion)
+      const bgUrl = `${request.nextUrl.origin}/api/background/process-spreadsheet`;
+      fetch(bgUrl, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           Cookie: request.headers.get("cookie") || "",
         },
         body: JSON.stringify({ jobId: jobData.id }),
-      }).then(res => {      }).catch(err => {        console.error("Failed to queue background processing:", err);
-        // Don't fail the upload - cron job will pick it up if needed
-      });
+      })
+        .then(() => {})
+        .catch((err) => {
+          console.error("Failed to queue background processing:", err);
+          // Don't fail the upload - cron job will pick it up if needed
+        });
     } catch (processError) {
       console.error("Failed to queue background processing:", processError);
       // Don't fail the upload - cron job will pick it up if needed

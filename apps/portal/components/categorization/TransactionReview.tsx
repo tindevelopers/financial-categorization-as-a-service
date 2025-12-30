@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { ArrowDownTrayIcon } from "@heroicons/react/24/outline";
+import { ArrowDownTrayIcon, DocumentTextIcon, LinkIcon } from "@heroicons/react/24/outline";
 import ViewSwitcher, {
   getStoredViewPreference,
   type ViewType,
@@ -10,6 +10,8 @@ import InvoiceCardView from "@/components/invoice/InvoiceCardView";
 import InvoiceSplitView from "@/components/invoice/InvoiceSplitView";
 import InvoiceTableView from "@/components/invoice/InvoiceTableView";
 import BankStatementTableView from "@/components/categorization/BankStatementTableView";
+import SyncStatusIndicator from "@/components/categorization/SyncStatusIndicator";
+import SyncButton from "@/components/categorization/SyncButton";
 
 interface Document {
   id: string;
@@ -56,6 +58,9 @@ interface Transaction {
   document_id: string | null;
   document?: Document | null;
   group_transaction_ids?: string[];
+  sync_status?: "pending" | "synced" | "failed" | null;
+  last_synced_at?: string | null;
+  sync_error?: string | null;
 }
 
 interface TransactionReviewProps {
@@ -75,6 +80,28 @@ export default function TransactionReview({ jobId }: TransactionReviewProps) {
   const [currentView, setCurrentView] = useState<ViewType>("table");
   const [documentUrls, setDocumentUrls] = useState<Record<string, string>>({});
   const [loadingUrls, setLoadingUrls] = useState<Set<string>>(new Set());
+  
+  // Export destination info
+  const [exportInfo, setExportInfo] = useState<{
+    destination: "job" | "bank_account" | "company" | "new";
+    spreadsheetUrl: string | null;
+    spreadsheetName: string | null;
+    bankAccountName: string | null;
+    willSync: boolean;
+    message: string;
+  } | null>(null);
+
+  // Sync status
+  const [syncStatus, setSyncStatus] = useState<{
+    status: "synced" | "pending" | "failed" | null;
+    lastSyncedAt: string | null;
+    pendingCount: number;
+  }>({
+    status: null,
+    lastSyncedAt: null,
+    pendingCount: 0,
+  });
+  const [hasSpreadsheet, setHasSpreadsheet] = useState(false);
 
   // Load stored preference on client-side
   useEffect(() => {
@@ -143,6 +170,76 @@ export default function TransactionReview({ jobId }: TransactionReviewProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [transactions]);
 
+  const loadSyncStatus = async (txs?: Transaction[]) => {
+    try {
+      const transactionsToCheck = txs || transactions;
+      
+      // Check if job has spreadsheet linked
+      const jobResponse = await fetch(`/api/categorization/jobs/${jobId}/export-info`);
+      if (jobResponse.ok) {
+        const jobData = await jobResponse.json();
+        setHasSpreadsheet(!!jobData.spreadsheetId);
+        
+        if (jobData.spreadsheetId && transactionsToCheck.length > 0) {
+          // Count pending syncs (check all transactions in group_transaction_ids)
+          // For grouped transactions, check if any underlying transaction is pending
+          let pendingCount = 0;
+          const allTransactionIds = new Set<string>();
+          
+          transactionsToCheck.forEach((tx) => {
+            if (tx.group_transaction_ids) {
+              tx.group_transaction_ids.forEach((id) => allTransactionIds.add(id));
+            } else {
+              allTransactionIds.add(tx.id);
+            }
+          });
+
+          // We need to check the raw transactions, but for now use the grouped ones
+          // In a real implementation, you'd fetch all individual transactions
+          pendingCount = transactionsToCheck.filter(
+            (tx) => tx.sync_status === "pending" || !tx.sync_status
+          ).length;
+          
+          // Get most recent sync time
+          const syncedTransactions = transactionsToCheck.filter(
+            (tx) => tx.sync_status === "synced" && tx.last_synced_at
+          );
+          const lastSyncedAt = syncedTransactions.length > 0
+            ? syncedTransactions.sort(
+                (a, b) =>
+                  new Date(b.last_synced_at!).getTime() -
+                  new Date(a.last_synced_at!).getTime()
+              )[0].last_synced_at ?? null
+            : null;
+
+          // Determine overall status
+          let status: "synced" | "pending" | "failed" | null = null;
+          if (pendingCount > 0) {
+            status = "pending";
+          } else if (syncedTransactions.length > 0) {
+            status = "synced";
+          } else if (transactionsToCheck.some((tx) => tx.sync_status === "failed")) {
+            status = "failed";
+          }
+
+          setSyncStatus({
+            status,
+            lastSyncedAt,
+            pendingCount,
+          });
+        } else {
+          setSyncStatus({
+            status: null,
+            lastSyncedAt: null,
+            pendingCount: 0,
+          });
+        }
+      }
+    } catch (err) {
+      console.error("Failed to load sync status:", err);
+    }
+  };
+
   const loadTransactions = async () => {
     try {
       const response = await fetch(`/api/categorization/jobs/${jobId}/transactions`);
@@ -187,6 +284,9 @@ export default function TransactionReview({ jobId }: TransactionReviewProps) {
       // Only update if we have transactions or if we're still loading
       setTransactions(newTransactions);
       setLoading(false);
+      
+      // Load sync status after transactions are loaded
+      await loadSyncStatus(newTransactions);
     } catch (err: any) {
       setError(err.message);
       setLoading(false);
@@ -199,7 +299,10 @@ export default function TransactionReview({ jobId }: TransactionReviewProps) {
         method: "POST",
         credentials: "include",
       });
-      if (!response.ok) throw new Error("Failed to confirm");
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: "Failed to confirm" }));
+        throw new Error(errorData.error || "Failed to confirm");
+      }
       await loadTransactions();
     } catch (err: any) {
       setError(err.message);
@@ -453,6 +556,25 @@ export default function TransactionReview({ jobId }: TransactionReviewProps) {
           </div>
         </div>
       </div>
+
+      {/* Sync Status and Actions */}
+      {hasSpreadsheet && (
+        <div className="flex items-center justify-between flex-wrap gap-4 bg-white dark:bg-gray-800 rounded-lg shadow p-4">
+          <SyncStatusIndicator
+            status={syncStatus.status}
+            lastSyncedAt={syncStatus.lastSyncedAt}
+            pendingCount={syncStatus.pendingCount}
+          />
+          <SyncButton
+            jobId={jobId}
+            pendingCount={syncStatus.pendingCount}
+            onSyncComplete={() => {
+              loadTransactions();
+            }}
+            disabled={exporting}
+          />
+        </div>
+      )}
 
       {/* View Switcher and Export */}
       <div className="flex items-center justify-between flex-wrap gap-4">

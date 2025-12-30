@@ -1,296 +1,309 @@
-#!/usr/bin/env tsx
+#!/usr/bin/env npx ts-node
 
 /**
- * Create Platform Admin User
- * Creates systemadmin@tin.info with full platform access
+ * Create Platform Admin User Script
+ * 
+ * This script creates a platform administrator user in Supabase.
+ * Platform admins have full access to the admin dashboard and can manage all tenants.
+ * 
+ * Usage:
+ *   npx ts-node scripts/create-platform-admin.ts
+ * 
+ * Or with arguments:
+ *   npx ts-node scripts/create-platform-admin.ts --email admin@example.com --password SecurePass123!
  */
 
-import { createClient } from "@supabase/supabase-js";
-import * as dotenv from "dotenv";
-import * as path from "path";
+import 'dotenv/config';
+import { createClient } from '@supabase/supabase-js';
+import * as readline from 'readline';
 
-// Load environment variables from .env.local
-dotenv.config({ path: path.join(process.cwd(), ".env.local") });
+const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-if (!supabaseUrl || !serviceRoleKey) {
-  console.error("❌ Missing required environment variables");
-  console.error("   NEXT_PUBLIC_SUPABASE_URL:", supabaseUrl ? "✓" : "✗");
-  console.error("   SUPABASE_SERVICE_ROLE_KEY:", serviceRoleKey ? "✓" : "✗");
-  console.error("\n💡 Get these from: https://supabase.com/dashboard/project/firwcvlikjltikdrmejq/settings/api");
+if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
+  console.error('❌ Missing environment variables. Please set:');
+  console.error('   - NEXT_PUBLIC_SUPABASE_URL');
+  console.error('   - SUPABASE_SERVICE_ROLE_KEY');
   process.exit(1);
 }
 
-const supabase = createClient(supabaseUrl, serviceRoleKey, {
+const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
   auth: {
     autoRefreshToken: false,
     persistSession: false,
   },
 });
 
-const ADMIN_EMAIL = "systemadmin@tin.info";
-const ADMIN_PASSWORD = "88888888";
-const ADMIN_FULL_NAME = "System Administrator";
-
-async function ensurePlatformAdminRole() {
-  console.log("\n🔍 Checking Platform Admin role...");
+function parseArgs(): { email?: string; password?: string; name?: string } {
+  const args: { email?: string; password?: string; name?: string } = {};
+  const argv = process.argv.slice(2);
   
-  const { data: role, error } = await supabase
-    .from("roles")
-    .select("*")
-    .eq("name", "Platform Admin")
-    .single();
-  
-  if (error) {
-    if (error.code === "PGRST116") {
-      console.log("   ⚠️  Platform Admin role not found, creating...");
-      
-      const { data: newRole, error: createError } = await supabase
-        .from("roles")
-        .insert({
-          name: "Platform Admin",
-          description: "Full system administrator with access to all tenants and system settings",
-          coverage: "platform",
-          permissions: ["*"],
-          gradient: "bg-gradient-to-r from-purple-600 to-blue-600",
-          max_seats: 0,
-          current_seats: 0,
-        })
-        .select()
-        .single();
-      
-      if (createError) {
-        console.error("   ❌ Failed to create Platform Admin role:", createError.message);
-        throw createError;
-      }
-      
-      console.log("   ✅ Platform Admin role created");
-      return newRole;
+  for (let i = 0; i < argv.length; i++) {
+    if (argv[i] === '--email' && argv[i + 1]) {
+      args.email = argv[++i];
+    } else if (argv[i] === '--password' && argv[i + 1]) {
+      args.password = argv[++i];
+    } else if (argv[i] === '--name' && argv[i + 1]) {
+      args.name = argv[++i];
     }
-    throw error;
   }
   
-  console.log("   ✅ Platform Admin role exists");
-  console.log(`      - ID: ${role.id}`);
-  console.log(`      - Coverage: ${role.coverage}`);
-  
-  return role;
+  return args;
 }
 
-async function checkExistingUser() {
-  console.log(`\n🔍 Checking for existing user: ${ADMIN_EMAIL}`);
-  
-  // Check auth.users
-  const { data: authUsers, error: authError } = await supabase.auth.admin.listUsers();
-  
-  if (authError) {
-    console.error("   ❌ Error listing auth users:", authError.message);
-    throw authError;
-  }
-  
-  const authUser = authUsers.users.find((u) => u.email === ADMIN_EMAIL);
-  
-  if (authUser) {
-    console.log("   ✅ Found in auth.users");
-    console.log(`      - ID: ${authUser.id}`);
-    console.log(`      - Created: ${authUser.created_at}`);
-    
-    // Check public.users
-    const { data: publicUser, error: publicError } = await supabase
-      .from("users")
-      .select(`
-        *,
-        roles:role_id (
-          name,
-          coverage
-        )
-      `)
-      .eq("id", authUser.id)
-      .single();
-    
-    if (publicError) {
-      console.log("   ⚠️  Not found in public.users table");
-      return { authUser, publicUser: null };
-    }
-    
-    console.log("   ✅ Found in public.users");
-    console.log(`      - Role: ${(publicUser.roles as any)?.name || "None"}`);
-    console.log(`      - Tenant ID: ${publicUser.tenant_id || "NULL (Platform Admin)"}`);
-    
-    return { authUser, publicUser };
-  }
-  
-  console.log("   ℹ️  User does not exist");
-  return null;
-}
-
-async function createPlatformAdmin(roleId: string) {
-  console.log(`\n🔨 Creating Platform Admin: ${ADMIN_EMAIL}`);
-  
-  // Step 1: Create auth user
-  console.log("   Step 1: Creating auth user...");
-  const { data: authData, error: authError } = await supabase.auth.admin.createUser({
-    email: ADMIN_EMAIL,
-    password: ADMIN_PASSWORD,
-    email_confirm: true, // Auto-confirm email
-    user_metadata: {
-      full_name: ADMIN_FULL_NAME,
-    },
+async function prompt(question: string, hidden = false): Promise<string> {
+  const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout,
   });
+
+  return new Promise((resolve) => {
+    if (hidden) {
+      process.stdout.write(question);
+      let input = '';
+      process.stdin.setRawMode(true);
+      process.stdin.resume();
+      process.stdin.on('data', (char) => {
+        const c = char.toString();
+        if (c === '\n' || c === '\r') {
+          process.stdin.setRawMode(false);
+          process.stdin.pause();
+          console.log();
+          rl.close();
+          resolve(input);
+        } else if (c === '\u0003') {
+          process.exit();
+        } else if (c === '\u007F') {
+          input = input.slice(0, -1);
+        } else {
+          input += c;
+        }
+      });
+    } else {
+      rl.question(question, (answer) => {
+        rl.close();
+        resolve(answer);
+      });
+    }
+  });
+}
+
+async function ensurePlatformAdminRole(): Promise<string> {
+  console.log('🔍 Checking for Platform Admin role...');
   
-  if (authError) {
-    console.error("   ❌ Error creating auth user:", authError.message);
-    throw authError;
+  // Check if role exists
+  const { data: existingRole, error: checkError } = await supabase
+    .from('roles')
+    .select('id, name')
+    .eq('name', 'Platform Admin')
+    .single();
+
+  if (existingRole) {
+    console.log('✅ Platform Admin role exists:', existingRole.id);
+    return existingRole.id;
   }
-  
-  if (!authData.user) {
-    throw new Error("Auth user created but no user data returned");
-  }
-  
-  console.log("   ✅ Auth user created");
-  console.log(`      - ID: ${authData.user.id}`);
-  console.log(`      - Email: ${authData.user.email}`);
-  
-  // Step 2: Create public.users record
-  console.log("   Step 2: Creating public.users record...");
-  const { data: publicUser, error: publicError } = await supabase
-    .from("users")
+
+  // Create the role if it doesn't exist
+  console.log('📝 Creating Platform Admin role...');
+  const { data: newRole, error: createError } = await supabase
+    .from('roles')
     .insert({
-      id: authData.user.id,
-      email: ADMIN_EMAIL,
-      full_name: ADMIN_FULL_NAME,
-      role_id: roleId,
-      tenant_id: null, // NULL for Platform Admin (system-level access)
-      plan: "enterprise",
-      status: "active",
+      name: 'Platform Admin',
+      description: 'Full platform administrator with access to all features and tenants',
+      coverage: 'platform',
+      permissions: [
+        'platform:manage',
+        'tenants:read',
+        'tenants:write',
+        'tenants:delete',
+        'users:read',
+        'users:write',
+        'users:delete',
+        'settings:read',
+        'settings:write',
+        'billing:read',
+        'billing:write',
+        'integrations:manage',
+        'reports:read',
+        'reports:write',
+      ],
     })
-    .select()
+    .select('id')
     .single();
-  
-  if (publicError) {
-    console.error("   ❌ Error creating public.users record:", publicError.message);
-    
-    // Try to clean up auth user
-    console.log("   🧹 Cleaning up auth user...");
-    await supabase.auth.admin.deleteUser(authData.user.id);
-    
-    throw publicError;
+
+  if (createError) {
+    console.error('❌ Failed to create Platform Admin role:', createError.message);
+    throw createError;
   }
-  
-  console.log("   ✅ Public user record created");
-  console.log(`      - User ID: ${publicUser.id}`);
-  console.log(`      - Role ID: ${publicUser.role_id}`);
-  console.log(`      - Tenant ID: ${publicUser.tenant_id || "NULL (Platform Admin)"}`);
-  
-  return { authUser: authData.user, publicUser };
+
+  console.log('✅ Platform Admin role created:', newRole.id);
+  return newRole.id;
 }
 
-async function updateExistingUser(userId: string, roleId: string) {
-  console.log(`\n🔄 Updating existing user to Platform Admin...`);
-  
-  const { data: publicUser, error: publicError } = await supabase
-    .from("users")
-    .update({
-      role_id: roleId,
-      tenant_id: null, // NULL for Platform Admin
-      status: "active",
-      full_name: ADMIN_FULL_NAME,
-    })
-    .eq("id", userId)
-    .select()
-    .single();
-  
-  if (publicError) {
-    console.error("   ❌ Error updating user:", publicError.message);
-    throw publicError;
-  }
-  
-  console.log("   ✅ User updated successfully");
-  console.log(`      - Role ID: ${publicUser.role_id}`);
-  console.log(`      - Tenant ID: ${publicUser.tenant_id || "NULL (Platform Admin)"}`);
-  
-  return publicUser;
-}
+async function createPlatformAdmin(email: string, password: string, fullName: string) {
+  console.log('\n🚀 Creating Platform Admin user...\n');
 
-async function main() {
-  console.log("╔════════════════════════════════════════════╗");
-  console.log("║   Create Platform Admin User               ║");
-  console.log("╚════════════════════════════════════════════╝");
-  console.log(`\n📡 Connected to: ${supabaseUrl}`);
-  console.log(`👤 Target user: ${ADMIN_EMAIL}`);
-  console.log(`🔑 Password: ${ADMIN_PASSWORD}`);
-  
   try {
     // Step 1: Ensure Platform Admin role exists
-    const role = await ensurePlatformAdminRole();
-    
-    // Step 2: Check if user already exists
-    const existing = await checkExistingUser();
-    
-    if (existing) {
-      if (existing.publicUser) {
-        const currentRole = (existing.publicUser.roles as any)?.name;
-        const currentTenantId = existing.publicUser.tenant_id;
+    const roleId = await ensurePlatformAdminRole();
+
+    // Step 2: Create auth user
+    console.log('👤 Creating auth user...');
+    const { data: authData, error: authError } = await supabase.auth.admin.createUser({
+      email,
+      password,
+      email_confirm: true, // Auto-confirm email
+      user_metadata: {
+        full_name: fullName,
+      },
+    });
+
+    if (authError) {
+      if (authError.message.includes('already been registered')) {
+        console.log('⚠️  User already exists in auth. Checking if they have a users record...');
         
-        if (currentRole === "Platform Admin" && currentTenantId === null) {
-          console.log("\n✅ User is already a Platform Admin!");
-          console.log("   No changes needed.");
-        } else {
-          console.log(`\n⚠️  User exists but is not a Platform Admin`);
-          console.log(`   Current role: ${currentRole || "None"}`);
-          console.log(`   Current tenant: ${currentTenantId || "NULL"}`);
-          console.log(`\n   Updating to Platform Admin...`);
-          
-          await updateExistingUser(existing.authUser.id, role.id);
-          console.log("\n✅ User updated to Platform Admin!");
+        // Get existing user
+        const { data: users } = await supabase.auth.admin.listUsers();
+        const existingAuthUser = users.users.find(u => u.email === email);
+        
+        if (!existingAuthUser) {
+          throw new Error('User exists but cannot be found');
         }
-      } else {
-        console.log("\n⚠️  Auth user exists but missing public.users record");
-        console.log("   Creating public.users record...");
-        
-        const { error } = await supabase
-          .from("users")
-          .insert({
-            id: existing.authUser.id,
-            email: ADMIN_EMAIL,
-            full_name: ADMIN_FULL_NAME,
-            role_id: role.id,
-            tenant_id: null,
-            plan: "enterprise",
-            status: "active",
-          });
-        
-        if (error) throw error;
-        console.log("   ✅ Public user record created");
+
+        // Check if user record exists
+        const { data: existingUser } = await supabase
+          .from('users')
+          .select('id, role_id')
+          .eq('id', existingAuthUser.id)
+          .single();
+
+        if (existingUser) {
+          // Update to Platform Admin role
+          console.log('📝 Updating existing user to Platform Admin role...');
+          const { error: updateError } = await supabase
+            .from('users')
+            .update({ 
+              role_id: roleId,
+              tenant_id: null, // Platform admins have no tenant
+            })
+            .eq('id', existingAuthUser.id);
+
+          if (updateError) {
+            throw updateError;
+          }
+
+          console.log('\n✅ Successfully updated user to Platform Admin!');
+          console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+          console.log(`   Email:    ${email}`);
+          console.log(`   User ID:  ${existingAuthUser.id}`);
+          console.log(`   Role:     Platform Admin`);
+          console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+          return;
+        } else {
+          // Create users record
+          console.log('📝 Creating users record for existing auth user...');
+          const { error: insertError } = await supabase
+            .from('users')
+            .insert({
+              id: existingAuthUser.id,
+              email: email,
+              full_name: fullName,
+              role_id: roleId,
+              tenant_id: null, // Platform admins have no tenant
+            });
+
+          if (insertError) {
+            throw insertError;
+          }
+
+          console.log('\n✅ Successfully created Platform Admin!');
+          console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+          console.log(`   Email:    ${email}`);
+          console.log(`   User ID:  ${existingAuthUser.id}`);
+          console.log(`   Role:     Platform Admin`);
+          console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+          return;
+        }
       }
-    } else {
-      // Create new user
-      await createPlatformAdmin(role.id);
-      console.log("\n🎉 Platform Admin created successfully!");
+      throw authError;
     }
-    
-    // Final verification
-    console.log("\n═══════════════════════════════════════════");
-    console.log("📋 FINAL USER STATUS");
-    console.log("═══════════════════════════════════════════");
-    
-    const final = await checkExistingUser();
-    if (final?.publicUser) {
-      console.log("\n✅ Platform Admin is ready to use:");
-      console.log(`   📧 Email: ${ADMIN_EMAIL}`);
-      console.log(`   🔑 Password: ${ADMIN_PASSWORD}`);
-      console.log(`   🎭 Role: ${(final.publicUser.roles as any)?.name}`);
-      console.log(`   🏢 Tenant: ${final.publicUser.tenant_id || "NULL (System-level)"}`);
-      console.log(`   📊 Status: ${final.publicUser.status}`);
+
+    const userId = authData.user.id;
+    console.log('✅ Auth user created:', userId);
+
+    // Step 3: Create users record
+    console.log('📝 Creating users record...');
+    const { error: userError } = await supabase
+      .from('users')
+      .insert({
+        id: userId,
+        email: email,
+        full_name: fullName,
+        role_id: roleId,
+        tenant_id: null, // Platform admins have no tenant
+      });
+
+    if (userError) {
+      console.error('❌ Failed to create users record:', userError.message);
+      // Try to clean up auth user
+      await supabase.auth.admin.deleteUser(userId);
+      throw userError;
     }
-    
-    console.log("\n✅ Setup complete!\n");
-  } catch (error) {
-    console.error("\n❌ Fatal error:", error);
+
+    console.log('\n✅ Successfully created Platform Admin!');
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    console.log(`   Email:    ${email}`);
+    console.log(`   Password: ${'*'.repeat(password.length)}`);
+    console.log(`   User ID:  ${userId}`);
+    console.log(`   Role:     Platform Admin`);
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    console.log('\n📌 You can now sign in at: http://localhost:3001/signin');
+
+  } catch (error: any) {
+    console.error('\n❌ Error creating Platform Admin:', error.message);
     process.exit(1);
   }
 }
 
-main();
+async function main() {
+  console.log('╔═══════════════════════════════════════════╗');
+  console.log('║     Create Platform Admin User            ║');
+  console.log('╚═══════════════════════════════════════════╝\n');
+
+  const args = parseArgs();
+
+  let email = args.email;
+  let password = args.password;
+  let name = args.name;
+
+  // Interactive prompts if not provided via args
+  if (!email) {
+    email = await prompt('📧 Email address: ');
+  }
+
+  if (!email || !email.includes('@')) {
+    console.error('❌ Invalid email address');
+    process.exit(1);
+  }
+
+  if (!name) {
+    name = await prompt('👤 Full name: ');
+  }
+
+  if (!name) {
+    name = 'Platform Administrator';
+  }
+
+  if (!password) {
+    password = await prompt('🔐 Password (min 8 chars): ', true);
+  }
+
+  if (!password || password.length < 8) {
+    console.error('❌ Password must be at least 8 characters');
+    process.exit(1);
+  }
+
+  await createPlatformAdmin(email, password, name);
+}
+
+main().catch(console.error);

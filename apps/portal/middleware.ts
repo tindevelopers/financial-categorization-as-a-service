@@ -27,6 +27,7 @@ export async function middleware(request: NextRequest) {
     const publicPages = [
       '/signin',
       '/signup',
+      '/pricing',
       '/about',
       '/contact',
       '/terms',

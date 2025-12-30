@@ -16,8 +16,10 @@ async function getGoogleCredentials(supabase: any, userId: string): Promise<{
   source: 'tenant' | 'platform';
 }> {  
   const nextPublicAppUrl = process.env.NEXT_PUBLIC_APP_URL?.trim();
-  const vercelUrl = process.env.VERCEL_URL?.trim();  const baseUrl = (nextPublicAppUrl || 
-    (vercelUrl ? `https://${vercelUrl}` : 'http://localhost:3000')).trim()
+  const vercelUrl = process.env.VERCEL_URL?.trim();
+  const baseUrl = (
+    nextPublicAppUrl || (vercelUrl ? `https://${vercelUrl}` : 'http://localhost:3000')
+  ).trim()
   const defaultRedirectUri = `${baseUrl}/api/integrations/google-sheets/callback`.trim()
   // Get user's tenant ID
   const { data: userData } = await supabase
@@ -70,7 +72,10 @@ async function getGoogleCredentials(supabase: any, userId: string): Promise<{
       }
 
       if (decryptedSecret) {
-        const finalRedirectUri = (tenantSettings.custom_redirect_uri?.trim() || defaultRedirectUri).trim()        return {
+        const finalRedirectUri = (
+          tenantSettings.custom_redirect_uri?.trim() || defaultRedirectUri
+        ).trim()
+        return {
           clientId: tenantSettings.custom_client_id,
           clientSecret: decryptedSecret,
           redirectUri: finalRedirectUri,
@@ -83,7 +88,11 @@ async function getGoogleCredentials(supabase: any, userId: string): Promise<{
   // Fall back to platform-level environment variables
   // Check both GOOGLE_REDIRECT_URI and GOOGLE_SHEETS_REDIRECT_URI
   const googleRedirectUri = process.env.GOOGLE_REDIRECT_URI?.trim();
-  const googleSheetsRedirectUri = process.env.GOOGLE_SHEETS_REDIRECT_URI?.trim();  const platformRedirectUri = (googleSheetsRedirectUri || googleRedirectUri || defaultRedirectUri).trim()  return {
+  const googleSheetsRedirectUri = process.env.GOOGLE_SHEETS_REDIRECT_URI?.trim();
+  const platformRedirectUri = (
+    googleSheetsRedirectUri || googleRedirectUri || defaultRedirectUri
+  ).trim()
+  return {
     clientId: process.env.GOOGLE_CLIENT_ID || null,
     clientSecret: process.env.GOOGLE_CLIENT_SECRET || null,
     redirectUri: platformRedirectUri,
@@ -92,7 +101,8 @@ async function getGoogleCredentials(supabase: any, userId: string): Promise<{
 }
 
 export async function GET() {
-  try {    const supabase = await createClient()
+  try {
+    const supabase = await createClient()
     const { data: { user }, error: authError } = await supabase.auth.getUser()
 
     if (authError || !user) {
@@ -149,10 +159,12 @@ export async function GET() {
     // Log redirect URI for debugging (don't log full URL with state for security)
     console.log('[Google Sheets OAuth] Redirect URI:', credentials.redirectUri)
     console.log('[Google Sheets OAuth] Client ID:', credentials.clientId?.substring(0, 20) + '...')
-    console.log('[Google Sheets OAuth] Credential Source:', credentials.source)    return NextResponse.json({ 
+    console.log('[Google Sheets OAuth] Credential Source:', credentials.source)
+    return NextResponse.json({ 
       authUrl: authUrl.toString(),
       credentialSource: credentials.source,
-      redirectUri: credentials.redirectUri, // Include in response for debugging    })
+      redirectUri: credentials.redirectUri, // Include in response for debugging
+    })
   } catch (error) {
     console.error('Error generating auth URL:', error)
     return NextResponse.json(

@@ -32,6 +32,7 @@ export interface SignUpData {
   tenantDomain: string;
   plan?: string;
   region?: string;
+  subscriptionType?: "individual" | "company" | "enterprise";
 }
 
 export interface SignInData {
@@ -106,6 +107,7 @@ export async function signUp(data: SignUpData) {
         plan: data.plan || "starter",
         region: data.region || "us-east-1",
         status: "pending",
+        subscription_type: data.subscriptionType || "individual",
       };
 
       const result: { data: TenantRow | null; error: any } = await adminClient

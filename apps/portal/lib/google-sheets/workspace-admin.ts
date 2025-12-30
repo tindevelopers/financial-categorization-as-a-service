@@ -132,7 +132,7 @@ export async function createWorkspaceAdminSheetsClient(
       key: serviceAccountCreds.privateKey.replace(/\\n/g, "\n"),
       scopes: [
         "https://www.googleapis.com/auth/spreadsheets",
-        "https://www.googleapis.com/auth/drive.file", // Required for creating new spreadsheets
+        "https://www.googleapis.com/auth/drive", // Required for Shared Drives + folder/file creation
       ],
       subject: subjectEmail, // Impersonate this user (required for DWD)
     });

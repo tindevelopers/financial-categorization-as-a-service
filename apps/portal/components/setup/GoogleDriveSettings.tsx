@@ -8,6 +8,9 @@ import {
   ExclamationCircleIcon,
   ArrowPathIcon,
   DocumentTextIcon,
+  CloudIcon,
+  UserIcon,
+  BuildingOfficeIcon,
 } from '@heroicons/react/24/outline'
 
 interface SharedDrive {
@@ -16,12 +19,15 @@ interface SharedDrive {
   createdTime?: string
 }
 
+type SubscriptionType = 'individual' | 'company' | 'enterprise'
+
 interface GoogleDriveSettingsProps {
   companyId: string
   initialDriveId?: string | null
   initialDriveName?: string | null
   initialSpreadsheetId?: string | null
   initialSpreadsheetName?: string | null
+  subscriptionType?: SubscriptionType
   onChange: (settings: {
     googleSharedDriveId: string | null
     googleSharedDriveName: string | null
@@ -36,6 +42,7 @@ export function GoogleDriveSettings({
   initialDriveName,
   initialSpreadsheetId,
   initialSpreadsheetName,
+  subscriptionType = 'individual',
   onChange,
 }: GoogleDriveSettingsProps) {
   const [drives, setDrives] = useState<SharedDrive[]>([])
@@ -51,9 +58,19 @@ export function GoogleDriveSettings({
   const [useManualEntry, setUseManualEntry] = useState(false)
   const [spreadsheetId, setSpreadsheetId] = useState<string>(initialSpreadsheetId || '')
   const [spreadsheetName, setSpreadsheetName] = useState<string>(initialSpreadsheetName || '')
+  const [provisioning, setProvisioning] = useState(false)
+  const [provisionResult, setProvisionResult] = useState<string | null>(null)
+  const [oauthConnected, setOauthConnected] = useState(false)
+  const [connectingOAuth, setConnectingOAuth] = useState(false)
 
-  // Load available shared drives
+  // Only load shared drives for enterprise subscriptions
   useEffect(() => {
+    // For individual/company, we use simple OAuth - no shared drive setup needed
+    if (subscriptionType !== 'enterprise') {
+      setLoading(false)
+      return
+    }
+
     async function loadDrives() {
       try {
         setLoading(true)
@@ -76,7 +93,67 @@ export function GoogleDriveSettings({
     }
     
     loadDrives()
-  }, [])
+  }, [subscriptionType])
+
+  // Check OAuth connection status for individual/company
+  useEffect(() => {
+    if (subscriptionType === 'enterprise') return
+
+    async function checkOAuthStatus() {
+      try {
+        const response = await fetch('/api/integrations/google-sheets/status')
+        const data = await response.json()
+        setOauthConnected(data.connected || false)
+      } catch {
+        setOauthConnected(false)
+      }
+    }
+    
+    checkOAuthStatus()
+  }, [subscriptionType])
+
+  const handleConnectOAuth = async () => {
+    setConnectingOAuth(true)
+    // Redirect to OAuth flow
+    window.location.href = '/api/integrations/google-sheets/connect'
+  }
+
+  const handleProvisionSharedDrive = async () => {
+    try {
+      setProvisioning(true)
+      setProvisionResult(null)
+      setTestResult(null)
+      setError(null)
+
+      const res = await fetch('/api/integrations/google-shared-drive/provision', { method: 'POST' })
+      const data = await res.json()
+      if (!res.ok || !data.success) {
+        setError(data.error || 'Failed to provision Shared Drive')
+        return
+      }
+
+      setProvisionResult(`Provisioned "${data.sharedDrive?.name}" with Statements/Invoices/Exports folders.`)
+
+      // Reload drives list for display
+      const drivesRes = await fetch('/api/integrations/google-sheets/shared-drives')
+      const drivesData = await drivesRes.json().catch(() => null)
+      if (drivesData?.drives) {
+        setDrives(drivesData.drives || [])
+        setServiceAccountEmail(drivesData.serviceAccountEmail || null)
+      }
+
+      // Select the newly created drive
+      if (data.sharedDrive?.id) {
+        setSelectedDriveId(data.sharedDrive.id)
+        setSelectedDriveName(data.sharedDrive.name || '')
+        setUseManualEntry(false)
+      }
+    } catch (e: any) {
+      setError(e.message || 'Failed to provision Shared Drive')
+    } finally {
+      setProvisioning(false)
+    }
+  }
 
   // Notify parent of changes
   useEffect(() => {
@@ -157,6 +234,82 @@ export function GoogleDriveSettings({
     }
   }
 
+  // Individual/Company: Simple OAuth connection
+  if (subscriptionType !== 'enterprise') {
+    return (
+      <div className="space-y-6">
+        <div>
+          <h3 className="text-lg font-semibold text-zinc-900 dark:text-white flex items-center gap-2">
+            <CloudIcon className="h-5 w-5 text-blue-500" />
+            Google Sheets Connection
+          </h3>
+          <Text className="mt-1">
+            Connect your Google account to export bank statements and reports directly to Google Sheets.
+          </Text>
+        </div>
+
+        {/* Subscription type indicator */}
+        <div className="flex items-center gap-2 text-sm text-zinc-500 dark:text-zinc-400">
+          {subscriptionType === 'individual' ? (
+            <>
+              <UserIcon className="h-4 w-4" />
+              <span>Individual Plan - Using platform OAuth</span>
+            </>
+          ) : (
+            <>
+              <BuildingOfficeIcon className="h-4 w-4" />
+              <span>Company Plan - Using platform OAuth (upgrade to Enterprise for custom credentials)</span>
+            </>
+          )}
+        </div>
+
+        {oauthConnected ? (
+          <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg p-4">
+            <div className="flex items-center gap-3">
+              <CheckCircleIcon className="h-6 w-6 text-green-500" />
+              <div>
+                <Text className="font-medium text-green-800 dark:text-green-200">
+                  Google Sheets Connected
+                </Text>
+                <Text className="text-sm text-green-700 dark:text-green-300">
+                  Your account is connected and ready to export data.
+                </Text>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="bg-zinc-50 dark:bg-zinc-900/40 border border-zinc-200 dark:border-zinc-800 rounded-lg p-4">
+            <Text className="text-sm text-zinc-700 dark:text-zinc-300 mb-4">
+              Connect your Google account to enable automatic exports to Google Sheets. 
+              This uses secure OAuth authentication - we never see your password.
+            </Text>
+            <Button onClick={handleConnectOAuth} disabled={connectingOAuth} color="blue">
+              {connectingOAuth ? (
+                <>
+                  <ArrowPathIcon className="h-4 w-4 animate-spin" />
+                  Connecting...
+                </>
+              ) : (
+                <>
+                  <CloudIcon className="h-4 w-4" />
+                  Connect Google Sheets
+                </>
+              )}
+            </Button>
+          </div>
+        )}
+
+        <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
+          <Text className="text-sm text-blue-800 dark:text-blue-200">
+            <strong>How it works:</strong> When you export bank statements or reports, they&apos;ll be 
+            saved to your personal Google Drive. You can share these files with your team or accountant.
+          </Text>
+        </div>
+      </div>
+    )
+  }
+
+  // Enterprise: Full shared drive configuration
   return (
     <div className="space-y-6">
       <div>
@@ -170,6 +323,12 @@ export function GoogleDriveSettings({
         </Text>
       </div>
 
+      {/* Enterprise indicator */}
+      <div className="flex items-center gap-2 text-sm text-purple-600 dark:text-purple-400">
+        <BuildingOfficeIcon className="h-4 w-4" />
+        <span>Enterprise Plan - Using your organization&apos;s Google credentials</span>
+      </div>
+
       {serviceAccountEmail && (
         <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
           <Text className="text-sm text-blue-800 dark:text-blue-200">
@@ -180,6 +339,27 @@ export function GoogleDriveSettings({
           </Text>
         </div>
       )}
+
+      <div className="bg-zinc-50 dark:bg-zinc-900/40 border border-zinc-200 dark:border-zinc-800 rounded-lg p-4">
+        <Text className="text-sm text-zinc-700 dark:text-zinc-300">
+          Prefer company-owned exports? Provision a tenant Shared Drive with the standard folder structure.
+        </Text>
+        <div className="mt-3 flex items-center gap-3 flex-wrap">
+          <Button onClick={handleProvisionSharedDrive} disabled={provisioning} color="blue">
+            {provisioning ? (
+              <>
+                <ArrowPathIcon className="h-4 w-4 animate-spin" />
+                Provisioning...
+              </>
+            ) : (
+              'Provision Company Shared Drive'
+            )}
+          </Button>
+          {provisionResult && (
+            <Text className="text-sm text-green-700 dark:text-green-300">{provisionResult}</Text>
+          )}
+        </div>
+      </div>
 
       {error && (
         <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4">

@@ -59,16 +59,20 @@ export class TransactionMergeService {
     options: MergeOptions
   ): Promise<MergeResult> {    
     // If skip duplicate check, just insert all
-    if (options.skipDuplicateCheck) {      return this.insertAllTransactions(transactions, options);
+    if (options.skipDuplicateCheck) {
+      return this.insertAllTransactions(transactions, options);
     }
 
-    // Detect duplicates    const similarity = await this.duplicateDetector.detectSimilarity(transactions, this.userId);
+    // Detect duplicates
+    const similarity = await this.duplicateDetector.detectSimilarity(transactions, this.userId);
     // Always use merge mode to skip duplicate transactions
     // This ensures we never insert duplicates, regardless of similarity score
-    if (similarity.matchingCount > 0) {      return this.mergeTransactions(similarity, options);
+    if (similarity.matchingCount > 0) {
+      return this.mergeTransactions(similarity, options);
     }
 
-    // No duplicates - insert everything    return this.insertAllTransactions(transactions, options);
+    // No duplicates - insert everything
+    return this.insertAllTransactions(transactions, options);
   }
 
   /**

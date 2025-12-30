@@ -3,6 +3,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/database/server";
 import { createAdminClient } from "@/lib/database/admin-client";
 import { createJobErrorResponse, mapErrorToCode } from "@/lib/errors/job-errors";
+import { google } from "googleapis";
+import { getCredentialManager } from "@/lib/credentials/VercelCredentialManager";
+import { getTenantGoogleAdminOAuthConnection } from "@/lib/google-sheets/tier-config";
+import { encryptToken, refreshOAuthToken } from "@/lib/google-sheets/auth-helpers";
 
 export async function POST(request: NextRequest) {
   try {    const supabase = await createClient();
@@ -37,8 +41,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Start background processing    waitUntil(
-      processInvoicesBatch(jobId, user.id, supabase).catch((err) => {        console.error("Background batch processing failed:", err);
+    // Start background processing
+    waitUntil(
+      processInvoicesBatch(jobId, user.id, supabase).catch((err) => {
+        console.error("Background batch processing failed:", err);
       })
     );
 
@@ -74,7 +80,8 @@ async function processInvoicesBatch(
       })
       .eq("id", jobId);
 
-    // Get documents for this job from financial_documents table    const { data: documents, error: docsError } = await supabase
+    // Get documents for this job from financial_documents table
+    const { data: documents, error: docsError } = await supabase
       .from("financial_documents")
       .select("*")
       .eq("job_id", jobId)
@@ -218,6 +225,20 @@ async function processSingleInvoice(
 
     if (downloadError || !fileData) {
       throw new Error(`Failed to download file: ${filePath}`);
+    }
+
+    // Optional: copy invoice/receipt into tenant Shared Drive (Business Standard / Enterprise)
+    try {
+      await maybeCopyDocumentToTenantDrive({
+        doc,
+        fileData,
+        userId,
+        adminClient,
+        supabase,
+      });
+    } catch (driveCopyError: any) {
+      // Never fail invoice processing due to Drive copy issues
+      console.warn("[Drive Copy] Failed to copy document to Drive:", driveCopyError?.message || driveCopyError);
     }
 
     // Process OCR
@@ -382,6 +403,183 @@ async function processSingleInvoice(
     (mappedError as any).code = errorCode;
     throw mappedError;
   }
+}
+
+async function maybeCopyDocumentToTenantDrive(params: {
+  doc: any;
+  fileData: Blob;
+  userId: string;
+  adminClient: any;
+  supabase: any;
+}) {
+  const { doc, fileData, userId, adminClient, supabase } = params;
+
+  const tenantId: string | null = doc.tenant_id || null;
+  if (!tenantId) return;
+
+  // Skip if already copied
+  const existingCloudCopies = doc.extracted_data?.cloudCopies;
+  const existingDriveCopy = existingCloudCopies?.googleDrive;
+  if (existingDriveCopy?.fileId) return;
+
+  // Load tenant google settings
+  const { data: tis } = await adminClient
+    .from("tenant_integration_settings")
+    .select("use_custom_credentials, settings, is_enabled")
+    .eq("tenant_id", tenantId)
+    .eq("provider", "google_sheets")
+    .maybeSingle();
+
+  if (!tis?.is_enabled) return;
+
+  const settings = (tis.settings || {}) as Record<string, any>;
+  const copyInvoicesToDrive = settings.copyInvoicesToDrive === true;
+  if (!copyInvoicesToDrive) return;
+
+  const folders = settings.googleSharedDriveFolders || {};
+  const invoicesFolderId: string | null = folders.invoicesFolderId || null;
+  if (!invoicesFolderId) return;
+
+  const tier: string =
+    settings.googleIntegrationTier ||
+    (tis.use_custom_credentials ? "enterprise_byo" : "business_standard");
+
+  const drive = await createTenantDriveClient({
+    tenantId,
+    tier,
+    settings,
+    adminClient,
+  });
+
+  // Upload file bytes
+  const buffer = Buffer.from(await fileData.arrayBuffer());
+  const upload = await drive.files.create({
+    supportsAllDrives: true,
+    fields: "id,name,webViewLink",
+    requestBody: {
+      name: doc.original_filename,
+      parents: [invoicesFolderId],
+    },
+    media: {
+      mimeType: doc.mime_type,
+      body: buffer as any,
+    },
+  });
+
+  const fileId = upload.data.id;
+  const webViewLink = upload.data.webViewLink || null;
+
+  if (!fileId) return;
+
+  const updatedExtractedData = {
+    ...(doc.extracted_data || {}),
+    cloudCopies: {
+      ...(doc.extracted_data?.cloudCopies || {}),
+      googleDrive: {
+        fileId,
+        webViewLink,
+        folderId: invoicesFolderId,
+        uploadedAt: new Date().toISOString(),
+      },
+    },
+  };
+
+  // Persist metadata (use user-context client; doc belongs to this user)
+  await supabase
+    .from("financial_documents")
+    .update({
+      extracted_data: updatedExtractedData,
+    })
+    .eq("id", doc.id)
+    .eq("user_id", userId);
+}
+
+async function createTenantDriveClient(params: {
+  tenantId: string;
+  tier: string;
+  settings: Record<string, any>;
+  adminClient: any;
+}) {
+  const { tenantId, tier, settings, adminClient } = params;
+
+  const credentialManager = getCredentialManager();
+
+  if (tier === "enterprise_byo") {
+    const subjectEmail: string | null = settings.dwdSubjectEmail || null;
+    if (!subjectEmail) {
+      throw new Error("Enterprise BYO requires dwdSubjectEmail");
+    }
+
+    const sa = await credentialManager.getBestGoogleServiceAccount(tenantId);
+    if (!sa) {
+      throw new Error("Missing tenant service account credentials");
+    }
+
+    const jwt = new google.auth.JWT({
+      email: sa.email,
+      key: sa.privateKey.replace(/\\n/g, "\n"),
+      subject: subjectEmail,
+      scopes: ["https://www.googleapis.com/auth/drive"],
+    });
+    await jwt.authorize();
+    return google.drive({ version: "v3", auth: jwt });
+  }
+
+  // Business standard: use tenant admin OAuth connection
+  const adminConn = await getTenantGoogleAdminOAuthConnection(tenantId);
+  if (!adminConn) {
+    throw new Error("No tenant admin OAuth connection found");
+  }
+
+  const oauthCreds = await credentialManager.getBestGoogleOAuth(tenantId);
+  if (!oauthCreds) {
+    throw new Error("Google OAuth credentials not configured");
+  }
+
+  let accessToken = adminConn.tokens.accessToken;
+  let refreshToken = adminConn.tokens.refreshToken;
+  let expiresAt = adminConn.tokens.expiresAt;
+
+  // Refresh if needed, and persist to DB (admin client)
+  if (expiresAt && expiresAt < new Date() && refreshToken) {
+    const refreshed = await refreshOAuthToken(accessToken, refreshToken, tenantId);
+    accessToken = refreshed.accessToken;
+    refreshToken = refreshed.refreshToken;
+    expiresAt = refreshed.expiresAt;
+
+    const encryptedAccess = encryptToken(accessToken);
+    const encryptedRefresh = refreshToken ? encryptToken(refreshToken) : null;
+
+    await adminClient
+      .from("cloud_storage_connections")
+      .update({
+        access_token_encrypted: encryptedAccess,
+        refresh_token_encrypted: encryptedRefresh,
+        token_expires_at: expiresAt,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("user_id", adminConn.userId)
+      .eq("provider", "google_sheets");
+
+    await adminClient
+      .from("user_integrations")
+      .update({
+        access_token: encryptedAccess,
+        refresh_token: encryptedRefresh,
+        token_expires_at: expiresAt,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("user_id", adminConn.userId)
+      .eq("provider", "google_sheets");
+  }
+
+  const oauth2 = new google.auth.OAuth2(oauthCreds.clientId, oauthCreds.clientSecret, oauthCreds.redirectUri);
+  oauth2.setCredentials({
+    access_token: accessToken,
+    refresh_token: refreshToken || undefined,
+  });
+
+  return google.drive({ version: "v3", auth: oauth2 });
 }
 
 // Maximum amount that can be stored in DECIMAL(10,2) - 99,999,999.99

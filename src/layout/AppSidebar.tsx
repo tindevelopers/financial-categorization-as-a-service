@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import { useSidebar } from "../context/SidebarContext";
 import { useTenant } from "@/core/multi-tenancy";
 import { useWhiteLabel } from "@/context/WhiteLabelContext";
+import { SubscriptionBadge } from "@/components/header/SubscriptionBadge";
 import {
   AiIcon,
   BoxCubeIcon,
@@ -205,6 +206,12 @@ const navItems: NavItem[] = [
           { name: "Categories", path: "/saas/support/categories" },
           { name: "Knowledge Base", path: "/saas/support/knowledge-base" },
           { name: "Settings", path: "/saas/support/settings" },
+        ],
+      },
+      {
+        name: "Settings",
+        subItems: [
+          { name: "Subscription", path: "/saas/settings/subscription" },
         ],
       },
       {
@@ -760,7 +767,7 @@ const AppSidebar: React.FC = () => {
         </Link>
         {/* Tenant Context Badge */}
         {(isExpanded || isHovered || isMobileOpen) && (
-          <div className="w-full">
+          <div className="w-full space-y-2">
             {!isTenantLoading && tenant ? (
               <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 dark:border-gray-700 dark:bg-gray-800">
                 <p className="text-xs font-medium text-gray-600 dark:text-gray-300">
@@ -769,6 +776,9 @@ const AppSidebar: React.FC = () => {
                 <p className="text-sm font-semibold text-gray-900 dark:text-white truncate">
                   {tenant.name}
                 </p>
+                <div className="mt-2">
+                  <SubscriptionBadge />
+                </div>
               </div>
             ) : !isTenantLoading && !tenant ? (
               <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 dark:border-amber-800 dark:bg-amber-900/20">

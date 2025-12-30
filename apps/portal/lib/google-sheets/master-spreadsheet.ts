@@ -26,6 +26,7 @@ interface MasterSpreadsheetConfig {
   spreadsheetId: string;
   spreadsheetName: string;
   sharedDriveId: string;
+  parentFolderId?: string;
 }
 
 const ALL_TRANSACTIONS_TAB = "All Transactions";
@@ -37,6 +38,7 @@ const FINGERPRINTS_TAB = "_Fingerprints";
 export async function getOrCreateMasterSpreadsheet(
   auth: any,
   sharedDriveId: string,
+  parentFolderId?: string | null,
   existingSpreadsheetId?: string | null,
   spreadsheetName?: string
 ): Promise<MasterSpreadsheetConfig> {
@@ -77,9 +79,11 @@ export async function getOrCreateMasterSpreadsheet(
   const spreadsheetId = spreadsheet.data.spreadsheetId!;
 
   // Move spreadsheet to shared drive
+  // If a parent folder is provided (recommended), place it inside that folder.
+  const parentToAdd = (parentFolderId || sharedDriveId) as string;
   await drive.files.update({
     fileId: spreadsheetId,
-    addParents: sharedDriveId,
+    addParents: parentToAdd,
     removeParents: "root",
     supportsAllDrives: true,
     fields: "id, parents",
@@ -143,6 +147,7 @@ export async function getOrCreateMasterSpreadsheet(
     spreadsheetId,
     spreadsheetName: title,
     sharedDriveId,
+    parentFolderId: parentFolderId || undefined,
   };
 }
 
@@ -200,7 +205,7 @@ export async function findExistingJobTab(
       
       // Check if the tab has jobId stored in developer metadata or matches the pattern
       // For now, we'll use a simpler approach: store job ID in a hidden cell
-      if (sheetId !== undefined && title !== ALL_TRANSACTIONS_TAB && title !== FINGERPRINTS_TAB) {
+      if (sheetId != null && title !== ALL_TRANSACTIONS_TAB && title !== FINGERPRINTS_TAB) {
         try {
           // Check if A1000 cell contains the job ID (hidden marker)
           const response = await sheets.spreadsheets.values.get({

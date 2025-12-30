@@ -1,4 +1,5 @@
 import { createClient } from '@/core/database/server';
+import crypto from 'crypto';
 
 /**
  * Cloud Storage Manager
@@ -399,21 +400,106 @@ export class CloudStorageManager {
   }
 
   /**
-   * Encrypt token (placeholder - use proper encryption in production)
+   * Encrypt token using AES-256-CBC
+   * 
+   * Note: In production, consider using a Key Management Service (KMS) like:
+   * - AWS KMS
+   * - Google Cloud KMS
+   * - Azure Key Vault
+   * - HashiCorp Vault
+   * 
+   * This implementation uses a symmetric key from ENCRYPTION_KEY environment variable.
+   * The key should be a 32-byte (256-bit) hex string.
    */
   private encryptToken(token: string): string {
-    // TODO: Implement proper encryption using KMS or similar
-    // For now, just base64 encode (NOT SECURE FOR PRODUCTION)
-    return Buffer.from(token).toString('base64');
+    const algorithm = 'aes-256-cbc';
+    const encryptionKey = process.env.ENCRYPTION_KEY;
+    
+    if (!encryptionKey) {
+      console.warn('ENCRYPTION_KEY not set. Using base64 encoding (NOT SECURE).');
+      // Fallback to base64 if no encryption key is set
+      return Buffer.from(token).toString('base64');
+    }
+
+    try {
+      // Generate a random IV for each encryption
+      const iv = crypto.randomBytes(16);
+      const key = Buffer.from(encryptionKey, 'hex');
+      
+      // Ensure key is 32 bytes (256 bits)
+      if (key.length !== 32) {
+        throw new Error('ENCRYPTION_KEY must be a 64-character hex string (32 bytes)');
+      }
+
+      const cipher = crypto.createCipheriv(algorithm, key, iv);
+      let encrypted = cipher.update(token, 'utf8', 'hex');
+      encrypted += cipher.final('hex');
+      
+      // Return IV and encrypted data separated by colon
+      // Format: iv:encrypted_data
+      return iv.toString('hex') + ':' + encrypted;
+    } catch (error) {
+      console.error('Encryption error:', error);
+      // Fallback to base64 if encryption fails
+      return Buffer.from(token).toString('base64');
+    }
   }
 
   /**
-   * Decrypt token (placeholder - use proper decryption in production)
+   * Decrypt token using AES-256-CBC
+   * 
+   * Note: In production, consider using a Key Management Service (KMS).
+   * See encryptToken() for details.
    */
   private decryptToken(encryptedToken: string): string {
-    // TODO: Implement proper decryption using KMS or similar
-    // For now, just base64 decode (NOT SECURE FOR PRODUCTION)
-    return Buffer.from(encryptedToken, 'base64').toString('utf-8');
+    const algorithm = 'aes-256-cbc';
+    const encryptionKey = process.env.ENCRYPTION_KEY;
+    
+    if (!encryptionKey) {
+      console.warn('ENCRYPTION_KEY not set. Attempting base64 decode.');
+      // Fallback to base64 decode if no encryption key is set
+      try {
+        return Buffer.from(encryptedToken, 'base64').toString('utf-8');
+      } catch {
+        throw new Error('Failed to decrypt token: No encryption key configured');
+      }
+    }
+
+    try {
+      // Check if token is in encrypted format (contains colon separator)
+      if (!encryptedToken.includes(':')) {
+        // Legacy base64 format - try to decode
+        return Buffer.from(encryptedToken, 'base64').toString('utf-8');
+      }
+
+      const parts = encryptedToken.split(':');
+      if (parts.length !== 2) {
+        throw new Error('Invalid encrypted token format');
+      }
+
+      const iv = Buffer.from(parts[0], 'hex');
+      const encrypted = parts[1];
+      const key = Buffer.from(encryptionKey, 'hex');
+      
+      // Ensure key is 32 bytes (256 bits)
+      if (key.length !== 32) {
+        throw new Error('ENCRYPTION_KEY must be a 64-character hex string (32 bytes)');
+      }
+
+      const decipher = crypto.createDecipheriv(algorithm, key, iv);
+      let decrypted = decipher.update(encrypted, 'hex', 'utf8');
+      decrypted += decipher.final('utf8');
+      
+      return decrypted;
+    } catch (error) {
+      console.error('Decryption error:', error);
+      // Try base64 as fallback for legacy tokens
+      try {
+        return Buffer.from(encryptedToken, 'base64').toString('utf-8');
+      } catch {
+        throw new Error(`Failed to decrypt token: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      }
+    }
   }
 }
 

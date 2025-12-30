@@ -371,9 +371,11 @@ export default function SettingsPage() {
     try {
       const response = await fetch('/api/integrations/google-sheets/auth-url')
       if (response.ok) {
-        const data = await response.json()        window.location.href = data.authUrl
+        const data = await response.json()
+        window.location.href = data.authUrl
       } else {
-        const error = await response.json()      }
+        const error = await response.json()
+      }
     } catch (error) {
       console.error('Failed to connect Google Sheets:', error)
       alert('Failed to connect Google Sheets. Network error: ' + (error as Error).message)

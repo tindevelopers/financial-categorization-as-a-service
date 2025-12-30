@@ -212,6 +212,12 @@ export const mainNavItems: NavItem[] = [
         ],
       },
       {
+        name: "Settings",
+        subItems: [
+          { name: "Subscription", path: "/saas/settings/subscription" },
+        ],
+      },
+      {
         name: "Feature Flags",
         subItems: [
           { name: "Flags", path: "/saas/feature-flags/flags" },

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/database/server";
+import { waitUntil } from "@vercel/functions";
 
 export async function PATCH(
   request: NextRequest,
@@ -70,6 +71,9 @@ export async function PATCH(
     if (category !== undefined) updateData.category = category;
     if (subcategory !== undefined) updateData.subcategory = subcategory;
     if (supplier_id !== undefined) updateData.supplier_id = supplier_id || null;
+    
+    // Mark as pending sync since it was updated
+    updateData.sync_status = "pending";
 
     const { error: updateError } = await supabase
       .from("categorized_transactions")
@@ -80,6 +84,32 @@ export async function PATCH(
       return NextResponse.json(
         { error: "Failed to update transaction" },
         { status: 500 }
+      );
+    }
+
+    // Trigger background sync if job has spreadsheet_id
+    const { data: jobSyncInfo } = await supabase
+      .from("categorization_jobs")
+      .select("spreadsheet_id, bank_account_id")
+      .eq("id", transaction.job_id)
+      .single();
+
+    if (jobSyncInfo && (jobSyncInfo.spreadsheet_id || jobSyncInfo.bank_account_id)) {
+      // Trigger incremental sync in background (non-blocking)
+      waitUntil(
+        fetch(`${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3002"}/api/categorization/jobs/${transaction.job_id}/sync-sheets?mode=incremental`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Cookie": request.headers.get("cookie") || "",
+          },
+          body: JSON.stringify({
+            transaction_ids: [id],
+          }),
+        }).catch((error) => {
+          console.error("Background sync error:", error);
+          // Don't fail the transaction update if sync fails
+        })
       );
     }
 

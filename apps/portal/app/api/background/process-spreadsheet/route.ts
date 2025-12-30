@@ -4,7 +4,11 @@ import { createClient } from "@/lib/database/server";
 import { createAdminClient } from "@/lib/database/admin-client";
 import { processSpreadsheetFile } from "@/lib/categorization/process-spreadsheet";
 import { createJobErrorResponse, mapErrorToCode } from "@/lib/errors/job-errors";
-// TODO: Re-enable when GoogleSheetsSyncService is available in portal app
+// Note: GoogleSheetsSyncService exists in src/lib/sync but not in portal app's lib
+// To enable auto-sync, either:
+// 1. Copy GoogleSheetsSyncService.ts to apps/portal/lib/sync/
+// 2. Or configure path alias to access src/lib from portal app
+// For now, auto-sync is disabled but can be manually triggered via export endpoint
 // import { createGoogleSheetsSyncService } from "@/lib/sync/GoogleSheetsSyncService";
 
 /**
@@ -46,9 +50,8 @@ export async function POST(request: NextRequest) {  try {
       );
     }
 
-    // Start background processing    waitUntil(
-      processSpreadsheet(jobId, user.id, supabase)
-    );
+    // Start background processing
+    waitUntil(processSpreadsheet(jobId, user.id, supabase));
     return NextResponse.json({
       success: true,
       jobId,
@@ -71,7 +74,8 @@ async function processSpreadsheet(jobId: string, userId: string, supabase: any) 
       // Fallback to regular client if admin client fails
       adminClient = supabase;    }
 
-    // Update job status to processing    const statusUpdateResult = await adminClient
+    // Update job status to processing
+    const statusUpdateResult = await adminClient
       .from("categorization_jobs")
       .update({ 
         status: "processing",
@@ -144,7 +148,8 @@ async function processSpreadsheet(jobId: string, userId: string, supabase: any) 
       return;
     }
 
-    // Process spreadsheet    const arrayBuffer = await fileData.arrayBuffer();
+    // Process spreadsheet
+    const arrayBuffer = await fileData.arrayBuffer();
     // Pass admin client to bypass RLS for transaction inserts
     const result = await processSpreadsheetFile(arrayBuffer, jobId, userId, supabase, adminClient);
     if (!result.success) {
@@ -189,10 +194,10 @@ async function processSpreadsheet(jobId: string, userId: string, supabase: any) 
       if (autoSyncSheets && autoSyncSheets.length > 0) {
         console.log(`Auto-syncing to ${autoSyncSheets.length} Google Sheet(s)...`);
         
-        // TODO: Re-enable when GoogleSheetsSyncService is available in portal app
-        // const syncService = createGoogleSheetsSyncService(supabase);
-        console.log(`Auto-sync temporarily disabled: GoogleSheetsSyncService not available (${autoSyncSheets.length} sheet(s) would be synced)`);
-        // Skip sync for now
+        // Note: GoogleSheetsSyncService needs to be copied to apps/portal/lib/sync/ or import path configured
+        // For now, auto-sync is disabled but manual export is available via the export endpoint
+        console.log(`Auto-sync temporarily disabled: GoogleSheetsSyncService not available in portal app (${autoSyncSheets.length} sheet(s) would be synced)`);
+        // Skip sync for now - users can manually export via the export endpoint
         return;
         
         /* Commented out until GoogleSheetsSyncService is available

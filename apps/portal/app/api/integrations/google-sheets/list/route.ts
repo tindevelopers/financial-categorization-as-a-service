@@ -3,6 +3,7 @@ import { createClient } from "@/lib/database/server";
 import { getCredentialManager } from "@/lib/credentials/VercelCredentialManager";
 import { google } from "googleapis";
 import crypto from "crypto";
+import { createTenantGoogleClientsForRequestUser } from "@/lib/google-sheets/tenant-clients";
 
 /**
  * GET /api/integrations/google-sheets/list
@@ -18,6 +19,94 @@ export async function GET(request: NextRequest) {
         { error: "Unauthorized" },
         { status: 401 }
       );
+    }
+
+    // Tier-aware listing:
+    // - Consumer: list user-accessible spreadsheets (existing behavior)
+    // - Business tiers: list spreadsheets from the tenant Shared Drive (company-owned)
+    try {
+      const tenantClients = await createTenantGoogleClientsForRequestUser();
+      if (tenantClients.tier !== "consumer") {
+        const driveId = tenantClients.sharedDriveId;
+        if (!driveId) {
+          return NextResponse.json(
+            {
+              error: "Company Shared Drive not provisioned yet.",
+              error_code: "SHARED_DRIVE_NOT_PROVISIONED",
+              guidance: "Please run Shared Drive provisioning in Company Setup.",
+              helpUrl: "/dashboard/setup",
+            },
+            { status: 400 }
+          );
+        }
+
+        const drive = tenantClients.drive;
+        const sheetsApi = tenantClients.sheets;
+
+        // List spreadsheets in the tenant Shared Drive
+        const response = await drive.files.list({
+          driveId,
+          corpora: "drive",
+          includeItemsFromAllDrives: true,
+          supportsAllDrives: true,
+          q: "mimeType='application/vnd.google-apps.spreadsheet' and trashed=false",
+          fields: "files(id,name,createdTime,modifiedTime,webViewLink,owners)",
+          orderBy: "modifiedTime desc",
+          pageSize: 100,
+        });
+
+        const spreadsheetFiles = response.data.files || [];
+
+        const spreadsheetsWithTabs = await Promise.all(
+          spreadsheetFiles.map(async (file) => {
+            try {
+              const spreadsheet = await sheetsApi.spreadsheets.get({
+                spreadsheetId: file.id!,
+                fields: "properties.title,sheets.properties",
+              });
+
+              const tabs =
+                spreadsheet.data.sheets?.map((sheet) => ({
+                  id: sheet.properties?.sheetId?.toString() || "",
+                  title: sheet.properties?.title || "Untitled",
+                  index: sheet.properties?.index || 0,
+                })) || [];
+
+              return {
+                id: file.id!,
+                name: file.name || "Untitled Spreadsheet",
+                url: file.webViewLink || `https://docs.google.com/spreadsheets/d/${file.id}`,
+                createdTime: file.createdTime,
+                modifiedTime: file.modifiedTime,
+                tabs: tabs.sort((a, b) => a.index - b.index),
+                owner: file.owners?.[0]?.emailAddress || "Shared Drive",
+              };
+            } catch (error: any) {
+              return {
+                id: file.id!,
+                name: file.name || "Untitled Spreadsheet",
+                url: file.webViewLink || `https://docs.google.com/spreadsheets/d/${file.id}`,
+                createdTime: file.createdTime,
+                modifiedTime: file.modifiedTime,
+                tabs: [],
+                owner: file.owners?.[0]?.emailAddress || "Shared Drive",
+                error: error.message,
+              };
+            }
+          })
+        );
+
+        return NextResponse.json({
+          success: true,
+          spreadsheets: spreadsheetsWithTabs,
+          count: spreadsheetsWithTabs.length,
+          connectedAccount: null,
+          exportMode: "shared_drive",
+          sharedDriveId: driveId,
+        });
+      }
+    } catch (e) {
+      // Fall through to legacy OAuth listing below (consumer path or missing config)
     }
 
     // Get tenant_id for tenant-specific credentials

@@ -6,6 +6,7 @@ import { getUserOAuthTokens, createOAuthSheetsClient } from "@/lib/google-sheets
 import { detectUserAccountType, getRecommendedAuthMethod } from "@/lib/google-sheets/user-preference";
 import { VercelCredentialManager } from "@/lib/credentials/VercelCredentialManager";
 import { getWorkspaceAdminInfo, createWorkspaceAdminSheetsClient } from "@/lib/google-sheets/workspace-admin";
+import { createTenantGoogleClientsForRequestUser } from "@/lib/google-sheets/tenant-clients";
 import { 
   getOrCreateMasterSpreadsheet, 
   getExistingFingerprints, 
@@ -48,6 +49,33 @@ export async function POST(
         { error: "Job not found" },
         { status: 404 }
       );
+    }
+
+    // Get bank account with linked spreadsheet (if job has bank_account_id)
+    let linkedSpreadsheetId: string | null = null;
+    let linkedSpreadsheetSource: "job" | "bank_account" | "company" | "new" = "new";
+    let bankAccountName: string | null = null;
+    
+    if (job.bank_account_id) {
+      const { data: bankAccount } = await supabase
+        .from("bank_accounts")
+        .select("id, account_name, default_spreadsheet_id, spreadsheet_tab_name")
+        .eq("id", job.bank_account_id)
+        .single();
+      
+      if (bankAccount) {
+        bankAccountName = bankAccount.account_name;
+        if (bankAccount.default_spreadsheet_id) {
+          linkedSpreadsheetId = bankAccount.default_spreadsheet_id;
+          linkedSpreadsheetSource = "bank_account";
+        }
+      }
+    }
+    
+    // If job already has a spreadsheet_id, use that (sync mode)
+    if (job.spreadsheet_id) {
+      linkedSpreadsheetId = job.spreadsheet_id;
+      linkedSpreadsheetSource = "job";
     }
 
     // Get transactions using admin client to bypass RLS
@@ -102,9 +130,9 @@ export async function POST(
       .from("company_profiles")
       .select("id, google_shared_drive_id, google_shared_drive_name, google_master_spreadsheet_id, google_master_spreadsheet_name")
       .eq("user_id", user.id)
-      .single();
-    
-    const hasSharedDriveConfig = !!companyProfile?.google_shared_drive_id;
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
     
     // Check for Google authentication credentials using credential manager
     // Priority: Workspace Admin > Service Account > User OAuth
@@ -264,131 +292,69 @@ export async function POST(
       });
     }
 
-    // Initialize Google Sheets API
-    // Priority: Workspace Admin > Service Account (Option A) > User OAuth (Option B)
-    let auth;
-    let authMethod: "workspace_admin" | "service_account" | "oauth" = "service_account";
+    // Initialize Google Sheets + Drive clients (tier-aware).
+    let auth: any;
+    let authMethod: "workspace_admin" | "service_account" | "oauth" = "oauth";
     let sheets: ReturnType<typeof google.sheets>;
-    
+    let tenantClients: any = null;
+
     try {
-      // Priority 1: Try Workspace Admin with domain-wide delegation      if (isWorkspaceAdmin && hasServiceAccount) {
-        console.log("Google Sheets export: Attempting Workspace Admin with domain-wide delegation", {
-          workspaceDomain: workspaceAdminInfo?.workspaceDomain,
-        });
-        
-        try {
-          const workspaceClient = await createWorkspaceAdminSheetsClient(user.id);          if (workspaceClient) {
-            sheets = workspaceClient.sheets;
-            auth = workspaceClient.auth;
-            authMethod = "workspace_admin";            console.log("Google Sheets export: Using Workspace Admin account");
-          } else {
-            console.warn("Google Sheets export: Workspace Admin client creation failed, falling back");
-            throw new Error("Workspace admin client creation failed");
-          }
-        } catch (workspaceError: any) {          console.warn("Google Sheets export: Workspace Admin failed, falling back:", workspaceError.message);
-          // Fall through to next priority
-        }
-      }
-      
-      // Priority 2: Use user OAuth tokens (individual-level) - PREFERRED over service account
-      // because service accounts often lack permissions to create spreadsheets without domain-wide delegation
-      if (!auth && userOAuthTokens) {
-        console.log("Google Sheets export: Using user OAuth (Option B - preferred)");        try {
-          const { auth: oauthAuth, sheets: oauthSheets } = await createOAuthSheetsClient(user.id);
-          auth = oauthAuth;
-          sheets = oauthSheets;
-          authMethod = "oauth";        } catch (oauthError: any) {
-          // Enhanced error handling with guidance
-          const errorMessage = oauthError.message || "Failed to authenticate with Google";
-          const requiresReconnect = errorMessage.includes("reconnect") || errorMessage.includes("expired");
-          
-          return NextResponse.json(
-            { 
-              error: errorMessage,
-              error_code: requiresReconnect ? "TOKEN_EXPIRED" : "OAUTH_ERROR",
-              requiresReconnect,
-              guidance: requiresReconnect 
-                ? "Please connect your Google account in Settings > Integrations > Google Sheets"
-                : "Please check your Google account connection settings",
-              helpUrl: "/dashboard/integrations/google-sheets"
-            },
-            { status: 401 }
-          );
-        }
-      } else if (!auth && hasServiceAccount) {
-        // Priority 3: Use service account (corporate/company-level) - fallback only
-        console.log("Google Sheets export: Using service account (Option A - fallback)");        auth = new google.auth.GoogleAuth({
-          credentials: {
-            client_email: serviceAccountCreds!.email,
-            private_key: serviceAccountCreds!.privateKey.replace(/\\n/g, "\n"),
-          },
-          // Need both scopes: spreadsheets for editing, drive.file for creating new spreadsheets
-          scopes: [
-            "https://www.googleapis.com/auth/spreadsheets",
-            "https://www.googleapis.com/auth/drive.file",
-          ],
-        });
-        authMethod = "service_account";
-        sheets = google.sheets({ version: "v4", auth });      }
-      
-      // Final check: if no auth method succeeded, return error
-      if (!auth) {        return NextResponse.json(
-          {
-            error: "No Google authentication method available",
-            error_code: "NO_AUTH_METHOD",
-            guidance: accountType.isCorporate
-              ? "Please configure service account credentials or connect your Google account"
-              : "Please connect your Google account in Settings > Integrations > Google Sheets",
-            helpUrl: "/dashboard/integrations/google-sheets",
-          },
-          { status: 500 }
-        );
-      }
-    } catch (authError: any) {
-      console.error("Google Sheets export: Auth initialization error:", authError);
-      
-      // Enhanced error handling for auth errors
-      const errorMessage = authError.message || "Failed to initialize Google Auth";
-      const isServiceAccountError = errorMessage.includes("service account") || errorMessage.includes("credentials");
-      
+      tenantClients = await createTenantGoogleClientsForRequestUser();
+      auth = tenantClients.auth;
+      sheets = tenantClients.sheets;
+      authMethod = tenantClients.authMethod === "dwd_service_account" ? "workspace_admin" : "oauth";
+    } catch (e: any) {
+      const msg = e?.message || "Failed to initialize Google clients";
       return NextResponse.json(
         {
-          error: errorMessage,
-          error_code: isServiceAccountError ? "SERVICE_ACCOUNT_ERROR" : "AUTH_INIT_ERROR",
-          guidance: isServiceAccountError && accountType.isCorporate
-            ? "Service account configuration issue. Please contact your administrator."
-            : "Please check your Google account connection in Settings > Integrations",
+          error: msg,
+          error_code: msg.includes("connect") ? "OAUTH_REQUIRED" : "AUTH_INIT_ERROR",
+          guidance: "Please connect your Google account in Settings > Integrations > Google Sheets.",
           helpUrl: "/dashboard/integrations/google-sheets",
         },
-        { status: 500 }
+        { status: 400 }
       );
     }
 
-    // Ensure sheets client is initialized (should be set above, but TypeScript needs this)
-    if (!sheets) {
-      sheets = google.sheets({ version: "v4", auth });
-    }
+    const sharedDriveIdFromTenant = tenantClients?.sharedDriveId || null;
+    const statementsFolderIdFromTenant = tenantClients?.sharedDriveFolders?.statementsFolderId || null;
+    const hasSharedDriveConfig = !!(sharedDriveIdFromTenant || companyProfile?.google_shared_drive_id);
 
     // ========== SHARED DRIVE EXPORT PATH ==========
     // If company has shared drive configured, use master spreadsheet with tabs
-    if (hasSharedDriveConfig && companyProfile?.google_shared_drive_id) {
+    const effectiveSharedDriveId = sharedDriveIdFromTenant || companyProfile?.google_shared_drive_id || null;
+    if (tenantClients?.tier !== "consumer" && !effectiveSharedDriveId) {
+      return NextResponse.json(
+        {
+          error: "Company Shared Drive is not provisioned yet",
+          error_code: "SHARED_DRIVE_NOT_PROVISIONED",
+          guidance:
+            "Run Shared Drive provisioning (Company Setup) so exports can be written to the company-owned Shared Drive.",
+          helpUrl: "/dashboard/setup",
+          provisionEndpoint: "/api/integrations/google-shared-drive/provision",
+        },
+        { status: 400 }
+      );
+    }
+    if (hasSharedDriveConfig && effectiveSharedDriveId) {
       console.log("Google Sheets export: Using Shared Drive mode", {
-        driveId: companyProfile.google_shared_drive_id,
-        driveName: companyProfile.google_shared_drive_name,
-        existingSpreadsheetId: companyProfile.google_master_spreadsheet_id,
+        driveId: effectiveSharedDriveId,
+        driveName: companyProfile?.google_shared_drive_name || null,
+        existingSpreadsheetId: companyProfile?.google_master_spreadsheet_id || null,
       });
 
       try {
         // Get or create master spreadsheet in shared drive
         const masterConfig = await getOrCreateMasterSpreadsheet(
           auth,
-          companyProfile.google_shared_drive_id,
-          companyProfile.google_master_spreadsheet_id,
-          companyProfile.google_master_spreadsheet_name || undefined
+          effectiveSharedDriveId,
+          statementsFolderIdFromTenant || effectiveSharedDriveId,
+          companyProfile?.google_master_spreadsheet_id || undefined,
+          companyProfile?.google_master_spreadsheet_name || undefined
         );
 
         // Update company profile with spreadsheet ID if it was newly created
-        if (masterConfig.spreadsheetId !== companyProfile.google_master_spreadsheet_id) {
+        if (companyProfile?.id && masterConfig.spreadsheetId !== companyProfile.google_master_spreadsheet_id) {
           await supabase
             .from("company_profiles")
             .update({
@@ -396,6 +362,37 @@ export async function POST(
               google_master_spreadsheet_name: masterConfig.spreadsheetName,
             })
             .eq("id", companyProfile.id);
+        }
+
+        // Also persist to tenant integration settings (canonical for multi-user tenants)
+        if (tenantId) {
+          const { data: tis } = await (supabase as any)
+            .from("tenant_integration_settings")
+            .select("settings, use_custom_credentials, is_enabled, default_sharing_permission")
+            .eq("tenant_id", tenantId)
+            .eq("provider", "google_sheets")
+            .maybeSingle();
+
+          const updatedSettings = {
+            ...(tis?.settings || {}),
+            googleMasterSpreadsheetId: masterConfig.spreadsheetId,
+            googleMasterSpreadsheetName: masterConfig.spreadsheetName,
+          };
+
+          await (supabase as any)
+            .from("tenant_integration_settings")
+            .upsert(
+              {
+                tenant_id: tenantId,
+                provider: "google_sheets",
+                settings: updatedSettings,
+                use_custom_credentials: tis?.use_custom_credentials ?? false,
+                is_enabled: tis?.is_enabled ?? true,
+                default_sharing_permission: tis?.default_sharing_permission ?? "writer",
+                updated_at: new Date().toISOString(),
+              },
+              { onConflict: "tenant_id,provider" }
+            );
         }
 
         // Generate fingerprint for each transaction
@@ -499,10 +496,14 @@ export async function POST(
         
         // Check if it's a permission error
         if (sharedDriveError.code === 403) {
+          const permissionGuidance =
+            tenantClients?.authMethod === "oauth_tenant_admin"
+              ? "Please ensure the connected Workspace admin has permission to create/manage Shared Drives and granted Drive access. Try disconnecting/reconnecting Google Sheets integration."
+              : "Please ensure Domain-Wide Delegation is configured and the impersonated Workspace admin can create/manage Shared Drives.";
           return NextResponse.json({
             error: "Permission denied accessing Shared Drive",
             error_code: "SHARED_DRIVE_PERMISSION_DENIED",
-            guidance: "Please ensure the service account has Manager access to the Shared Drive configured in Company Setup.",
+            guidance: permissionGuidance,
             helpUrl: "/dashboard/setup",
           }, { status: 403 });
         }
@@ -517,22 +518,24 @@ export async function POST(
     }
     // ========== END SHARED DRIVE EXPORT PATH ==========
 
-    // Check if job already has a spreadsheet_id
+    // Check for linked spreadsheet (job > bank account > company > new)
+    // linkedSpreadsheetId and linkedSpreadsheetSource were set earlier
     let spreadsheetId: string | null = null;
     let isNewSheet = false;
     let existingSheetData: any = null;
     let lastRowWithData = 0;
 
-    if (job.spreadsheet_id) {
+    // Use linked spreadsheet if available
+    if (linkedSpreadsheetId) {
       // Try to access existing spreadsheet
       try {
         const spreadsheetMetadata = await sheets.spreadsheets.get({
-          spreadsheetId: job.spreadsheet_id,
+          spreadsheetId: linkedSpreadsheetId,
         });
         
         if (spreadsheetMetadata.data) {
-          spreadsheetId = job.spreadsheet_id;
-          console.log(`Google Sheets export: Using existing spreadsheet ${spreadsheetId}`);
+          spreadsheetId = linkedSpreadsheetId;
+          console.log(`Google Sheets export: Using ${linkedSpreadsheetSource} spreadsheet ${spreadsheetId}`);
           
           // Try to read existing data to check structure
           try {
@@ -558,9 +561,10 @@ export async function POST(
           }
         }
       } catch (accessError: any) {
-        console.warn(`Google Sheets export: Cannot access existing spreadsheet ${job.spreadsheet_id}:`, accessError.message);
+        console.warn(`Google Sheets export: Cannot access linked spreadsheet ${linkedSpreadsheetId}:`, accessError.message);
         // Spreadsheet doesn't exist or is inaccessible, will create new one
         spreadsheetId = null;
+        linkedSpreadsheetSource = "new";
       }
     }
 
@@ -587,7 +591,7 @@ export async function POST(
         let guidance = "";
         
         if (isPermissionError) {
-          if (authMethod === "service_account") {
+          if (authMethod === "workspace_admin") {
             errorMessage = "Service account does not have permission to create spreadsheets";
             guidance = accountType.isCorporate
               ? "The service account needs domain-wide delegation configured in Google Workspace Admin Console, or the Google Drive API may not be enabled. You can also connect your personal Google account as an alternative."
@@ -861,6 +865,20 @@ export async function POST(
         } else {
           console.log(`Google Sheets export: Stored spreadsheet_id ${spreadsheetId} in job record`);
         }
+        
+        // Also link the new sheet to the bank account if it doesn't have one
+        if (job.bank_account_id && linkedSpreadsheetSource === "new") {
+          const { error: bankUpdateError } = await supabase
+            .from("bank_accounts")
+            .update({ default_spreadsheet_id: spreadsheetId })
+            .eq("id", job.bank_account_id)
+            .is("default_spreadsheet_id", null); // Only update if not already linked
+          
+          if (!bankUpdateError) {
+            console.log(`Google Sheets export: Linked new spreadsheet to bank account ${job.bank_account_id}`);
+            linkedSpreadsheetSource = "bank_account"; // Update for response
+          }
+        }
       } catch (dbError: any) {
         console.error("Google Sheets export: Error storing spreadsheet_id:", dbError);
         // Don't fail the export - spreadsheet was created successfully
@@ -869,7 +887,13 @@ export async function POST(
 
     const sheetUrl = `https://docs.google.com/spreadsheets/d/${spreadsheetId}`;
 
-    console.log(`Google Sheets export: Export completed successfully using ${authMethod === "service_account" ? "service account (Option A - Corporate)" : "user OAuth (Option B - Individual)"}, sync=${isSyncUpdate}`);
+    console.log(
+      `Google Sheets export: Export completed successfully using ${
+        authMethod === "workspace_admin"
+          ? "service account (Option A - Corporate)"
+          : "user OAuth (Option B - Individual)"
+      }, sync=${isSyncUpdate}`
+    );
 
     return NextResponse.json({
       success: true,
@@ -883,7 +907,10 @@ export async function POST(
       isNewSheet,
       isSyncUpdate,
       rowsWritten: transactionRows.length,
-      authMethod, // Include which method was used for debugging
+      authMethod,
+      // Include info about linked source for UI feedback
+      linkedFrom: linkedSpreadsheetSource,
+      bankAccountName: bankAccountName || null,
     });
   } catch (error: any) {
     console.error("Google Sheets export error:", error);

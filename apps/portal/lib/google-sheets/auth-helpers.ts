@@ -52,6 +52,34 @@ export function decryptToken(encryptedText: string): string {
 }
 
 /**
+ * Encrypt a token string (compatible with decryptToken()).
+ * Format: ivHex:ciphertextHex using AES-256-CBC and ENCRYPTION_KEY (hex).
+ */
+export function encryptToken(plaintext: string): string {
+  if (!plaintext) {
+    throw new Error("Plaintext is empty");
+  }
+
+  const encryptionKey = process.env.ENCRYPTION_KEY;
+  if (!encryptionKey) {
+    throw new Error("ENCRYPTION_KEY not configured");
+  }
+
+  const algorithm = "aes-256-cbc";
+  const iv = crypto.randomBytes(16);
+  const cipher = crypto.createCipheriv(
+    algorithm,
+    Buffer.from(encryptionKey, "hex"),
+    iv
+  );
+
+  let encrypted = cipher.update(plaintext, "utf8", "hex");
+  encrypted += cipher.final("hex");
+
+  return iv.toString("hex") + ":" + encrypted;
+}
+
+/**
  * Retrieve and decrypt OAuth tokens for a user
  * Checks both cloud_storage_connections and user_integrations tables
  */

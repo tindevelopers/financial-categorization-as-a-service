@@ -52,9 +52,22 @@ export default function ReviewJobsPage() {
       userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : 'unknown'
     };
     // Log to console for production debugging (visible in browser console)
+    console.log('[ReviewPage] Component state:', logData);
     // Also send to debug server if available (localhost only)
+    if (typeof window !== 'undefined' && window.location.hostname === 'localhost') {
+      try {
+        fetch('http://localhost:3001/debug', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(logData),
+        }).catch(() => {
+          // Ignore errors - debug server may not be running
+        });
+      } catch (error) {
+        // Ignore errors
+      }
     }
-  }, []);
+  }, [selectedIds.size, jobs.length, loading]);
 
   useEffect(() => {
     loadJobs()
@@ -104,7 +117,6 @@ export default function ReviewJobsPage() {
       currentSelected: selectedIds.has(jobId),
       selectedCount: selectedIds.size,
     };
-    }
     setSelectedIds(prev => {
       const next = new Set(prev)
       if (next.has(jobId)) {
@@ -116,7 +128,6 @@ export default function ReviewJobsPage() {
         newSelectedCount: next.size,
         willShowButtons: next.size > 0,
       };
-      }
       return next
     })
   }

@@ -1,6 +1,7 @@
 import { createClient } from '@/core/database/server';
 import { nanoid } from 'nanoid';
 import crypto from 'crypto';
+import { sendEmail } from '@/core/email';
 
 /**
  * Email Forwarding Service
@@ -373,15 +374,48 @@ export class EmailForwardingService {
   }
 
   /**
-   * Send confirmation email to user (placeholder)
+   * Send confirmation email to user
    */
   async sendConfirmationEmail(
     userEmail: string,
     documentsCreated: number,
     subject: string
   ): Promise<void> {
-    // TODO: Implement email sending using SendGrid, AWS SES, or similar
-    console.log(`Confirmation email: ${documentsCreated} documents processed from "${subject}"`);
+    try {
+      const fromAddress = process.env.EMAIL_FROM_ADDRESS || 'noreply@example.com';
+      const emailSubject = documentsCreated > 0
+        ? `Receipts processed: ${documentsCreated} document${documentsCreated > 1 ? 's' : ''} from "${subject}"`
+        : `Receipt processing update: "${subject}"`;
+
+      const htmlContent = `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+          <h2 style="color: #333;">Receipt Processing Complete</h2>
+          <p>We've successfully processed your email receipt.</p>
+          <div style="background-color: #f5f5f5; padding: 15px; border-radius: 5px; margin: 20px 0;">
+            <p style="margin: 0;"><strong>Original Email Subject:</strong> ${subject}</p>
+            <p style="margin: 10px 0 0 0;"><strong>Documents Created:</strong> ${documentsCreated}</p>
+          </div>
+          ${documentsCreated > 0 ? (
+            `<p>You can now view and categorize these documents in your dashboard.</p>`
+          ) : (
+            `<p>No documents were created from this email. Please ensure attachments are in PDF or image format.</p>`
+          )}
+          <p style="margin-top: 30px; color: #666; font-size: 12px;">
+            This is an automated message. Please do not reply to this email.
+          </p>
+        </div>
+      `;
+
+      await sendEmail({
+        to: userEmail,
+        from: fromAddress,
+        subject: emailSubject,
+        html: htmlContent,
+      });
+    } catch (error) {
+      console.error('Failed to send confirmation email:', error);
+      // Don't throw - email sending failure shouldn't break the main flow
+    }
   }
 }
 

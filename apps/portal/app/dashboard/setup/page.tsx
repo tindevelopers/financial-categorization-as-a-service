@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { Heading, Text, Button } from '@/components/catalyst'
 import { CompanyDetailsForm } from '@/components/setup/CompanyDetailsForm'
@@ -10,12 +10,15 @@ import { GoogleDriveSettings } from '@/components/setup/GoogleDriveSettings'
 import { CompletionStep } from '@/components/setup/CompletionStep'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
 
+type SubscriptionType = 'individual' | 'company' | 'enterprise'
+
 export default function SetupWizardPage() {
   const router = useRouter()
   const [currentStep, setCurrentStep] = useState(1)
   const [loading, setLoading] = useState(true)
   const [companyProfileId, setCompanyProfileId] = useState<string | null>(null)
   const [setupCompleted, setSetupCompleted] = useState(false)
+  const [subscriptionType, setSubscriptionType] = useState<SubscriptionType>('individual')
   const [formData, setFormData] = useState({
     // Company Details
     companyName: '',
@@ -48,11 +51,30 @@ export default function SetupWizardPage() {
 
   const totalSteps = 5
 
-  // Load existing company profile data on mount
+  const handleFormDataChange = useCallback((updates: Partial<typeof formData>) => {
+    setFormData((prev) => ({ ...prev, ...updates }))
+  }, [])
+
+  // Load existing company profile data and subscription type on mount
   useEffect(() => {
     async function loadCompanyProfile() {
       try {
         setLoading(true)
+        
+        // Load subscription type from user's tenant
+        try {
+          const subResponse = await fetch('/api/tenant-settings')
+          if (subResponse.ok) {
+            const subData = await subResponse.json()
+            if (subData.subscription_type) {
+              setSubscriptionType(subData.subscription_type as SubscriptionType)
+            }
+          }
+        } catch (subError) {
+          console.error('Error loading subscription type:', subError)
+          // Default to individual if we can't load subscription type
+        }
+
         const response = await fetch('/api/company')
         if (response.ok) {
           const data = await response.json()
@@ -103,7 +125,8 @@ export default function SetupWizardPage() {
     }
   }
 
-  const handleSubmit = async () => {    try {
+  const handleSubmit = async () => {
+    try {
       const method = companyProfileId ? 'PUT' : 'POST'
       const url = '/api/company'
       const body = companyProfileId
@@ -124,17 +147,22 @@ export default function SetupWizardPage() {
         body: JSON.stringify(body),
       })
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}))        throw new Error(errorData.error || `Failed to ${companyProfileId ? 'update' : 'create'} company`)
+        const errorData = await response.json().catch(() => ({}))
+        throw new Error(
+          errorData.error || `Failed to ${companyProfileId ? 'update' : 'create'} company`,
+        )
       }
 
-      const data = await response.json()      
+      const data = await response.json()
       // Update local state to show "Setup Complete" before redirect
       if (data.company?.setup_completed) {
         setSetupCompleted(true)
       }
       
-      // Redirect to dashboard      router.push('/dashboard')
-    } catch (error: any) {      console.error('Setup error:', error)
+      // Redirect to dashboard
+      router.push('/dashboard')
+    } catch (error: any) {
+      console.error('Setup error:', error)
       alert(error.message || 'Failed to complete setup. Please try again.')
     }
   }
@@ -202,7 +230,7 @@ export default function SetupWizardPage() {
             <ErrorBoundary>
               <CompanyDetailsForm
                 data={formData}
-                onChange={(updates) => setFormData({ ...formData, ...updates })}
+                onChange={handleFormDataChange}
               />
             </ErrorBoundary>
           )}
@@ -211,7 +239,7 @@ export default function SetupWizardPage() {
             <ErrorBoundary>
               <TaxSettingsForm
                 data={formData}
-                onChange={(updates) => setFormData({ ...formData, ...updates })}
+                onChange={handleFormDataChange}
               />
             </ErrorBoundary>
           )}
@@ -220,7 +248,7 @@ export default function SetupWizardPage() {
             <ErrorBoundary>
               <BankAccountsForm
                 data={formData}
-                onChange={(updates) => setFormData({ ...formData, ...updates })}
+                onChange={handleFormDataChange}
               />
             </ErrorBoundary>
           )}
@@ -233,7 +261,8 @@ export default function SetupWizardPage() {
                 initialDriveName={formData.googleSharedDriveName}
                 initialSpreadsheetId={formData.googleMasterSpreadsheetId}
                 initialSpreadsheetName={formData.googleMasterSpreadsheetName}
-                onChange={(settings) => setFormData({ ...formData, ...settings })}
+                subscriptionType={subscriptionType}
+                onChange={handleFormDataChange}
               />
             </ErrorBoundary>
           )}

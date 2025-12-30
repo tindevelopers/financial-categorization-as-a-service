@@ -129,7 +129,7 @@ For Google Workspace admin accounts, you can set up domain-wide delegation to ac
    - Client ID: The service account Client ID from Step 2
    - OAuth Scopes (comma-separated):
      ```
-     https://www.googleapis.com/auth/spreadsheets,https://www.googleapis.com/auth/drive.readonly
+     https://www.googleapis.com/auth/spreadsheets,https://www.googleapis.com/auth/drive
      ```
 5. Click **"Authorize"**
 

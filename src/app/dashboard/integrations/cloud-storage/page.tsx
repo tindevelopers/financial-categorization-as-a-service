@@ -50,13 +50,17 @@ export default function CloudStoragePage() {
   const loadIntegrations = async () => {
     try {
       setLoading(true)
-      // TODO: Implement API endpoint
-      // const response = await fetch('/api/integrations/cloud-storage')
-      // const data = await response.json()
-      // setIntegrations(data.integrations || [])
-      setIntegrations([]) // Placeholder
+      const response = await fetch('/api/integrations/cloud-storage')
+      if (response.ok) {
+        const data = await response.json()
+        setIntegrations(data.integrations || [])
+      } else {
+        console.error('Failed to load integrations:', response.statusText)
+        setIntegrations([])
+      }
     } catch (error) {
       console.error('Failed to load integrations:', error)
+      setIntegrations([])
     } finally {
       setLoading(false)
     }

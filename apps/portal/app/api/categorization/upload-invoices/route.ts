@@ -294,7 +294,8 @@ export async function POST(request: NextRequest) {
       })
       .eq("id", jobData.id);
 
-    // Queue for async processing (Vercel Background Functions)    try {
+    // Queue for async processing (Vercel Background Functions)
+    try {
       const bgResponse = await fetch(`${request.nextUrl.origin}/api/background/process-invoices`, {
         method: "POST",
         headers: {
@@ -302,10 +303,17 @@ export async function POST(request: NextRequest) {
           Cookie: request.headers.get("cookie") || "",
         },
         body: JSON.stringify({ jobId: jobData.id }),
-      });      if (!bgResponse.ok) {
-        const errorText = await bgResponse.text().catch(() => 'Unknown error');        console.error("Failed to queue background processing:", bgResponse.status, errorText);
+      });
+      if (!bgResponse.ok) {
+        const errorText = await bgResponse.text().catch(() => "Unknown error");
+        console.error(
+          "Failed to queue background processing:",
+          bgResponse.status,
+          errorText
+        );
       }
-    } catch (processError: any) {      console.error("Failed to queue background processing:", processError);
+    } catch (processError: any) {
+      console.error("Failed to queue background processing:", processError);
     }
 
     return NextResponse.json({

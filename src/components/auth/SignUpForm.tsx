@@ -47,8 +47,14 @@ export default function SignUpForm() {
         region: "us-east-1",
       });
 
-      // Redirect to dashboard after successful signup
-      router.push("/saas/dashboard");
+      // Redirect to welcome screen (user can skip)
+      // Check if welcome was already seen
+      const welcomeSeen = typeof window !== "undefined" && localStorage.getItem("welcome_seen");
+      if (!welcomeSeen) {
+        router.push("/saas/onboarding/welcome");
+      } else {
+        router.push("/saas/dashboard");
+      }
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : "Failed to sign up";
       setError(errorMessage);
@@ -80,6 +86,13 @@ export default function SignUpForm() {
             </p>
           </div>
           <div>
+            {/* Subscription Type Info Banner */}
+            <div className="mb-4 p-3 text-sm text-blue-700 bg-blue-50 rounded-lg dark:bg-blue-900/20 dark:text-blue-400">
+              <p className="font-medium mb-1">Starting with Individual plan</p>
+              <p className="text-xs">
+                You&apos;ll have OAuth authentication ready to use. You can upgrade to Company or Enterprise anytime in Settings.
+              </p>
+            </div>
             {error && (
               <div className="mb-4 p-3 text-sm text-red-600 bg-red-50 rounded-lg dark:bg-red-900/20 dark:text-red-400">
                 {error}

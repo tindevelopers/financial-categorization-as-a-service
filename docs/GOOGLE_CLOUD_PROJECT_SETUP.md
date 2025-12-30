@@ -60,7 +60,7 @@ To enable an API:
 4. Click **"Save and Continue"**
 5. **Add Scopes** (click "Add or Remove Scopes"):
    - `https://www.googleapis.com/auth/spreadsheets`
-   - `https://www.googleapis.com/auth/drive.readonly` (if using Google Drive)
+   - `https://www.googleapis.com/auth/drive` (required for Business Standard Shared Drive provisioning and Drive copies)
    - `https://www.googleapis.com/auth/userinfo.email`
    - Click **"Update"** then **"Save and Continue"**
 6. **Add Test Users** (if app is in testing mode):

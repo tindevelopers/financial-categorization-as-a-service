@@ -175,24 +175,29 @@ export async function middleware(request: NextRequest) {
   }
 
   // Company setup flow check (for new financial categorization features)
-  // TODO: Re-enable after regenerating Supabase types
-  /*
+  // Note: This requires company_profiles table with setup_completed column
+  // If types are not regenerated, you may need to cast the result: (supabase as any)
   if (user && pathname.startsWith('/dashboard') && pathname !== '/dashboard/setup') {
-    // Check if user has completed company setup
-    const { data: companies } = await supabase
-      .from('company_profiles')
-      .select('id, setup_completed')
-      .eq('user_id', user.id)
-      .order('created_at', { ascending: false })
-      .limit(1);
+    try {
+      // Check if user has completed company setup
+      const { data: companies } = await (supabase as any)
+        .from('company_profiles')
+        .select('id, setup_completed')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false })
+        .limit(1);
 
-    // If no company or setup not completed, redirect to setup
-    if (!companies || companies.length === 0 || !companies[0].setup_completed) {
-      const setupUrl = new URL('/dashboard/setup', request.url);
-      return NextResponse.redirect(setupUrl);
+      // If no company or setup not completed, redirect to setup
+      if (!companies || companies.length === 0 || !companies[0].setup_completed) {
+        const setupUrl = new URL('/dashboard/setup', request.url);
+        return NextResponse.redirect(setupUrl);
+      }
+    } catch (error) {
+      // If table doesn't exist or types aren't available, log and continue
+      // This allows the app to work even if company_profiles isn't set up yet
+      console.debug('[middleware] Company setup check skipped:', error instanceof Error ? error.message : 'Unknown error');
     }
   }
-  */
 
   // Redirect authenticated users from root to dashboard
   // This applies to all cases - including Vercel preview URLs
