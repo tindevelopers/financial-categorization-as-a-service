@@ -123,22 +123,38 @@ export async function middleware(request: NextRequest) {
         }
 
         // Check company setup status for dashboard pages (skip API routes)
-        if (user && !isApiRoute && pathname.startsWith('/dashboard') && pathname !== '/dashboard/setup') {
+        // Also skip for admin pages (Platform Admins don't have company profiles)
+        const isAdminPage = pathname.startsWith('/dashboard/admin');
+        if (user && !isApiRoute && pathname.startsWith('/dashboard') && pathname !== '/dashboard/setup' && !isAdminPage) {
           try {
-            // Check if user has completed company setup
-            const { data: companies, error } = await supabase
-              .from('company_profiles')
-              .select('id, setup_completed')
-              .eq('user_id', user.id)
-              .order('created_at', { ascending: false })
-              .limit(1);
-            // If query fails, log error but allow access (fail open)
-            if (error) {
-              console.error('Error checking company setup:', error);
-            }
+            // First check if user is a Platform Admin (they don't need company setup)
+            const { data: userData } = await supabase
+              .from('users')
+              .select('tenant_id, roles:role_id(name)')
+              .eq('id', user.id)
+              .single();
 
-            // If no company or setup not completed, redirect to setup
-            if (!companies || companies.length === 0 || !companies[0]?.setup_completed) {              return NextResponse.redirect(new URL('/dashboard/setup', request.url));
+            const roleName = (userData?.roles as any)?.name;
+            const isPlatformAdmin = roleName === 'Platform Admin' && !userData?.tenant_id;
+
+            // Platform Admins bypass company setup check
+            if (!isPlatformAdmin) {
+              // Check if user has completed company setup
+              const { data: companies, error } = await supabase
+                .from('company_profiles')
+                .select('id, setup_completed')
+                .eq('user_id', user.id)
+                .order('created_at', { ascending: false })
+                .limit(1);
+              // If query fails, log error but allow access (fail open)
+              if (error) {
+                console.error('Error checking company setup:', error);
+              }
+
+              // If no company or setup not completed, redirect to setup
+              if (!companies || companies.length === 0 || !companies[0]?.setup_completed) {
+                return NextResponse.redirect(new URL('/dashboard/setup', request.url));
+              }
             }
           } catch (error) {
             // If company check fails, log error but allow access (fail open)
