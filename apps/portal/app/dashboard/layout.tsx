@@ -32,7 +32,7 @@ import {
   DocumentTextIcon,
   ShieldCheckIcon,
 } from '@heroicons/react/24/outline'
-import { createClient } from '@/lib/database/client'
+import { createBrowserClient } from '@supabase/ssr'
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
@@ -41,7 +41,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   useEffect(() => {
     async function checkAdmin() {
       try {
-        const supabase = createClient()
+        const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+        const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+        if (!supabaseUrl || !supabaseAnonKey) return
+
+        const supabase = createBrowserClient(supabaseUrl, supabaseAnonKey)
         const { data: { user } } = await supabase.auth.getUser()
         if (!user) return
 
