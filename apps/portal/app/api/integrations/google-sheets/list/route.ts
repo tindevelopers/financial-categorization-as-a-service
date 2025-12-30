@@ -2,8 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/database/server";
 import { getCredentialManager } from "@/lib/credentials/VercelCredentialManager";
 import { google } from "googleapis";
-import crypto from "crypto";
 import { createTenantGoogleClientsForRequestUser } from "@/lib/google-sheets/tenant-clients";
+import { decryptToken as decryptOAuthToken } from "@/lib/google-sheets/auth-helpers";
 
 /**
  * GET /api/integrations/google-sheets/list
@@ -162,30 +162,6 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Helper function to decrypt tokens
-    const decryptToken = (encryptedText: string): string => {
-      if (!encryptedText) return "";
-      const encryptionKey = process.env.ENCRYPTION_KEY;
-      if (!encryptionKey) {
-        throw new Error("ENCRYPTION_KEY not configured");
-      }
-      const parts = encryptedText.split(":");
-      if (parts.length !== 2) {
-        throw new Error("Invalid encrypted text format");
-      }
-      const [ivHex, ciphertext] = parts;
-      const algorithm = "aes-256-cbc";
-      const iv = Buffer.from(ivHex, "hex");
-      const decipher = crypto.createDecipheriv(
-        algorithm,
-        Buffer.from(encryptionKey, "hex"),
-        iv
-      );
-      let decrypted = decipher.update(ciphertext, "hex", "utf8");
-      decrypted += decipher.final("utf8");
-      return decrypted;
-    };
-
     let auth;
     let sheets: ReturnType<typeof google.sheets>;
 
@@ -196,14 +172,41 @@ export async function GET(request: NextRequest) {
       let expiresAt: Date | null = null;
 
       // Get tokens from either table
-      if (integration?.access_token) {
-        accessToken = decryptToken(integration.access_token);
-        refreshToken = integration.refresh_token ? decryptToken(integration.refresh_token) : null;
-        expiresAt = integration.token_expires_at ? new Date(integration.token_expires_at) : null;
-      } else if (connection?.access_token_encrypted) {
-        accessToken = decryptToken(connection.access_token_encrypted);
-        refreshToken = connection.refresh_token_encrypted ? decryptToken(connection.refresh_token_encrypted) : null;
-        expiresAt = connection.token_expires_at ? new Date(connection.token_expires_at) : null;
+      try {
+        if (integration?.access_token) {
+          accessToken = decryptOAuthToken(integration.access_token);
+          refreshToken = integration.refresh_token
+            ? decryptOAuthToken(integration.refresh_token)
+            : null;
+          expiresAt = integration.token_expires_at
+            ? new Date(integration.token_expires_at)
+            : null;
+        } else if (connection?.access_token_encrypted) {
+          accessToken = decryptOAuthToken(connection.access_token_encrypted);
+          refreshToken = connection.refresh_token_encrypted
+            ? decryptOAuthToken(connection.refresh_token_encrypted)
+            : null;
+          expiresAt = connection.token_expires_at
+            ? new Date(connection.token_expires_at)
+            : null;
+        }
+      } catch (decryptErr: any) {
+        console.error("Failed to decrypt Google OAuth tokens. User must reconnect.", {
+          userId: user.id,
+          tenantId: tenantId || "none",
+          message: decryptErr?.message,
+        });
+
+        return NextResponse.json(
+          {
+            error:
+              "We couldn't read your saved Google connection. Please reconnect your Google account.",
+            error_code: "TOKEN_DECRYPT_FAILED",
+            guidance:
+              "Go to Settings > Integrations > Google Sheets and click 'Connect Google Account' to reconnect.",
+          },
+          { status: 401 }
+        );
       }
 
       if (!accessToken) {
@@ -387,6 +390,17 @@ export async function GET(request: NextRequest) {
         errorMessage = "You don't have permission to access Google Sheets. Please check your Google account permissions.";
         errorCode = "PERMISSION_ERROR";
         guidance = "Please ensure you've granted the necessary permissions when connecting your Google account.";
+      } else if (
+        typeof error.message === "string" &&
+        (error.message.toLowerCase().includes("bad decrypt") ||
+          error.message.toLowerCase().includes("invalid encrypted text format") ||
+          error.message.toLowerCase().includes("encryption_key not configured"))
+      ) {
+        errorMessage =
+          "We couldn't read your saved Google connection. Please reconnect your Google account.";
+        errorCode = "TOKEN_DECRYPT_FAILED";
+        guidance =
+          "Go to Settings > Integrations > Google Sheets and click 'Connect Google Account' to reconnect.";
       }
 
       return NextResponse.json(
@@ -395,7 +409,7 @@ export async function GET(request: NextRequest) {
           error_code: errorCode,
           guidance: guidance
         },
-        { status: 500 }
+        { status: errorCode === "TOKEN_DECRYPT_FAILED" ? 401 : 500 }
       );
     }
   } catch (error: any) {
