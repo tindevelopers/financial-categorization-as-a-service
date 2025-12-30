@@ -174,7 +174,11 @@ export default function SignInForm() {
               <p className="text-xs text-center text-gray-500 dark:text-gray-500">
                 Looking for customer access?{" "}
                 <a
-                  href="http://localhost:3002/signin"
+                  href={`${
+                    process.env.NEXT_PUBLIC_PORTAL_DOMAIN
+                      ? `https://${process.env.NEXT_PUBLIC_PORTAL_DOMAIN}`
+                      : "http://localhost:3002"
+                  }/signin`}
                   className="text-brand-500 hover:text-brand-600 dark:text-brand-400"
                 >
                   Go to Customer Portal
