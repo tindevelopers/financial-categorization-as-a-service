@@ -74,6 +74,7 @@ interface TenantSettings {
   airtable_table_name?: string
   use_custom_credentials?: boolean
   is_enabled?: boolean
+  dwd_subject_email?: string
 }
 
 interface CompanyProfile {
@@ -109,6 +110,10 @@ export default function SettingsPage() {
   const [customClientSecret, setCustomClientSecret] = useState('')
   const [showClientSecret, setShowClientSecret] = useState(false)
   const [credentialsSaved, setCredentialsSaved] = useState(false)
+  
+  // Enterprise BYO Domain-Wide Delegation
+  const [dwdSubjectEmail, setDwdSubjectEmail] = useState('')
+  const [subscriptionType, setSubscriptionType] = useState<'individual' | 'company' | 'enterprise'>('individual')
   
   // Airtable form state
   const [airtableApiKey, setAirtableApiKey] = useState('')
@@ -167,6 +172,19 @@ export default function SettingsPage() {
 
   const loadSettings = async () => {
     try {
+      // Load subscription type first
+      try {
+        const subResponse = await fetch('/api/tenant-settings', { credentials: 'include' })
+        if (subResponse.ok) {
+          const subData = await subResponse.json()
+          if (subData.subscription_type) {
+            setSubscriptionType(subData.subscription_type as 'individual' | 'company' | 'enterprise')
+          }
+        }
+      } catch (subError) {
+        console.error('Error loading subscription type:', subError)
+      }
+
       // Load entity type and tenant settings
       const settingsResponse = await fetch('/api/tenant-settings/integrations', {
         credentials: 'include',
@@ -182,6 +200,7 @@ export default function SettingsPage() {
         if (googleSettings) {
           setUseCustomCredentials(googleSettings.use_custom_credentials || false)
           setCustomClientId(googleSettings.custom_client_id || '')
+          setDwdSubjectEmail(googleSettings.dwd_subject_email || '')
           // Secret is masked (••••••••) if saved, don't overwrite with masked value
           // User will need to re-enter secret if they want to change it
           if (googleSettings.custom_client_secret === '••••••••') {
@@ -923,6 +942,98 @@ export default function SettingsPage() {
                       </div>
                     </div>
                   )}
+                </div>
+              )}
+
+              {/* Enterprise BYO: Domain-Wide Delegation Subject Email */}
+              {subscriptionType === 'enterprise' && (
+                <div className="border border-purple-200 dark:border-purple-800 bg-purple-50 dark:bg-purple-900/20 rounded-lg p-4 space-y-4">
+                  <div>
+                    <h4 className="font-medium text-purple-900 dark:text-purple-200 flex items-center gap-2">
+                      <BuildingOfficeIcon className="h-5 w-5" />
+                      Enterprise: Domain-Wide Delegation
+                    </h4>
+                    <p className="text-sm text-purple-700 dark:text-purple-300 mt-1">
+                      Configure the Google Workspace email for Service Account impersonation
+                    </p>
+                  </div>
+
+                  <div className="bg-purple-100 dark:bg-purple-900/40 rounded-lg p-3">
+                    <div className="flex gap-2">
+                      <InformationCircleIcon className="h-5 w-5 text-purple-500 flex-shrink-0" />
+                      <div className="text-sm text-purple-800 dark:text-purple-300">
+                        <p className="font-medium">What is this?</p>
+                        <p className="mt-1">
+                          Domain-Wide Delegation allows the platform&apos;s Service Account to access 
+                          Google Drive and Sheets on behalf of a user in your organization. Enter the 
+                          email of a Google Workspace admin or service user who has access to your 
+                          Shared Drives.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                      Subject Email <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="email"
+                      value={dwdSubjectEmail}
+                      onChange={(e) => setDwdSubjectEmail(e.target.value)}
+                      placeholder="admin@yourcompany.com"
+                      className="w-full px-3 py-2 border border-gray-300 dark:border-zinc-600 rounded-lg bg-white dark:bg-zinc-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                    />
+                    <p className="text-xs text-gray-500 mt-1">
+                      This user must be in your Google Workspace and have access to the Shared Drives you want to use.
+                    </p>
+                  </div>
+
+                  {!dwdSubjectEmail && (
+                    <div className="flex items-center gap-2 text-amber-600 dark:text-amber-400">
+                      <ExclamationCircleIcon className="h-5 w-5" />
+                      <span className="text-sm font-medium">Required for Enterprise BYO integration to work</span>
+                    </div>
+                  )}
+
+                  {dwdSubjectEmail && dwdSubjectEmail.includes('@') && (
+                    <div className="flex items-center gap-2 text-green-600 dark:text-green-400">
+                      <CheckCircleIcon className="h-5 w-5" />
+                      <span className="text-sm">Will impersonate: <strong>{dwdSubjectEmail}</strong></span>
+                    </div>
+                  )}
+
+                  <Button
+                    color="blue"
+                    onClick={async () => {
+                      setSaving(true)
+                      try {
+                        const response = await fetch('/api/tenant-settings/integrations', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          credentials: 'include',
+                          body: JSON.stringify({
+                            provider: 'google_sheets',
+                            dwd_subject_email: dwdSubjectEmail.trim(),
+                          }),
+                        })
+                        if (response.ok) {
+                          alert('✅ Domain-Wide Delegation subject email saved!')
+                        } else {
+                          const data = await response.json()
+                          alert(`❌ Failed to save: ${data.error || 'Unknown error'}`)
+                        }
+                      } catch (error) {
+                        console.error('Failed to save:', error)
+                        alert('❌ Failed to save. Please try again.')
+                      } finally {
+                        setSaving(false)
+                      }
+                    }}
+                    disabled={saving || !dwdSubjectEmail || !dwdSubjectEmail.includes('@')}
+                  >
+                    {saving ? 'Saving...' : 'Save Subject Email'}
+                  </Button>
                 </div>
               )}
 

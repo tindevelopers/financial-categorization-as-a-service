@@ -26,6 +26,7 @@ interface IntegrationSettingsInput {
   use_custom_credentials?: boolean;
   is_enabled?: boolean;
   settings?: Record<string, any>;
+  dwd_subject_email?: string;
 }
 
 /**
@@ -73,6 +74,8 @@ export async function GET(request: Request) {
       airtable_api_key: (setting.api_key_vault_id || setting.airtable_api_key) 
         ? '••••••••' 
         : null,
+      // Include dwdSubjectEmail from settings JSONB
+      dwd_subject_email: setting.settings?.dwdSubjectEmail || null,
       // Include vault status for debugging (optional, remove in production)
       _vault_enabled: !!setting.client_secret_vault_id || !!setting.api_key_vault_id,
     }));
@@ -157,6 +160,17 @@ export async function POST(request: Request) {
 
     if (body.airtable_table_name !== undefined) {
       settingsData.airtable_table_name = body.airtable_table_name || null;
+    }
+
+    // Handle dwdSubjectEmail (stored in settings JSONB for Enterprise BYO)
+    if (body.dwd_subject_email !== undefined) {
+      settingsData.settings = {
+        ...(settingsData.settings || {}),
+        dwdSubjectEmail: body.dwd_subject_email || null,
+        googleIntegrationTier: 'enterprise_byo',
+      };
+      // Also enable custom credentials for Enterprise BYO
+      settingsData.use_custom_credentials = true;
     }
 
     // Handle secrets - use vault if available, otherwise fall back to encryption
