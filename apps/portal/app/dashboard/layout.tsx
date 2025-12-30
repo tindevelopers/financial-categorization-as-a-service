@@ -1,6 +1,7 @@
 'use client'
 
 import { usePathname } from 'next/navigation'
+import { useEffect, useState } from 'react'
 import {
   SidebarLayout,
   Sidebar,
@@ -29,10 +30,35 @@ import {
   DocumentCheckIcon,
   BanknotesIcon,
   DocumentTextIcon,
+  ShieldCheckIcon,
 } from '@heroicons/react/24/outline'
+import { createClient } from '@/lib/database/client'
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
+  const [isPlatformAdmin, setIsPlatformAdmin] = useState(false)
+
+  useEffect(() => {
+    async function checkAdmin() {
+      try {
+        const supabase = createClient()
+        const { data: { user } } = await supabase.auth.getUser()
+        if (!user) return
+
+        const { data: userData } = await supabase
+          .from('users')
+          .select('tenant_id, roles:role_id(name)')
+          .eq('id', user.id)
+          .single()
+
+        const roleName = (userData?.roles as any)?.name
+        setIsPlatformAdmin(roleName === 'Platform Admin' && !userData?.tenant_id)
+      } catch (error) {
+        console.error('Error checking admin status:', error)
+      }
+    }
+    checkAdmin()
+  }, [])
 
   return (
     <SidebarLayout
@@ -152,6 +178,18 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 <SidebarLabel>AI Assistant</SidebarLabel>
               </SidebarItem>
             </SidebarSection>
+
+            {isPlatformAdmin && (
+              <SidebarSection>
+                <SidebarItem
+                  href="/dashboard/admin/enterprise-oauth"
+                  current={pathname.startsWith('/dashboard/admin')}
+                >
+                  <ShieldCheckIcon />
+                  <SidebarLabel>Platform Admin</SidebarLabel>
+                </SidebarItem>
+              </SidebarSection>
+            )}
           </SidebarBody>
 
           <SidebarFooter>
