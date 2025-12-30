@@ -18,6 +18,7 @@ import { CompanySwitcher } from '@/components/navigation/CompanySwitcher'
 import { UserMenu } from '@/components/navigation/UserMenu'
 import { SidebarUserMenu } from '@/components/navigation/SidebarUserMenu'
 import { ChatContextProvider } from '@/context/ChatContext'
+import { SubscriptionProvider } from '@/context/SubscriptionContext'
 import { FloatingChatBubble } from '@/components/chat'
 import {
   HomeIcon,
@@ -39,6 +40,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const showFloatingBubble = pathname !== '/dashboard/chat'
 
   return (
+    <SubscriptionProvider>
     <ChatContextProvider>
       <SidebarLayout
       navbar={
@@ -171,6 +173,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       {showFloatingBubble && <FloatingChatBubble position="bottom-right" />}
     </SidebarLayout>
     </ChatContextProvider>
+    </SubscriptionProvider>
   )
 }
 

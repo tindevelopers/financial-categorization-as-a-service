@@ -2,12 +2,17 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 import { createBrowserClient } from '@supabase/ssr'
 import {
   ArrowRightStartOnRectangleIcon,
   UserCircleIcon,
   ChevronUpIcon,
+  CreditCardIcon,
+  SparklesIcon,
 } from '@heroicons/react/24/outline'
+import { useSubscriptionOptional } from '@/context/SubscriptionContext'
+import { getPlanDisplayInfo, shouldShowUpgrade } from '@/config/plans'
 
 export function SidebarUserMenu() {
   const router = useRouter()
@@ -16,6 +21,9 @@ export function SidebarUserMenu() {
   const [isOpen, setIsOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
   const supabaseRef = useRef<any>(null)
+  
+  // Get subscription context (optional - won't throw if not in provider)
+  const subscriptionContext = useSubscriptionOptional()
 
   // Create Supabase client lazily
   const getSupabase = () => {
@@ -76,10 +84,12 @@ export function SidebarUserMenu() {
 
   if (loading) {
     return (
-      <div className="flex items-center gap-3 px-2 py-2">
-        <div className="h-9 w-9 rounded-lg bg-zinc-200 dark:bg-zinc-700 animate-pulse" />
-        <div className="flex-1">
-          <div className="h-4 w-24 bg-zinc-200 dark:bg-zinc-700 rounded animate-pulse" />
+      <div className="flex flex-col gap-2 px-2 py-2">
+        <div className="flex items-center gap-3">
+          <div className="h-9 w-9 rounded-lg bg-zinc-200 dark:bg-zinc-700 animate-pulse" />
+          <div className="flex-1">
+            <div className="h-4 w-24 bg-zinc-200 dark:bg-zinc-700 rounded animate-pulse" />
+          </div>
         </div>
       </div>
     )
@@ -94,6 +104,13 @@ export function SidebarUserMenu() {
     .split('@')[0]
     .substring(0, 2)
     .toUpperCase()
+
+  // Plan information
+  const planName = subscriptionContext?.planName
+  const status = subscriptionContext?.status
+  const isTrialing = subscriptionContext?.isTrialing
+  const planDisplayInfo = getPlanDisplayInfo(planName)
+  const showUpgrade = shouldShowUpgrade(planName)
 
   return (
     <div className="relative" ref={menuRef}>
@@ -112,6 +129,29 @@ export function SidebarUserMenu() {
               Profile
             </button>
             <button
+              onClick={() => {
+                router.push('/saas/billing/dashboard')
+                setIsOpen(false)
+              }}
+              className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm text-zinc-700 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-700"
+            >
+              <CreditCardIcon className="h-5 w-5" />
+              Billing
+            </button>
+            {showUpgrade && (
+              <button
+                onClick={() => {
+                  router.push('/saas/billing/plans')
+                  setIsOpen(false)
+                }}
+                className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm text-blue-600 hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-blue-900/20"
+              >
+                <SparklesIcon className="h-5 w-5" />
+                Upgrade Plan
+              </button>
+            )}
+            <div className="my-1 border-t border-zinc-200 dark:border-zinc-700" />
+            <button
               onClick={handleSignOut}
               className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/20"
             >
@@ -119,6 +159,44 @@ export function SidebarUserMenu() {
               Sign Out
             </button>
           </div>
+        </div>
+      )}
+
+      {/* Plan Badge */}
+      {subscriptionContext && !subscriptionContext.isLoading && (
+        <div className="mb-2 px-1">
+          <Link
+            href="/saas/billing/dashboard"
+            className={`flex items-center gap-2 rounded-lg px-3 py-2 transition-colors ${
+              planDisplayInfo
+                ? `${planDisplayInfo.bgColor} hover:opacity-80`
+                : 'bg-amber-50 dark:bg-amber-900/20 hover:bg-amber-100 dark:hover:bg-amber-900/30'
+            }`}
+          >
+            <SparklesIcon className={`h-4 w-4 ${planDisplayInfo?.color || 'text-amber-600 dark:text-amber-400'}`} />
+            <div className="flex-1 min-w-0">
+              <div className={`text-xs font-medium ${planDisplayInfo?.color || 'text-amber-700 dark:text-amber-300'}`}>
+                {planName ? (
+                  <>
+                    {planName}
+                    {isTrialing && ' Trial'}
+                  </>
+                ) : (
+                  'No Plan'
+                )}
+              </div>
+              {planName && status && (
+                <div className="text-[10px] text-zinc-500 dark:text-zinc-400">
+                  {status === 'active' ? 'Active' : status === 'trialing' ? 'Trial Period' : status}
+                </div>
+              )}
+            </div>
+            {showUpgrade && (
+              <span className="text-[10px] font-medium text-blue-600 dark:text-blue-400">
+                Upgrade
+              </span>
+            )}
+          </Link>
         </div>
       )}
 
@@ -145,4 +223,3 @@ export function SidebarUserMenu() {
     </div>
   )
 }
-

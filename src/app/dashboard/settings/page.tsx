@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import Link from 'next/link'
 import { Heading, Text, Button, Badge } from '@/components/catalyst'
 import {
   Cog6ToothIcon,
@@ -17,7 +18,11 @@ import {
   TrashIcon,
   ClipboardDocumentIcon,
   EnvelopeIcon,
+  SparklesIcon,
+  CreditCardIcon,
 } from '@heroicons/react/24/outline'
+import { useSubscriptionOptional } from '@/context/SubscriptionContext'
+import { getPlanDisplayInfo, getPlanFeatures, shouldShowUpgrade } from '@/config/plans'
 
 type EntityType = 'individual' | 'company'
 
@@ -623,11 +628,198 @@ Window Origin: ${window.location.origin}`;
 
   const isCompany = entityType === 'company'
 
+  // Subscription context
+  const subscriptionContext = useSubscriptionOptional()
+  const planName = subscriptionContext?.planName
+  const subscription = subscriptionContext?.subscription
+  const planDisplayInfo = getPlanDisplayInfo(planName)
+  const planFeatures = getPlanFeatures(planName)
+  const showUpgrade = shouldShowUpgrade(planName)
+
+  const formatCurrency = (amount: number | null | undefined, currency: string = 'usd') => {
+    if (amount === null || amount === undefined) return '$0'
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: currency.toUpperCase(),
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0,
+    }).format(amount / 100)
+  }
+
+  const formatDate = (dateString: string | null | undefined) => {
+    if (!dateString) return 'N/A'
+    return new Date(dateString).toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+    })
+  }
+
   return (
     <div className="space-y-8 p-6">
       <div>
         <Heading>Settings</Heading>
         <Text>Manage your account and integrations</Text>
+      </div>
+
+      {/* Subscription & Plan Section */}
+      <div className={`rounded-lg border overflow-hidden ${
+        planDisplayInfo 
+          ? `${planDisplayInfo.borderColor} ${planDisplayInfo.bgColor.replace('bg-', 'bg-').split(' ')[0]}`
+          : 'border-gray-200 dark:border-zinc-700 bg-white dark:bg-zinc-900'
+      }`}>
+        <div className={`px-6 py-4 border-b ${planDisplayInfo?.borderColor || 'border-gray-200 dark:border-zinc-700'}`}>
+          <h2 className="text-lg font-semibold text-gray-900 dark:text-white flex items-center gap-2">
+            <CreditCardIcon className="h-5 w-5" />
+            Subscription & Plan
+          </h2>
+          <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
+            Manage your subscription and view plan features
+          </p>
+        </div>
+
+        <div className="p-6">
+          {subscriptionContext?.isLoading ? (
+            <div className="animate-pulse space-y-3">
+              <div className="h-6 w-32 bg-gray-200 dark:bg-zinc-700 rounded" />
+              <div className="h-4 w-48 bg-gray-200 dark:bg-zinc-700 rounded" />
+              <div className="h-4 w-24 bg-gray-200 dark:bg-zinc-700 rounded" />
+            </div>
+          ) : subscription && planName ? (
+            <div className="space-y-6">
+              {/* Plan Header */}
+              <div className="flex items-start justify-between">
+                <div className="flex items-center gap-4">
+                  <div className={`flex h-14 w-14 items-center justify-center rounded-xl ${planDisplayInfo?.bgColor || 'bg-gray-100 dark:bg-zinc-800'}`}>
+                    <SparklesIcon className={`h-7 w-7 ${planDisplayInfo?.color || 'text-gray-600 dark:text-gray-400'}`} />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h3 className={`text-xl font-bold ${planDisplayInfo?.color || 'text-gray-900 dark:text-white'}`}>
+                        {planName} Plan
+                      </h3>
+                      <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium ${
+                        subscription.status === 'active'
+                          ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300'
+                          : subscription.status === 'trialing'
+                          ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300'
+                          : 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300'
+                      }`}>
+                        <span className={`h-1.5 w-1.5 rounded-full ${
+                          subscription.status === 'active' ? 'bg-green-500' :
+                          subscription.status === 'trialing' ? 'bg-blue-500' : 'bg-gray-500'
+                        }`} />
+                        {subscription.status === 'active' ? 'Active' : 
+                         subscription.status === 'trialing' ? 'Trial' : subscription.status}
+                      </span>
+                    </div>
+                    <p className="text-sm text-gray-600 dark:text-zinc-400 mt-0.5">
+                      {formatCurrency(subscription.plan_price, subscription.currency)} per {subscription.billing_cycle === 'annual' ? 'year' : 'month'}
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  {showUpgrade && (
+                    <Link
+                      href="/saas/billing/plans"
+                      className="inline-flex items-center gap-1 px-4 py-2 rounded-lg bg-blue-600 text-sm font-medium text-white hover:bg-blue-700 transition-colors"
+                    >
+                      <SparklesIcon className="h-4 w-4" />
+                      Upgrade
+                    </Link>
+                  )}
+                  <Link
+                    href="/saas/billing/dashboard"
+                    className="inline-flex items-center gap-1 px-4 py-2 rounded-lg border border-gray-200 dark:border-zinc-700 text-sm font-medium text-gray-700 dark:text-zinc-300 hover:bg-gray-50 dark:hover:bg-zinc-800 transition-colors"
+                  >
+                    Manage Billing
+                  </Link>
+                </div>
+              </div>
+
+              {/* Billing Info */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-4 border-t border-gray-200 dark:border-zinc-700">
+                <div>
+                  <p className="text-sm text-gray-500 dark:text-zinc-400">
+                    {subscription.cancel_at_period_end ? 'Cancels on' : 'Next billing date'}
+                  </p>
+                  <p className={`font-medium ${subscription.cancel_at_period_end ? 'text-amber-600 dark:text-amber-400' : 'text-gray-900 dark:text-white'}`}>
+                    {formatDate(subscription.current_period_end)}
+                  </p>
+                </div>
+                {subscription.status === 'trialing' && subscription.trial_end && (
+                  <div>
+                    <p className="text-sm text-gray-500 dark:text-zinc-400">Trial ends</p>
+                    <p className="font-medium text-blue-600 dark:text-blue-400">
+                      {formatDate(subscription.trial_end)}
+                    </p>
+                  </div>
+                )}
+                <div>
+                  <p className="text-sm text-gray-500 dark:text-zinc-400">Billing cycle</p>
+                  <p className="font-medium text-gray-900 dark:text-white capitalize">
+                    {subscription.billing_cycle}
+                  </p>
+                </div>
+              </div>
+
+              {/* Features List */}
+              {planDisplayInfo && (
+                <div className="pt-4 border-t border-gray-200 dark:border-zinc-700">
+                  <h4 className="text-sm font-medium text-gray-900 dark:text-white mb-3">
+                    Features included in your plan
+                  </h4>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                    {planDisplayInfo.features.map((feature, index) => (
+                      <div key={index} className="flex items-center gap-2 text-sm text-gray-600 dark:text-zinc-400">
+                        <CheckCircleIcon className="h-4 w-4 text-green-500 flex-shrink-0" />
+                        {feature}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Usage Stats (if applicable) */}
+              {planFeatures && planFeatures.transactionsPerMonth < Infinity && (
+                <div className="pt-4 border-t border-gray-200 dark:border-zinc-700">
+                  <div className="flex items-center justify-between text-sm mb-2">
+                    <span className="text-gray-500 dark:text-zinc-400">Monthly transaction limit</span>
+                    <span className="font-medium text-gray-900 dark:text-white">
+                      {planFeatures.transactionsPerMonth.toLocaleString()} transactions
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-gray-500 dark:text-zinc-400">Storage limit</span>
+                    <span className="font-medium text-gray-900 dark:text-white">
+                      {planFeatures.storageGB} GB
+                    </span>
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : (
+            /* No subscription */
+            <div className="text-center py-8">
+              <div className="mx-auto w-16 h-16 rounded-full bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center mb-4">
+                <SparklesIcon className="h-8 w-8 text-amber-600 dark:text-amber-400" />
+              </div>
+              <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
+                No Active Subscription
+              </h3>
+              <p className="text-gray-600 dark:text-zinc-400 mb-6 max-w-md mx-auto">
+                Subscribe to a plan to unlock all features and start categorizing your transactions with AI.
+              </p>
+              <Link
+                href="/saas/billing/plans"
+                className="inline-flex items-center gap-2 px-6 py-3 rounded-lg bg-blue-600 text-white font-medium hover:bg-blue-700 transition-colors"
+              >
+                <SparklesIcon className="h-5 w-5" />
+                View Plans
+              </Link>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Entity Type Indicator */}

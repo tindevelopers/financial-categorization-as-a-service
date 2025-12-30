@@ -1,5 +1,6 @@
 "use client";
 import Image from "next/image";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import React, { useState, useEffect } from "react";
 import { Dropdown } from "../ui/dropdown/Dropdown";
@@ -8,6 +9,8 @@ import { signOut } from "@/app/actions/auth";
 import { getCurrentUser } from "@/app/actions/user";
 import { createClient as createBrowserClient } from "@/core/database/client";
 import type { Database } from "@/core/database/types";
+import { useSubscriptionOptional } from "@/context/SubscriptionContext";
+import { getPlanDisplayInfo, shouldShowUpgrade } from "@/config/plans";
 
 type User = Database["public"]["Tables"]["users"]["Row"] & {
   roles?: { name: string } | null;
@@ -18,6 +21,9 @@ export default function UserDropdown() {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const router = useRouter();
+  
+  // Get subscription context (optional - won't throw if not in provider)
+  const subscriptionContext = useSubscriptionOptional();
 
   function toggleDropdown() {
     setIsOpen(!isOpen);
@@ -96,6 +102,14 @@ export default function UserDropdown() {
       router.refresh();
     }
   }
+
+  // Plan information
+  const planName = subscriptionContext?.planName;
+  const status = subscriptionContext?.status;
+  const isTrialing = subscriptionContext?.isTrialing;
+  const planDisplayInfo = getPlanDisplayInfo(planName);
+  const showUpgrade = shouldShowUpgrade(planName);
+
   return (
     <div className="relative">
       <button
@@ -138,7 +152,7 @@ export default function UserDropdown() {
       <Dropdown
         isOpen={isOpen}
         onClose={closeDropdown}
-        className="absolute right-0 mt-[17px] flex w-[260px] flex-col rounded-2xl border border-gray-200 bg-white p-3 shadow-theme-lg dark:border-gray-800 dark:bg-gray-dark"
+        className="absolute right-0 mt-[17px] flex w-[280px] flex-col rounded-2xl border border-gray-200 bg-white p-3 shadow-theme-lg dark:border-gray-800 dark:bg-gray-dark"
       >
         <div>
           <span className="block font-medium text-gray-700 text-theme-sm dark:text-gray-400">
@@ -148,6 +162,59 @@ export default function UserDropdown() {
             {loading ? "Loading..." : user?.email || "No email"}
           </span>
         </div>
+
+        {/* Plan Badge Section */}
+        {subscriptionContext && !subscriptionContext.isLoading && (
+          <div className="mt-3 pt-3 border-t border-gray-200 dark:border-gray-800">
+            <Link
+              href="/saas/billing/dashboard"
+              onClick={closeDropdown}
+              className={`flex items-center justify-between rounded-lg px-3 py-2.5 transition-colors ${
+                planDisplayInfo
+                  ? `${planDisplayInfo.bgColor} hover:opacity-80`
+                  : 'bg-amber-50 dark:bg-amber-900/20 hover:bg-amber-100 dark:hover:bg-amber-900/30'
+              }`}
+            >
+              <div className="flex items-center gap-2">
+                <svg
+                  className={`h-4 w-4 ${planDisplayInfo?.color || 'text-amber-600 dark:text-amber-400'}`}
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                  strokeWidth={2}
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 00-2.456 2.456zM16.894 20.567L16.5 21.75l-.394-1.183a2.25 2.25 0 00-1.423-1.423L13.5 18.75l1.183-.394a2.25 2.25 0 001.423-1.423l.394-1.183.394 1.183a2.25 2.25 0 001.423 1.423l1.183.394-1.183.394a2.25 2.25 0 00-1.423 1.423z"
+                  />
+                </svg>
+                <div>
+                  <span className={`text-sm font-medium ${planDisplayInfo?.color || 'text-amber-700 dark:text-amber-300'}`}>
+                    {planName ? (
+                      <>
+                        {planName}
+                        {isTrialing && ' Trial'}
+                      </>
+                    ) : (
+                      'No Plan'
+                    )}
+                  </span>
+                  {status && (
+                    <span className="ml-2 text-xs text-gray-500 dark:text-gray-400">
+                      ({status === 'active' ? 'Active' : status === 'trialing' ? 'Trial' : status})
+                    </span>
+                  )}
+                </div>
+              </div>
+              {showUpgrade && (
+                <span className="text-xs font-medium text-blue-600 dark:text-blue-400">
+                  Upgrade →
+                </span>
+              )}
+            </Link>
+          </div>
+        )}
 
         <ul className="flex flex-col gap-1 pt-4 pb-3 border-b border-gray-200 dark:border-gray-800">
           <li>
@@ -179,7 +246,7 @@ export default function UserDropdown() {
             <DropdownItem
               onItemClick={closeDropdown}
               tag="a"
-              href="/profile"
+              href="/saas/billing/dashboard"
               className="flex items-center gap-3 px-3 py-2 font-medium text-gray-700 rounded-lg group text-theme-sm hover:bg-gray-100 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-white/5 dark:hover:text-gray-300"
             >
               <svg
@@ -193,11 +260,36 @@ export default function UserDropdown() {
                 <path
                   fillRule="evenodd"
                   clipRule="evenodd"
-                  d="M3.5 12C3.5 7.30558 7.30558 3.5 12 3.5C16.6944 3.5 20.5 7.30558 20.5 12C20.5 16.6944 16.6944 20.5 12 20.5C7.30558 20.5 3.5 16.6944 3.5 12ZM12 2C6.47715 2 2 6.47715 2 12C2 17.5228 6.47715 22 12 22C17.5228 22 22 17.5228 22 12C22 6.47715 17.5228 2 12 2ZM11.0991 7.52507C11.0991 8.02213 11.5021 8.42507 11.9991 8.42507H12.0001C12.4972 8.42507 12.9001 8.02213 12.9001 7.52507C12.9001 7.02802 12.4972 6.62507 12.0001 6.62507H11.9991C11.5021 6.62507 11.0991 7.02802 11.0991 7.52507ZM12.0001 17.3714C11.5859 17.3714 11.2501 17.0356 11.2501 16.6214V10.9449C11.2501 10.5307 11.5859 10.1949 12.0001 10.1949C12.4143 10.1949 12.7501 10.5307 12.7501 10.9449V16.6214C12.7501 17.0356 12.4143 17.3714 12.0001 17.3714Z"
+                  d="M3.5 5.5C3.5 4.67157 4.17157 4 5 4H19C19.8284 4 20.5 4.67157 20.5 5.5V18.5C20.5 19.3284 19.8284 20 19 20H5C4.17157 20 3.5 19.3284 3.5 18.5V5.5ZM5 5.5H19V8H5V5.5ZM5 9.5V18.5H19V9.5H5ZM7 12C7 11.4477 7.44772 11 8 11H10C10.5523 11 11 11.4477 11 12C11 12.5523 10.5523 13 10 13H8C7.44772 13 7 12.5523 7 12Z"
                   fill=""
                 />
               </svg>
-              Support
+              Billing
+            </DropdownItem>
+          </li>
+          <li>
+            <DropdownItem
+              onItemClick={closeDropdown}
+              tag="a"
+              href="/dashboard/settings"
+              className="flex items-center gap-3 px-3 py-2 font-medium text-gray-700 rounded-lg group text-theme-sm hover:bg-gray-100 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-white/5 dark:hover:text-gray-300"
+            >
+              <svg
+                className="fill-gray-500 group-hover:fill-gray-700 dark:fill-gray-400 dark:group-hover:fill-gray-300"
+                width="24"
+                height="24"
+                viewBox="0 0 24 24"
+                fill="none"
+                xmlns="http://www.w3.org/2000/svg"
+              >
+                <path
+                  fillRule="evenodd"
+                  clipRule="evenodd"
+                  d="M11.0175 2.75C10.3696 2.75 9.79977 3.18614 9.62875 3.81045L9.27406 5.14258C8.7126 5.36041 8.18667 5.6444 7.70429 5.98693L6.39704 5.57173C5.77863 5.37591 5.10873 5.66585 4.78481 6.22611L3.80229 7.92597C3.47839 8.48621 3.57875 9.19846 4.04661 9.64501L5.01965 10.5753C4.97345 10.9108 4.94933 11.2527 4.94933 11.6C4.94933 11.9474 4.97345 12.2893 5.01965 12.6248L4.04662 13.555C3.57875 14.0015 3.47839 14.7138 3.80229 15.274L4.78481 16.9739C5.10873 17.5342 5.77863 17.8241 6.39705 17.6283L7.70428 17.2131C8.18666 17.5556 8.71259 17.8396 9.27406 18.0574L9.62875 19.3896C9.79977 20.0139 10.3696 20.45 11.0175 20.45H12.9825C13.6305 20.45 14.2003 20.0139 14.3713 19.3896L14.7259 18.0574C15.2874 17.8396 15.8134 17.5556 16.2957 17.2131L17.603 17.6283C18.2214 17.8241 18.8913 17.5342 19.2152 16.9739L20.1977 15.274C20.5216 14.7138 20.4213 14.0015 19.9534 13.555L18.9804 12.6248C19.0266 12.2893 19.0507 11.9474 19.0507 11.6C19.0507 11.2527 19.0266 10.9108 18.9804 10.5753L19.9534 9.64501C20.4213 9.19846 20.5216 8.48621 20.1977 7.92597L19.2152 6.22611C18.8913 5.66585 18.2214 5.37591 17.603 5.57173L16.2957 5.98693C15.8134 5.6444 15.2874 5.36041 14.726 5.14258L14.3713 3.81045C14.2003 3.18614 13.6305 2.75 12.9825 2.75H11.0175ZM12 8.35C10.2051 8.35 8.75 9.80508 8.75 11.6C8.75 13.395 10.2051 14.85 12 14.85C13.7949 14.85 15.25 13.395 15.25 11.6C15.25 9.80508 13.7949 8.35 12 8.35Z"
+                  fill=""
+                />
+              </svg>
+              Settings
             </DropdownItem>
           </li>
         </ul>
