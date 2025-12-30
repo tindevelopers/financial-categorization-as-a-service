@@ -30,6 +30,22 @@ function getErrorMessage(errorCode: string, errorDescription?: string | null, ex
       return 'Connection callback failed. Please try again.'
     case 'no_credentials':
       return 'Google OAuth credentials are not configured. Please contact your administrator.'
+    case 'invalid_client':
+      baseMessage = 'The OAuth client ID or secret is invalid or not configured correctly.';
+      if (errorDescription) {
+        baseMessage += `\n\nDetails: ${errorDescription}`;
+      }
+      baseMessage += '\n\nThis usually means:\n';
+      baseMessage += '1. The Client ID or Client Secret is missing or incorrect\n';
+      baseMessage += '2. The redirect URI doesn\'t match what\'s configured in Google Cloud Console\n';
+      baseMessage += '3. The OAuth credentials need to be updated in your system configuration';
+      if (expectedRedirectUri) {
+        baseMessage += `\n\nExpected redirect URI: ${expectedRedirectUri}`;
+      }
+      if (usedRedirectUri && usedRedirectUri !== expectedRedirectUri) {
+        baseMessage += `\n\nUsed redirect URI: ${usedRedirectUri}`;
+      }
+      return baseMessage;
     case 'invalid_request':
       baseMessage = errorDescription || 'OAuth request is invalid. This may be due to incorrect redirect URI configuration.';
       if (expectedRedirectUri && usedRedirectUri) {
@@ -101,6 +117,12 @@ function GoogleSheetsIntegrationContent() {
         setConnected(false)
         setError(null)
         setProviderEmail(null)
+      } else if (data.error_code === 'TOKEN_DECRYPT_FAILED') {
+        // User is authenticated, but their stored Google token is not readable anymore.
+        // Treat as "needs reconnect" (not portal auth failure).
+        setConnected(false)
+        setError('Your saved Google connection needs to be refreshed. Please reconnect Google Sheets.')
+        setProviderEmail(null)
       } else if (data.error_code === 'NOT_CONFIGURED') {
         setConnected(false)
         setError('Google Sheets integration is not configured. Please contact your administrator.')
@@ -155,7 +177,8 @@ function GoogleSheetsIntegrationContent() {
   const showRedirectFixPanel =
     searchParams.get('error') === 'redirect_uri_mismatch' ||
     searchParams.get('error') === 'invalid_request' ||
-    searchParams.get('error') === 'preflight_redirect'
+    searchParams.get('error') === 'preflight_redirect' ||
+    searchParams.get('error') === 'invalid_client'
 
   const handleCopyRedirectUri = async () => {
     if (!expectedRedirectUri) return
@@ -276,8 +299,8 @@ function GoogleSheetsIntegrationContent() {
             <p className="text-sm text-red-600 dark:text-red-300 mt-1">
               {error}
             </p>
-            {(error.includes('redirect URI') || error.includes('OAuth') || error.includes('invalid_request')) && (
-              <div className="mt-3">
+            {(error.includes('redirect URI') || error.includes('OAuth') || error.includes('invalid_request') || error.includes('invalid_client')) && (
+              <div className="mt-3 space-y-2">
                 <a
                   href="https://console.cloud.google.com/apis/credentials"
                   target="_blank"
@@ -287,6 +310,16 @@ function GoogleSheetsIntegrationContent() {
                   <LinkIcon className="h-4 w-4" />
                   Open Google Cloud Console to fix OAuth configuration
                 </a>
+                {error.includes('invalid_client') && (
+                  <div className="mt-2 text-xs text-red-600 dark:text-red-400">
+                    <p className="font-medium mb-1">To fix this issue:</p>
+                    <ol className="list-decimal list-inside space-y-1 ml-2">
+                      <li>Verify your OAuth Client ID and Client Secret are correct in Google Cloud Console</li>
+                      <li>Ensure the redirect URI matches exactly what's shown below</li>
+                      <li>Contact your administrator to update the credentials if needed</li>
+                    </ol>
+                  </div>
+                )}
               </div>
             )}
             {(error.includes('decrypt') || error.includes('1C800064')) && (

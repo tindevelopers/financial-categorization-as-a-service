@@ -49,6 +49,8 @@ export default function SpreadsheetsPage() {
         
         if (data.error_code === 'NOT_CONNECTED') {
           setError('Google Sheets integration not connected. Please connect your Google account in Settings.')
+        } else if (data.error_code === 'TOKEN_DECRYPT_FAILED') {
+          setError('Your saved Google connection needs to be refreshed. Please reconnect Google Sheets in Settings.')
         } else if (data.error_code === 'NOT_CONFIGURED') {
           setError('Google Sheets API not configured. Service account credentials are required. Please configure GOOGLE_SERVICE_ACCOUNT_EMAIL and GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY environment variables.')
         } else if (response.status === 401) {
@@ -145,6 +147,14 @@ export default function SpreadsheetsPage() {
                 className="mt-2 inline-block text-sm text-red-700 dark:text-red-400 underline"
               >
                 Connect Google Sheets Integration
+              </a>
+            )}
+            {error.includes('reconnect') && (
+              <a
+                href="/dashboard/integrations/google-sheets"
+                className="mt-2 inline-block text-sm text-red-700 dark:text-red-400 underline"
+              >
+                Reconnect Google Sheets Integration
               </a>
             )}
             {error.includes('not configured') && (

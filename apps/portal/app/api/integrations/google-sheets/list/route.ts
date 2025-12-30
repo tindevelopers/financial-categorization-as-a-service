@@ -205,7 +205,9 @@ export async function GET(request: NextRequest) {
             guidance:
               "Go to Settings > Integrations > Google Sheets and click 'Connect Google Account' to reconnect.",
           },
-          { status: 401 }
+          // IMPORTANT: do not return 401 here — some client/auth-guard code treats any 401 as "portal session invalid"
+          // which can redirect users to /signin even though they're authenticated.
+          { status: 400 }
         );
       }
 
@@ -409,7 +411,7 @@ export async function GET(request: NextRequest) {
           error_code: errorCode,
           guidance: guidance
         },
-        { status: errorCode === "TOKEN_DECRYPT_FAILED" ? 401 : 500 }
+        { status: errorCode === "TOKEN_DECRYPT_FAILED" ? 400 : 500 }
       );
     }
   } catch (error: any) {
