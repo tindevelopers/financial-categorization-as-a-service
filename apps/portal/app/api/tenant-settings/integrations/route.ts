@@ -11,22 +11,24 @@
 
 import { createClient } from '@/lib/database/server';
 import { NextResponse } from 'next/server';
-import { encrypt, isEncrypted } from '@/lib/encryption';
+import { encrypt } from '@/lib/encryption';
 import { getEntityInfo } from '@/lib/entity-type';
-import { saveSecret, isVaultAvailable, maskSecretValue } from '@/lib/vault';
+import { saveSecret, isVaultAvailable } from '@/lib/vault';
 
 interface IntegrationSettingsInput {
   provider: string;
+  // OAuth credentials - blocked from portal, admin-only
   custom_client_id?: string;
   custom_client_secret?: string;
   custom_redirect_uri?: string;
+  use_custom_credentials?: boolean;
+  dwd_subject_email?: string;
+  // Airtable settings - allowed from portal for company accounts
   airtable_api_key?: string;
   airtable_base_id?: string;
   airtable_table_name?: string;
-  use_custom_credentials?: boolean;
   is_enabled?: boolean;
   settings?: Record<string, any>;
-  dwd_subject_email?: string;
 }
 
 /**
@@ -124,10 +126,11 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Provider is required' }, { status: 400 });
     }
 
-    // Check if entity type allows custom credentials
-    if (entityInfo.type === 'individual' && body.use_custom_credentials) {
+    // Block custom OAuth credential management from portal - this is admin-only
+    // Individual and Company accounts use platform OAuth, Enterprise uses admin-configured BYO credentials
+    if (body.use_custom_credentials || body.custom_client_id || body.custom_client_secret || body.dwd_subject_email) {
       return NextResponse.json({ 
-        error: 'Individual accounts cannot use custom OAuth credentials. Please upgrade to a company account.' 
+        error: 'Custom OAuth credentials can only be configured by platform administrators. Please contact support for Enterprise BYO setup.' 
       }, { status: 403 });
     }
 
@@ -145,15 +148,7 @@ export async function POST(request: Request) {
       updated_at: new Date().toISOString(),
     };
 
-    // Handle non-secret fields
-    if (body.custom_client_id !== undefined) {
-      settingsData.custom_client_id = body.custom_client_id || null;
-    }
-
-    if (body.custom_redirect_uri !== undefined) {
-      settingsData.custom_redirect_uri = body.custom_redirect_uri || null;
-    }
-
+    // Handle Airtable settings (allowed for company accounts from portal)
     if (body.airtable_base_id !== undefined) {
       settingsData.airtable_base_id = body.airtable_base_id || null;
     }
@@ -162,51 +157,7 @@ export async function POST(request: Request) {
       settingsData.airtable_table_name = body.airtable_table_name || null;
     }
 
-    // Handle dwdSubjectEmail (stored in settings JSONB for Enterprise BYO)
-    if (body.dwd_subject_email !== undefined) {
-      settingsData.settings = {
-        ...(settingsData.settings || {}),
-        dwdSubjectEmail: body.dwd_subject_email || null,
-        googleIntegrationTier: 'enterprise_byo',
-      };
-      // Also enable custom credentials for Enterprise BYO
-      settingsData.use_custom_credentials = true;
-    }
-
-    // Handle secrets - use vault if available, otherwise fall back to encryption
-    if (body.custom_client_secret !== undefined && body.custom_client_secret !== '••••••••') {
-      if (body.custom_client_secret) {
-        if (vaultAvailable) {
-          // Store in vault via RPC
-          const vaultId = await saveSecret(
-            supabase,
-            entityInfo.tenantId,
-            body.provider,
-            'client_secret',
-            body.custom_client_secret
-          );
-          
-          if (vaultId) {
-            settingsData.client_secret_vault_id = vaultId;
-            settingsData.custom_client_secret = null; // Clear legacy storage
-            console.log('[Tenant Settings] Client secret stored in vault:', vaultId);
-          } else {
-            // Vault failed, fall back to encryption
-            console.warn('[Tenant Settings] Vault storage failed, using encryption fallback');
-            settingsData.custom_client_secret = encrypt(body.custom_client_secret);
-          }
-        } else {
-          // Vault not available, use encryption
-          settingsData.custom_client_secret = encrypt(body.custom_client_secret);
-          console.log('[Tenant Settings] Using encryption fallback for client secret');
-        }
-      } else {
-        // Clearing the secret
-        settingsData.custom_client_secret = null;
-        settingsData.client_secret_vault_id = null;
-      }
-    }
-
+    // Handle Airtable API key - use vault if available, otherwise fall back to encryption
     if (body.airtable_api_key !== undefined && body.airtable_api_key !== '••••••••') {
       if (body.airtable_api_key) {
         if (vaultAvailable) {
@@ -248,59 +199,24 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Failed to save settings' }, { status: 500 });
     }
 
-    // Verify persistence by reading back the saved record
-    const { data: verifiedSettings } = await (supabase as any)
-      .from('tenant_integration_settings')
-      .select('*')
-      .eq('tenant_id', entityInfo.tenantId)
-      .eq('provider', body.provider)
-      .single();
-
-    if (!verifiedSettings) {
-      console.error('Failed to verify saved settings');
-      return NextResponse.json({ error: 'Settings saved but verification failed' }, { status: 500 });
-    }
-
-    // Verify credentials are actually stored
-    const hasClientId = !!verifiedSettings.custom_client_id;
-    const hasClientSecret = !!(verifiedSettings.client_secret_vault_id || verifiedSettings.custom_client_secret);
-    
-    if (body.use_custom_credentials && (!hasClientId || !hasClientSecret)) {
-      console.error('Credentials not properly persisted:', {
-        hasClientId,
-        hasClientSecret,
-        hasVaultId: !!verifiedSettings.client_secret_vault_id,
-        hasEncryptedSecret: !!verifiedSettings.custom_client_secret,
-      });
-      return NextResponse.json({ 
-        error: 'Credentials were not properly saved. Please try again.' 
-      }, { status: 500 });
-    }
-
     // Return masked result
     const maskedResult = {
-      ...verifiedSettings,
-      custom_client_secret: (verifiedSettings.client_secret_vault_id || verifiedSettings.custom_client_secret) 
-        ? '••••••••' 
-        : null,
-      airtable_api_key: (verifiedSettings.api_key_vault_id || verifiedSettings.airtable_api_key) 
+      ...result,
+      airtable_api_key: (result.api_key_vault_id || result.airtable_api_key) 
         ? '••••••••' 
         : null,
       _storage_method: vaultAvailable ? 'vault' : 'encryption',
-      _persisted: true,
     };
 
-    console.log('[Tenant Settings] Credentials saved and verified:', {
+    console.log('[Tenant Settings] Settings saved:', {
       provider: body.provider,
-      hasClientId,
-      hasClientSecret,
       storageMethod: vaultAvailable ? 'vault' : 'encryption',
     });
 
     return NextResponse.json({
       success: true,
       settings: maskedResult,
-      message: 'Credentials saved successfully and verified',
+      message: 'Settings saved successfully',
     });
 
   } catch (error) {

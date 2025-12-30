@@ -23,3 +23,4 @@ ALTER TABLE financial_documents
 -- Add comment for documentation
 COMMENT ON COLUMN financial_documents.file_type IS 'Type of financial document: bank_statement, receipt, invoice, tax_document, shares (share certificates), loan_agreement (loan documents), capital_stock (capital stock documents), or other';
 
+

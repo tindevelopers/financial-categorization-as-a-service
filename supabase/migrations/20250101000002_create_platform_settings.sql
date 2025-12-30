@@ -82,3 +82,4 @@ COMMENT ON COLUMN platform_settings.setting_key IS 'Unique key identifier for th
 COMMENT ON COLUMN platform_settings.setting_value IS 'JSONB value for the setting, allows flexible data types';
 COMMENT ON COLUMN platform_settings.description IS 'Human-readable description of what this setting controls';
 
+

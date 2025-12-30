@@ -23,3 +23,4 @@ COMMENT ON COLUMN categorized_transactions.last_synced_at IS 'Timestamp when tra
 COMMENT ON COLUMN categorized_transactions.sync_status IS 'Sync status: pending (needs sync), synced (up to date), failed (sync error occurred)';
 COMMENT ON COLUMN categorized_transactions.sync_error IS 'Error message if sync failed';
 
+

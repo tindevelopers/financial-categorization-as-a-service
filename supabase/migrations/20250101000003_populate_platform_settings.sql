@@ -15,3 +15,4 @@ ON CONFLICT (setting_key) DO NOTHING;
 -- Add comment
 COMMENT ON TABLE platform_settings IS 'System-wide platform configuration settings. Managed by platform administrators.';
 
+

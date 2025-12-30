@@ -267,3 +267,4 @@ export function ReceiptUploadModal({ isOpen, onClose, onUploadComplete }: Receip
   )
 }
 
+

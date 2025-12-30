@@ -169,3 +169,4 @@ SELECT 'Migrations applied successfully!' as status;
 SELECT COUNT(*) as platform_settings_count FROM platform_settings;
 SELECT COUNT(*) as email_addresses_with_tenant FROM email_forwarding_addresses WHERE tenant_id IS NOT NULL;
 
+
