@@ -27,12 +27,14 @@ interface GoogleDriveSettingsProps {
   initialDriveName?: string | null
   initialSpreadsheetId?: string | null
   initialSpreadsheetName?: string | null
+  initialDwdSubjectEmail?: string | null
   subscriptionType?: SubscriptionType
   onChange: (settings: {
     googleSharedDriveId: string | null
     googleSharedDriveName: string | null
     googleMasterSpreadsheetId: string | null
     googleMasterSpreadsheetName: string | null
+    dwdSubjectEmail?: string | null
   }) => void
 }
 
@@ -42,6 +44,7 @@ export function GoogleDriveSettings({
   initialDriveName,
   initialSpreadsheetId,
   initialSpreadsheetName,
+  initialDwdSubjectEmail,
   subscriptionType = 'individual',
   onChange,
 }: GoogleDriveSettingsProps) {
@@ -58,6 +61,7 @@ export function GoogleDriveSettings({
   const [useManualEntry, setUseManualEntry] = useState(false)
   const [spreadsheetId, setSpreadsheetId] = useState<string>(initialSpreadsheetId || '')
   const [spreadsheetName, setSpreadsheetName] = useState<string>(initialSpreadsheetName || '')
+  const [dwdSubjectEmail, setDwdSubjectEmail] = useState<string>(initialDwdSubjectEmail || '')
   const [provisioning, setProvisioning] = useState(false)
   const [provisionResult, setProvisionResult] = useState<string | null>(null)
   const [oauthConnected, setOauthConnected] = useState(false)
@@ -165,8 +169,9 @@ export function GoogleDriveSettings({
       googleSharedDriveName: driveName || null,
       googleMasterSpreadsheetId: spreadsheetId || null,
       googleMasterSpreadsheetName: spreadsheetName || null,
+      dwdSubjectEmail: subscriptionType === 'enterprise' ? (dwdSubjectEmail || null) : null,
     })
-  }, [selectedDriveId, selectedDriveName, manualDriveId, useManualEntry, spreadsheetId, spreadsheetName, onChange])
+  }, [selectedDriveId, selectedDriveName, manualDriveId, useManualEntry, spreadsheetId, spreadsheetName, dwdSubjectEmail, subscriptionType, onChange])
 
   const handleDriveSelect = (driveId: string) => {
     const drive = drives.find(d => d.id === driveId)
@@ -339,6 +344,38 @@ export function GoogleDriveSettings({
           </Text>
         </div>
       )}
+
+      {/* Domain-Wide Delegation Subject Email */}
+      <div className="space-y-2">
+        <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300">
+          Domain-Wide Delegation Subject Email <span className="text-red-500">*</span>
+        </label>
+        <Text className="text-xs text-zinc-500 dark:text-zinc-400">
+          The Google Workspace email address that the Service Account will impersonate. 
+          This should be a user in your organization with access to the Shared Drive.
+        </Text>
+        <input
+          type="email"
+          value={dwdSubjectEmail}
+          onChange={(e) => setDwdSubjectEmail(e.target.value)}
+          placeholder="admin@yourcompany.com"
+          className="w-full px-3 py-2 border border-zinc-300 dark:border-zinc-600 rounded-md 
+                     bg-white dark:bg-zinc-800 text-zinc-900 dark:text-white
+                     focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+        />
+        {!dwdSubjectEmail && (
+          <div className="flex items-center gap-2 text-amber-600 dark:text-amber-400">
+            <ExclamationCircleIcon className="h-4 w-4" />
+            <Text className="text-xs">Required for Enterprise BYO integration to work</Text>
+          </div>
+        )}
+        {dwdSubjectEmail && dwdSubjectEmail.includes('@') && (
+          <div className="flex items-center gap-2 text-green-600 dark:text-green-400">
+            <CheckCircleIcon className="h-4 w-4" />
+            <Text className="text-xs">Will impersonate: {dwdSubjectEmail}</Text>
+          </div>
+        )}
+      </div>
 
       <div className="bg-zinc-50 dark:bg-zinc-900/40 border border-zinc-200 dark:border-zinc-800 rounded-lg p-4">
         <Text className="text-sm text-zinc-700 dark:text-zinc-300">

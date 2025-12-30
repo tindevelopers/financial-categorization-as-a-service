@@ -104,9 +104,32 @@ export async function GET(request: NextRequest) {
       )
     }
 
+    // Get user's tenant_id
+    const { data: userData } = await supabase
+      .from('users')
+      .select('tenant_id')
+      .eq('id', user.id)
+      .single()
+    
+    // Fetch dwdSubjectEmail from tenant_integration_settings if available
+    let dwdSubjectEmail: string | null = null
+    if (userData?.tenant_id) {
+      const { data: integrationSettings } = await supabase
+        .from('tenant_integration_settings')
+        .select('settings')
+        .eq('tenant_id', userData.tenant_id)
+        .eq('provider', 'google_sheets')
+        .single()
+      
+      if (integrationSettings?.settings) {
+        dwdSubjectEmail = (integrationSettings.settings as any).dwdSubjectEmail || null
+      }
+    }
+
     // Transform bank accounts from snake_case to camelCase for frontend
     const transformedCompanies = companies?.map((company: any) => ({
       ...company,
+      dwd_subject_email: dwdSubjectEmail,
       bank_accounts: (company.bank_accounts || []).map((account: any) => ({
         name: account.name,
         sortCode: account.sort_code || account.sortCode,
@@ -201,6 +224,40 @@ export async function PUT(request: NextRequest) {  try {
     if (updateData.googleSharedDriveName !== undefined) updatePayload.google_shared_drive_name = updateData.googleSharedDriveName || null
     if (updateData.googleMasterSpreadsheetId !== undefined) updatePayload.google_master_spreadsheet_id = updateData.googleMasterSpreadsheetId || null
     if (updateData.googleMasterSpreadsheetName !== undefined) updatePayload.google_master_spreadsheet_name = updateData.googleMasterSpreadsheetName || null
+    
+    // Handle dwdSubjectEmail - save to tenant_integration_settings
+    if (updateData.dwdSubjectEmail !== undefined) {
+      // Get user's tenant_id
+      const { data: userData } = await supabase
+        .from('users')
+        .select('tenant_id')
+        .eq('id', user.id)
+        .single()
+      
+      if (userData?.tenant_id) {
+        // Upsert tenant_integration_settings with dwdSubjectEmail
+        const { error: settingsError } = await supabase
+          .from('tenant_integration_settings')
+          .upsert({
+            tenant_id: userData.tenant_id,
+            provider: 'google_sheets',
+            settings: {
+              dwdSubjectEmail: updateData.dwdSubjectEmail || null,
+              googleIntegrationTier: 'enterprise_byo',
+            },
+            use_custom_credentials: true,
+          }, {
+            onConflict: 'tenant_id,provider',
+            ignoreDuplicates: false,
+          })
+        
+        if (settingsError) {
+          console.error('Error saving dwdSubjectEmail to tenant_integration_settings:', settingsError)
+          // Don't fail the whole request, just log the error
+        }
+      }
+    }
+    
     // Update company profile
     const { data: company, error: updateError } = await supabase
       .from('company_profiles')

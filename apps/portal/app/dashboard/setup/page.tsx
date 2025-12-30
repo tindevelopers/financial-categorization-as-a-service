@@ -47,6 +47,8 @@ export default function SetupWizardPage() {
     googleSharedDriveName: null as string | null,
     googleMasterSpreadsheetId: null as string | null,
     googleMasterSpreadsheetName: null as string | null,
+    // Enterprise BYO Domain-Wide Delegation
+    dwdSubjectEmail: null as string | null,
   })
 
   const totalSteps = 5
@@ -102,6 +104,8 @@ export default function SetupWizardPage() {
               googleSharedDriveName: company.google_shared_drive_name || null,
               googleMasterSpreadsheetId: company.google_master_spreadsheet_id || null,
               googleMasterSpreadsheetName: company.google_master_spreadsheet_name || null,
+              // Enterprise BYO Domain-Wide Delegation
+              dwdSubjectEmail: company.dwd_subject_email || null,
             })
             // Restore the step if saved
             if (company.setup_step) {
@@ -261,6 +265,7 @@ export default function SetupWizardPage() {
                 initialDriveName={formData.googleSharedDriveName}
                 initialSpreadsheetId={formData.googleMasterSpreadsheetId}
                 initialSpreadsheetName={formData.googleMasterSpreadsheetName}
+                initialDwdSubjectEmail={formData.dwdSubjectEmail}
                 subscriptionType={subscriptionType}
                 onChange={handleFormDataChange}
               />
@@ -345,6 +350,7 @@ type FormData = {
   googleSharedDriveName: string | null
   googleMasterSpreadsheetId: string | null
   googleMasterSpreadsheetName: string | null
+  dwdSubjectEmail: string | null
 }
 
 declare const formData: FormData
