@@ -36,10 +36,10 @@ import { createBrowserClient } from '@supabase/ssr'
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
-  const [isPlatformAdmin, setIsPlatformAdmin] = useState(false)
+  const [isEnterpriseAdmin, setIsEnterpriseAdmin] = useState(false)
 
   useEffect(() => {
-    async function checkAdmin() {
+    async function checkEnterpriseAdmin() {
       try {
         const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
         const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
@@ -51,17 +51,20 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
         const { data: userData } = await supabase
           .from('users')
-          .select('tenant_id, roles:role_id(name)')
+          .select('tenant_id, roles:role_id(name), tenants:tenant_id(subscription_type)')
           .eq('id', user.id)
           .single()
 
         const roleName = (userData?.roles as any)?.name
-        setIsPlatformAdmin(roleName === 'Platform Admin' && !userData?.tenant_id)
+        const subscriptionType = (userData?.tenants as any)?.subscription_type
+        const isEnterpriseTenant = subscriptionType === 'enterprise' && !!userData?.tenant_id
+        const allowedEnterpriseRoles = ['Organization Admin', 'Enterprise Admin']
+        setIsEnterpriseAdmin(isEnterpriseTenant && allowedEnterpriseRoles.includes(roleName))
       } catch (error) {
         console.error('Error checking admin status:', error)
       }
     }
-    checkAdmin()
+    checkEnterpriseAdmin()
   }, [])
 
   return (
@@ -183,14 +186,14 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               </SidebarItem>
             </SidebarSection>
 
-            {isPlatformAdmin && (
+            {isEnterpriseAdmin && (
               <SidebarSection>
                 <SidebarItem
-                  href="/dashboard/admin/enterprise-oauth"
-                  current={pathname.startsWith('/dashboard/admin')}
+                  href="/dashboard/enterprise-admin/enterprise-oauth"
+                  current={pathname.startsWith('/dashboard/enterprise-admin')}
                 >
                   <ShieldCheckIcon />
-                  <SidebarLabel>Platform Admin</SidebarLabel>
+                  <SidebarLabel>Enterprise Admin</SidebarLabel>
                 </SidebarItem>
               </SidebarSection>
             )}

@@ -29,6 +29,9 @@
       "@tinadmin/core": [
         "../../packages/@tinadmin/core/src"
       ],
+      "@tinadmin/core/*": [
+        "../../packages/@tinadmin/core/src/*"
+      ],
       "@tinadmin/ui-consumer": [
         "../../packages/@tinadmin/ui-consumer/src"
       ],

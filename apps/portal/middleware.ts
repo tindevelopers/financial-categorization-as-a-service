@@ -1,5 +1,6 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
+import { isGlobalAdminRole } from "@tinadmin/core/shared";
 
 /**
  * Portal Middleware
@@ -18,6 +19,10 @@ export async function middleware(request: NextRequest) {
     });
 
     const { pathname } = request.nextUrl;
+    const adminDomain =
+      process.env.NEXT_PUBLIC_ADMIN_DOMAIN ||
+      process.env.ADMIN_DOMAIN ||
+      null;
 
     // API routes should handle their own authentication and return JSON responses
     // Don't redirect API routes - let them handle auth themselves
@@ -103,6 +108,33 @@ export async function middleware(request: NextRequest) {
         const {
           data: { user },
         } = await supabase.auth.getUser();
+
+        // If this is a global admin user, always route them to the full admin console.
+        // (We keep the consumer portal for tenants + enterprise admin users.)
+        if (user && !isApiRoute && adminDomain) {
+          try {
+            const { data: userData } = await supabase
+              .from("users")
+              .select("tenant_id, roles:role_id(name)")
+              .eq("id", user.id)
+              .single();
+
+            const roleName = (userData?.roles as any)?.name as string | undefined;
+            const isGlobalAdmin = isGlobalAdminRole(roleName) && !userData?.tenant_id;
+
+            // Prevent loops: only redirect when we're on the portal domain.
+            // (In prod, admin runs on a separate Vercel project + domain.)
+            if (isGlobalAdmin) {
+              const target = new URL(`https://${adminDomain}/signin`);
+              // Preserve the original destination as a hint (admin can decide where to land)
+              target.searchParams.set("redirect", pathname);
+              return NextResponse.redirect(target);
+            }
+          } catch (e) {
+            // If role lookup fails, fail open (do not brick portal)
+            console.error("Error determining global admin redirect:", e);
+          }
+        }
 
         // Redirect unauthenticated users to signin (except public pages and API routes)
         // API routes handle their own authentication and return JSON responses

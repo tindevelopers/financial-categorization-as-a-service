@@ -12,6 +12,7 @@
 export * from './utils';
 export * from './validation';
 export * from './api-errors';
+export * from './admin-roles';
 
 // ============================================================================
 // CONSTANTS

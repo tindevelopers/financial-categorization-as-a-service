@@ -7,6 +7,7 @@ import { EyeCloseIcon, EyeIcon } from "@/icons";
 import { useRouter } from "next/navigation";
 import React, { useState } from "react";
 import { signIn } from "@/app/actions/auth";
+import { isGlobalAdminRole } from "@tinadmin/core/shared";
 
 export default function SignInForm() {
   const router = useRouter();
@@ -33,23 +34,32 @@ export default function SignInForm() {
 
       const roleName = (result.user as any)?.roles?.name;
       const tenantId = result.user?.tenant_id;
-      const isPlatformAdmin = roleName === "Platform Admin" && !tenantId;
+      const isGlobalAdmin = isGlobalAdminRole(roleName) && !tenantId;
 
       console.log("[SignInForm] Sign in successful:", {
         userId: result.user?.id,
         email: result.user?.email,
         roleName,
         tenantId,
-        isPlatformAdmin,
+        isGlobalAdmin,
       });
 
       // Force a page refresh to ensure session is properly set
       // Redirect based on user role
-      if (isPlatformAdmin) {
-        // Platform Admin goes to admin dashboard
+      if (isGlobalAdmin) {
+        // Global admins go to the full admin dashboard
         window.location.href = "/saas/dashboard";
       } else {
-        // Non-admin users should not be logging in here
+        // Non-global users should not be logging in here; send them back to portal.
+        const portalDomain =
+          process.env.NEXT_PUBLIC_PORTAL_DOMAIN ||
+          process.env.NEXT_PUBLIC_APP_URL ||
+          null;
+        if (portalDomain) {
+          window.location.href = portalDomain.startsWith("http")
+            ? `${portalDomain}/signin`
+            : `https://${portalDomain}/signin`;
+        }
         setError("Access denied. This portal is for system administrators only.");
         return;
       }
