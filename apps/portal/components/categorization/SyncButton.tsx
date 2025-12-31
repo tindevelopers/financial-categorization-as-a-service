@@ -115,10 +115,10 @@ export default function SyncButton({
       {showDropdown && (
         <>
           <div
-            className="fixed inset-0 z-10"
+            className="fixed inset-0 z-20"
             onClick={() => setShowDropdown(false)}
           />
-          <div className="absolute right-0 mt-2 w-56 rounded-lg shadow-lg bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 z-20">
+          <div className="absolute right-0 mt-2 w-56 rounded-lg shadow-lg bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 z-30">
             <div className="py-1">
               <button
                 onClick={() => handleSync("incremental")}
