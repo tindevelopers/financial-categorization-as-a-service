@@ -303,6 +303,14 @@ export default function TenantManagementPage() {
                             <GlobeAltIcon className="h-4 w-4" />
                             <span>{tenant.region}</span>
                           </div>
+                          {/* Account Type Display */}
+                          {(tenant.subscription_type || (tenant as any).tenant_type) && (
+                            <div className="flex items-center gap-2">
+                              <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-purple-50 text-purple-700 dark:bg-purple-500/15 dark:text-purple-300">
+                                Account: {tenant.subscription_type || (tenant as any).tenant_type || "Unknown"}
+                              </span>
+                            </div>
+                          )}
                         </div>
                         {tenant.features && tenant.features.length > 0 && (
                           <div className="flex flex-wrap gap-2">

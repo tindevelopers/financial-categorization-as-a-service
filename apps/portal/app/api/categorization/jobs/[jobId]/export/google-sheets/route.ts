@@ -7,6 +7,7 @@ import { detectUserAccountType, getRecommendedAuthMethod } from "@/lib/google-sh
 import { VercelCredentialManager } from "@/lib/credentials/VercelCredentialManager";
 import { getWorkspaceAdminInfo, createWorkspaceAdminSheetsClient } from "@/lib/google-sheets/workspace-admin";
 import { createTenantGoogleClientsForRequestUser } from "@/lib/google-sheets/tenant-clients";
+import { getTenantGoogleIntegrationConfig } from "@/lib/google-sheets/tier-config";
 import { 
   getOrCreateMasterSpreadsheet, 
   getExistingFingerprints, 
@@ -55,20 +56,30 @@ export async function POST(
     let linkedSpreadsheetId: string | null = null;
     let linkedSpreadsheetSource: "job" | "bank_account" | "company" | "new" = "new";
     let bankAccountName: string | null = null;
+    let isSuspenseAccount = false;
     
     if (job.bank_account_id) {
       const { data: bankAccount } = await supabase
         .from("bank_accounts")
-        .select("id, account_name, default_spreadsheet_id, spreadsheet_tab_name")
+        .select("id, account_name, default_spreadsheet_id, spreadsheet_tab_name, account_type, is_default_suspense")
         .eq("id", job.bank_account_id)
         .single();
       
       if (bankAccount) {
         bankAccountName = bankAccount.account_name;
-        if (bankAccount.default_spreadsheet_id) {
+        isSuspenseAccount = bankAccount.account_type === 'suspense' || bankAccount.is_default_suspense === true;
+        
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'export/google-sheets/route.ts:69',message:'Bank account details',data:{accountName:bankAccountName,isSuspenseAccount,hasSpreadsheet:!!bankAccount.default_spreadsheet_id},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+        // #endregion
+        
+        // For suspense accounts, we'll use company master spreadsheet if available
+        // Otherwise use the bank account's spreadsheet if it has one
+        if (bankAccount.default_spreadsheet_id && !isSuspenseAccount) {
           linkedSpreadsheetId = bankAccount.default_spreadsheet_id;
           linkedSpreadsheetSource = "bank_account";
         }
+        // If suspense account has no spreadsheet, we'll fall back to company master spreadsheet later
       }
     }
     
@@ -133,6 +144,15 @@ export async function POST(
       .order("created_at", { ascending: false })
       .limit(1)
       .maybeSingle();
+    
+    // For suspense accounts without a spreadsheet, use company master spreadsheet if available
+    if (isSuspenseAccount && !linkedSpreadsheetId && companyProfile?.google_master_spreadsheet_id) {
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'export/google-sheets/route.ts:142',message:'Using company master spreadsheet for suspense account',data:{spreadsheetId:companyProfile.google_master_spreadsheet_id},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+      // #endregion
+      linkedSpreadsheetId = companyProfile.google_master_spreadsheet_id;
+      linkedSpreadsheetSource = "company";
+    }
     
     // Check for Google authentication credentials using credential manager
     // Priority: Workspace Admin > Service Account > User OAuth
@@ -305,15 +325,63 @@ export async function POST(
       authMethod = tenantClients.authMethod === "dwd_service_account" ? "workspace_admin" : "oauth";
     } catch (e: any) {
       const msg = e?.message || "Failed to initialize Google clients";
-      return NextResponse.json(
-        {
-          error: msg,
-          error_code: msg.includes("connect") ? "OAUTH_REQUIRED" : "AUTH_INIT_ERROR",
-          guidance: "Please connect your Google account in Settings > Integrations > Google Sheets.",
-          helpUrl: "/dashboard/integrations/google-sheets",
-        },
-        { status: 400 }
-      );
+      
+      // For suspense accounts, try to fall back to user OAuth if Enterprise BYO fails
+      if (isSuspenseAccount && msg.includes("dwdSubjectEmail")) {
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'export/google-sheets/route.ts:318',message:'Enterprise BYO failed for suspense account, trying OAuth fallback',data:{error:msg},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+        // #endregion
+        
+        try {
+          // Try to use user OAuth tokens as fallback
+          const userOAuthTokens = await getUserOAuthTokens(user.id);
+          if (userOAuthTokens) {
+            const oauthSheets = await createOAuthSheetsClient(userOAuthTokens.accessToken, userOAuthTokens.refreshToken);
+            auth = oauthSheets.auth;
+            sheets = oauthSheets.sheets;
+            authMethod = "oauth";
+            // #region agent log
+            fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'export/google-sheets/route.ts:326',message:'OAuth fallback successful for suspense account',data:{hasAuth:!!auth,hasSheets:!!sheets},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+            // #endregion
+          } else {
+            throw new Error("No OAuth tokens available for fallback");
+          }
+        } catch (fallbackError: any) {
+          // #region agent log
+          fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'export/google-sheets/route.ts:332',message:'OAuth fallback failed for suspense account',data:{error:fallbackError?.message},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+          // #endregion
+          // Check if this is an individual account trying to use enterprise BYO
+          const cfg = await getTenantGoogleIntegrationConfig();
+          const isIndividualAccount = cfg?.entityType === "individual";
+          
+          return NextResponse.json(
+            {
+              error: isIndividualAccount
+                ? "Individual accounts cannot use Enterprise BYO credentials. Please connect your Google account in Settings > Integrations > Google Sheets instead."
+                : "Enterprise BYO requires dwdSubjectEmail in tenant settings. For suspense accounts, please connect your Google account in Settings > Integrations > Google Sheets.",
+              error_code: isIndividualAccount ? "INDIVIDUAL_ACCOUNT_BYO_ERROR" : "AUTH_INIT_ERROR",
+              accountType: cfg?.entityType || "unknown",
+              guidance: isIndividualAccount
+                ? "Individual accounts should use personal Google OAuth. Connect your Google account in Settings > Integrations > Google Sheets."
+                : "Please connect your Google account in Settings > Integrations > Google Sheets, or configure dwdSubjectEmail for Enterprise BYO.",
+              helpUrl: "/dashboard/integrations/google-sheets",
+            },
+            { status: 400 }
+          );
+        }
+      } else {
+        return NextResponse.json(
+          {
+            error: msg,
+            error_code: msg.includes("connect") ? "OAUTH_REQUIRED" : msg.includes("dwdSubjectEmail") ? "ENTERPRISE_BYO_CONFIG_ERROR" : "AUTH_INIT_ERROR",
+            guidance: msg.includes("dwdSubjectEmail") 
+              ? "Enterprise BYO requires dwdSubjectEmail in tenant settings. Please configure it in Company Setup or connect your Google account in Settings > Integrations > Google Sheets."
+              : "Please connect your Google account in Settings > Integrations > Google Sheets.",
+            helpUrl: "/dashboard/integrations/google-sheets",
+          },
+          { status: 400 }
+        );
+      }
     }
 
     const sharedDriveIdFromTenant = tenantClients?.sharedDriveId || null;
@@ -323,7 +391,10 @@ export async function POST(
     // ========== SHARED DRIVE EXPORT PATH ==========
     // If company has shared drive configured, use master spreadsheet with tabs
     const effectiveSharedDriveId = sharedDriveIdFromTenant || companyProfile?.google_shared_drive_id || null;
-    if (tenantClients?.tier !== "consumer" && !effectiveSharedDriveId) {
+    
+    // For suspense accounts, allow export even without shared drive (use company master spreadsheet or create one)
+    // Suspense accounts need to export unreconciled invoices to a spreadsheet
+    if (tenantClients?.tier !== "consumer" && !effectiveSharedDriveId && !isSuspenseAccount) {
       return NextResponse.json(
         {
           error: "Company Shared Drive is not provisioned yet",
@@ -335,6 +406,13 @@ export async function POST(
         },
         { status: 400 }
       );
+    }
+    
+    // For suspense accounts without shared drive, try to use company master spreadsheet if available
+    if (isSuspenseAccount && !effectiveSharedDriveId && companyProfile?.google_master_spreadsheet_id) {
+      // Use the company master spreadsheet directly (individual OAuth mode)
+      linkedSpreadsheetId = companyProfile.google_master_spreadsheet_id;
+      linkedSpreadsheetSource = "company";
     }
     if (hasSharedDriveConfig && effectiveSharedDriveId) {
       console.log("Google Sheets export: Using Shared Drive mode", {
@@ -438,8 +516,11 @@ export async function POST(
           rowCount = result.rowCount;
         } else {
           // Create new tab for this job
+          // For suspense accounts, prefix tab name to indicate unreconciled status
+          const baseName = job.original_filename || `Upload_${jobId.substring(0, 8)}`;
+          const tabNamePrefix = isSuspenseAccount ? "Suspense - " : "";
           const tabName = generateTabName(
-            job.original_filename || `Upload_${jobId.substring(0, 8)}`,
+            `${tabNamePrefix}${baseName}`,
             new Date()
           );
 

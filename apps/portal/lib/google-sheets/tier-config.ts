@@ -81,10 +81,13 @@ export async function getTenantGoogleIntegrationConfig(): Promise<TenantGoogleIn
   const explicitTier = (settings.googleIntegrationTier as GoogleIntegrationTier | undefined) || undefined;
 
   let tier: GoogleIntegrationTier;
-  if (explicitTier) {
-    tier = explicitTier;
-  } else if (entityType === "individual") {
+  // CRITICAL: Individual accounts CANNOT use enterprise_byo tier, even if explicitly set
+  // This prevents individual accounts from requiring BYO credentials
+  if (entityType === "individual") {
     tier = "consumer";
+  } else if (explicitTier) {
+    // Only allow explicit tier override for company/enterprise accounts
+    tier = explicitTier;
   } else if (row?.use_custom_credentials) {
     tier = "enterprise_byo";
   } else {
