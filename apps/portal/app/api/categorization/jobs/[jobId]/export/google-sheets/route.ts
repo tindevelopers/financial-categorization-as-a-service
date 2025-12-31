@@ -336,7 +336,7 @@ export async function POST(
           // Try to use user OAuth tokens as fallback
           const userOAuthTokens = await getUserOAuthTokens(user.id);
           if (userOAuthTokens) {
-            const oauthSheets = await createOAuthSheetsClient(userOAuthTokens.accessToken, userOAuthTokens.refreshToken);
+            const oauthSheets = await createOAuthSheetsClient(user.id);
             auth = oauthSheets.auth;
             sheets = oauthSheets.sheets;
             authMethod = "oauth";
