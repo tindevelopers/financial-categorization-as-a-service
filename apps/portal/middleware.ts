@@ -172,19 +172,37 @@ export async function middleware(request: NextRequest) {
             // Platform Admins bypass company setup check
             if (!isPlatformAdmin) {
               // Check if user has completed company setup
+              // Also filter by tenant_id if user has one to ensure we get the right company profile
               const { data: companies, error } = await supabase
                 .from('company_profiles')
-                .select('id, setup_completed')
+                .select('id, setup_completed, tenant_id')
                 .eq('user_id', user.id)
                 .order('created_at', { ascending: false })
                 .limit(1);
+              
+              // #region agent log
+              await fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'middleware.ts:175',message:'Middleware: Checking setup_completed',data:{pathname,userId:user.id,userTenantId:userData?.tenant_id,hasError:!!error,error:error?.message,errorCode:error?.code,companiesCount:companies?.length,setupCompleted:companies?.[0]?.setup_completed,companyTenantId:companies?.[0]?.tenant_id},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A,E'})}).catch(()=>{});
+              // #endregion
+              
               // If query fails, log error but allow access (fail open)
               if (error) {
                 console.error('Error checking company setup:', error);
+                // Don't redirect on error - fail open to prevent blocking users
               }
 
               // If no company or setup not completed, redirect to setup
-              if (!companies || companies.length === 0 || !companies[0]?.setup_completed) {
+              // Check if setup_completed is explicitly false or null/undefined
+              const hasCompany = companies && companies.length > 0;
+              const isSetupCompleted = hasCompany && companies[0]?.setup_completed === true;
+              
+              // #region agent log
+              await fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'middleware.ts:190',message:'Middleware: Setup check result',data:{pathname,hasCompany,isSetupCompleted,setupCompletedValue:companies?.[0]?.setup_completed,willRedirect:!hasCompany || !isSetupCompleted},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A,E'})}).catch(()=>{});
+              // #endregion
+              
+              if (!hasCompany || !isSetupCompleted) {
+                // #region agent log
+                await fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'middleware.ts:194',message:'Middleware: Redirecting to setup',data:{pathname,reason:!hasCompany?'no_companies':!isSetupCompleted?'setup_not_completed':'unknown'},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A,E'})}).catch(()=>{});
+                // #endregion
                 return NextResponse.redirect(new URL('/dashboard/setup', request.url));
               }
             }

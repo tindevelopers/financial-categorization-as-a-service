@@ -30,6 +30,9 @@ export async function POST(request: NextRequest) {
       bank: account.bank,
     }))
 
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'api/company/route.ts:33',message:'POST: Before DB insert',data:{userId:user.id,setupCompleted:body.setupCompleted},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A,B'})}).catch(()=>{});
+    // #endregion
     // Create company profile
     const { data: company, error: insertError } = await supabase
       .from('company_profiles')
@@ -59,6 +62,9 @@ export async function POST(request: NextRequest) {
       .select()
       .single()
 
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'api/company/route.ts:59',message:'POST: After DB insert',data:{hasError:!!insertError,error:insertError?.message,companySetupCompleted:company?.setup_completed,companyId:company?.id},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A,B'})}).catch(()=>{});
+    // #endregion
     if (insertError) {
       console.error('Company creation error:', insertError)
       return NextResponse.json(
@@ -218,6 +224,9 @@ export async function PUT(request: NextRequest) {  try {
       }))
     }
     if (updateData.setupCompleted !== undefined) updatePayload.setup_completed = updateData.setupCompleted
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'api/company/route.ts:229',message:'PUT: Before DB update',data:{companyId:id,setupCompleted:updateData.setupCompleted,updatePayloadSetupCompleted:updatePayload.setup_completed,updatePayloadKeys:Object.keys(updatePayload)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A,B'})}).catch(()=>{});
+    // #endregion
     if (updateData.setupStep !== undefined) updatePayload.setup_step = updateData.setupStep
     // Google Shared Drive settings
     if (updateData.googleSharedDriveId !== undefined) updatePayload.google_shared_drive_id = updateData.googleSharedDriveId || null
@@ -258,6 +267,15 @@ export async function PUT(request: NextRequest) {  try {
       }
     }
     
+    // Ensure updatePayload is not empty - if setupCompleted is being set, make sure it's included
+    if (Object.keys(updatePayload).length === 0 && updateData.setupCompleted !== undefined) {
+      updatePayload.setup_completed = updateData.setupCompleted
+    }
+    
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'api/company/route.ts:275',message:'PUT: About to update DB',data:{companyId:id,updatePayloadKeys:Object.keys(updatePayload),updatePayloadSetupCompleted:updatePayload.setup_completed,updatePayloadSize:Object.keys(updatePayload).length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A,B'})}).catch(()=>{});
+    // #endregion
+    
     // Update company profile
     const { data: company, error: updateError } = await supabase
       .from('company_profiles')
@@ -266,6 +284,9 @@ export async function PUT(request: NextRequest) {  try {
       .eq('user_id', user.id)
       .select()
       .single()
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'api/company/route.ts:277',message:'PUT: After DB update',data:{hasError:!!updateError,error:updateError?.message,companySetupCompleted:company?.setup_completed,companyId:company?.id},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A,B'})}).catch(()=>{});
+    // #endregion
     if (updateError) {
       console.error('Company update error:', updateError)
       return NextResponse.json(
@@ -284,6 +305,9 @@ export async function PUT(request: NextRequest) {  try {
         bank: account.bank,
       })),
     } : company
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'api/company/route.ts:296',message:'PUT: Returning response',data:{transformedCompanySetupCompleted:transformedCompany?.setup_completed},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A,B'})}).catch(()=>{});
+    // #endregion
     return NextResponse.json({ success: true, company: transformedCompany }, { status: 200 })
   } catch (error) {
     console.error('Unexpected error:', error)
