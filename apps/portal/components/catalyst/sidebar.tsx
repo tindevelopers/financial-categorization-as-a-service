@@ -121,9 +121,6 @@ export const SidebarItem = forwardRef(function SidebarItem(
           data-current={current ? 'true' : undefined}
           ref={ref}
           onClick={(e: any) => {
-            // #region agent log
-            fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'catalyst/sidebar.tsx:117',message:'SidebarItem clicked',data:{href:props.href,current},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
-            // #endregion
             if (props.onClick) props.onClick(e);
           }}
         >
@@ -136,9 +133,6 @@ export const SidebarItem = forwardRef(function SidebarItem(
           data-current={current ? 'true' : undefined}
           ref={ref}
           onClick={(e: any) => {
-            // #region agent log
-            fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'catalyst/sidebar.tsx:127',message:'SidebarItem button clicked',data:{current},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
-            // #endregion
             if (props.onClick) props.onClick(e);
           }}
         >

@@ -47,6 +47,8 @@ export async function middleware(request: NextRequest) {
     // Only set up Supabase client if environment variables are configured
     if (process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
       try {
+        const debugEnterprise =
+          process.env.DEBUG_ENTERPRISE === "1" || process.env.MIDDLEWARE_DEBUG_ENTERPRISE === "1";
         const supabase = createServerClient(
           process.env.NEXT_PUBLIC_SUPABASE_URL,
           process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
@@ -109,6 +111,24 @@ export async function middleware(request: NextRequest) {
           data: { user },
         } = await supabase.auth.getUser();
 
+        const maybeLogEnterprise = (message: string, data?: Record<string, unknown>) => {
+          if (!debugEnterprise) return;
+          // We only log for "enterprise-like" contexts to avoid spamming logs.
+          const email = user?.email || "";
+          const isEnterpriseEmail =
+            email.endsWith("@velocitypartners.info") || (!email.endsWith("@tin.info") && email.includes("@"));
+          if (!isEnterpriseEmail) return;
+          console.log("[portal-middleware][enterprise]", {
+            message,
+            pathname,
+            host: request.headers.get("host"),
+            url: request.url,
+            userId: user?.id,
+            email,
+            ...data,
+          });
+        };
+
         // If this is a global admin user, always route them to the full admin console.
         // (We keep the consumer portal for tenants + enterprise admin users.)
         if (user && !isApiRoute && adminDomain) {
@@ -125,6 +145,10 @@ export async function middleware(request: NextRequest) {
             // Prevent loops: only redirect when we're on the portal domain.
             // (In prod, admin runs on a separate Vercel project + domain.)
             if (isGlobalAdmin) {
+              maybeLogEnterprise("redirect.globalAdminToAdminConsole", {
+                adminDomain,
+                roleName,
+              });
               const target = new URL(`https://${adminDomain}/signin`);
               // Preserve the original destination as a hint (admin can decide where to land)
               target.searchParams.set("redirect", pathname);
@@ -139,6 +163,13 @@ export async function middleware(request: NextRequest) {
         // Redirect unauthenticated users to signin (except public pages and API routes)
         // API routes handle their own authentication and return JSON responses
         if (!user && !isPublicPage && !isApiRoute && pathname !== '/') {
+          if (debugEnterprise) {
+            console.log("[portal-middleware] redirect.unauthenticated", {
+              pathname,
+              host: request.headers.get("host"),
+              url: request.url,
+            });
+          }
           const redirectUrl = new URL('/signin', request.url);
           redirectUrl.searchParams.set('redirect', pathname);
           return NextResponse.redirect(redirectUrl);
@@ -146,11 +177,13 @@ export async function middleware(request: NextRequest) {
 
         // Redirect authenticated users from signin/signup to dashboard
         if (user && (pathname === '/signin' || pathname === '/signup')) {
+          maybeLogEnterprise("redirect.authenticatedFromAuthPageToDashboard");
           return NextResponse.redirect(new URL('/dashboard', request.url));
         }
 
         // Redirect root to dashboard if authenticated
         if (user && pathname === '/') {
+          maybeLogEnterprise("redirect.rootToDashboard");
           return NextResponse.redirect(new URL('/dashboard', request.url));
         }
 
@@ -179,10 +212,14 @@ export async function middleware(request: NextRequest) {
                 .eq('user_id', user.id)
                 .order('created_at', { ascending: false })
                 .limit(1);
-              
-              // #region agent log
-              await fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'middleware.ts:175',message:'Middleware: Checking setup_completed',data:{pathname,userId:user.id,userTenantId:userData?.tenant_id,hasError:!!error,error:error?.message,errorCode:error?.code,companiesCount:companies?.length,setupCompleted:companies?.[0]?.setup_completed,companyTenantId:companies?.[0]?.tenant_id},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A,E'})}).catch(()=>{});
-              // #endregion
+              maybeLogEnterprise("companySetup.check", {
+                userTenantId: userData?.tenant_id ?? null,
+                hasError: !!error,
+                error: (error as any)?.message,
+                companiesCount: companies?.length ?? 0,
+                setupCompleted: (companies as any)?.[0]?.setup_completed,
+                companyTenantId: (companies as any)?.[0]?.tenant_id,
+              });
               
               // If query fails, log error but allow access (fail open)
               if (error) {
@@ -194,15 +231,17 @@ export async function middleware(request: NextRequest) {
               // Check if setup_completed is explicitly false or null/undefined
               const hasCompany = companies && companies.length > 0;
               const isSetupCompleted = hasCompany && companies[0]?.setup_completed === true;
-              
-              // #region agent log
-              await fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'middleware.ts:190',message:'Middleware: Setup check result',data:{pathname,hasCompany,isSetupCompleted,setupCompletedValue:companies?.[0]?.setup_completed,willRedirect:!hasCompany || !isSetupCompleted},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A,E'})}).catch(()=>{});
-              // #endregion
+              maybeLogEnterprise("companySetup.result", {
+                hasCompany,
+                isSetupCompleted,
+                setupCompletedValue: (companies as any)?.[0]?.setup_completed,
+                willRedirect: !hasCompany || !isSetupCompleted,
+              });
               
               if (!hasCompany || !isSetupCompleted) {
-                // #region agent log
-                await fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'middleware.ts:194',message:'Middleware: Redirecting to setup',data:{pathname,reason:!hasCompany?'no_companies':!isSetupCompleted?'setup_not_completed':'unknown'},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A,E'})}).catch(()=>{});
-                // #endregion
+                maybeLogEnterprise("redirect.toDashboardSetup", {
+                  reason: !hasCompany ? "no_companies" : !isSetupCompleted ? "setup_not_completed" : "unknown",
+                });
                 return NextResponse.redirect(new URL('/dashboard/setup', request.url));
               }
             }

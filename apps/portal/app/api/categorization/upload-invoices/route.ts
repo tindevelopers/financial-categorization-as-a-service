@@ -4,20 +4,10 @@ import { createJobErrorResponse, mapErrorToCode, getJobError } from "@/lib/error
 
 export async function POST(request: NextRequest) {
   try {
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'upload-invoices/route.ts:6',message:'Invoice upload started',data:{hasCookies:!!request.headers.get('cookie')},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-    // #endregion
     const supabase = await createClient();
     const { data: { user }, error: authError } = await supabase.auth.getUser();
 
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'upload-invoices/route.ts:10',message:'Auth check result',data:{hasUser:!!user,authError:authError?.message,userId:user?.id},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
-    // #endregion
-
     if (authError || !user) {
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'upload-invoices/route.ts:12',message:'Auth guard triggered',data:{authError:authError?.message,hasUser:!!user},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
-      // #endregion
       const errorResponse = createJobErrorResponse("AUTHENTICATION_ERROR");
       return NextResponse.json(
         { 
@@ -91,15 +81,8 @@ export async function POST(request: NextRequest) {
       bankAccount = selectedAccount;
     } else {
       // No bank account provided - get or create suspense account
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'upload-invoices/route.ts:84',message:'Creating suspense account',data:{userId:user.id},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
-      // #endregion
       const { data: suspenseAccountId, error: suspenseError } = await supabase
         .rpc('get_or_create_suspense_account', { p_user_id: user.id });
-
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'upload-invoices/route.ts:87',message:'Suspense account result',data:{suspenseAccountId,suspenseError:suspenseError?.message},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
-      // #endregion
 
       if (suspenseError) {
         console.error("Failed to create suspense account:", suspenseError);
@@ -313,9 +296,6 @@ export async function POST(request: NextRequest) {
 
     // Queue for async processing (Vercel Background Functions)
     try {
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'upload-invoices/route.ts:299',message:'Calling background processing',data:{jobId:jobData.id,hasCookies:!!request.headers.get('cookie'),cookieLength:(request.headers.get('cookie')||'').length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-      // #endregion
       const bgResponse = await fetch(`${request.nextUrl.origin}/api/background/process-invoices`, {
         method: "POST",
         headers: {
@@ -324,14 +304,8 @@ export async function POST(request: NextRequest) {
         },
         body: JSON.stringify({ jobId: jobData.id }),
       });
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'upload-invoices/route.ts:307',message:'Background processing response',data:{status:bgResponse.status,ok:bgResponse.ok,jobId:jobData.id},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-      // #endregion
       if (!bgResponse.ok) {
         const errorText = await bgResponse.text().catch(() => "Unknown error");
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'upload-invoices/route.ts:310',message:'Background processing failed',data:{status:bgResponse.status,errorText},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-        // #endregion
         console.error(
           "Failed to queue background processing:",
           bgResponse.status,
@@ -339,9 +313,6 @@ export async function POST(request: NextRequest) {
         );
       }
     } catch (processError: any) {
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'upload-invoices/route.ts:316',message:'Background processing exception',data:{error:processError?.message},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-      // #endregion
       console.error("Failed to queue background processing:", processError);
     }
 

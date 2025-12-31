@@ -10,20 +10,10 @@ import { encryptToken, refreshOAuthToken } from "@/lib/google-sheets/auth-helper
 
 export async function POST(request: NextRequest) {
   try {
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'background/process-invoices/route.ts:12',message:'Background processing started',data:{hasCookies:!!request.headers.get('cookie')},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-    // #endregion
     const supabase = await createClient();
     const { data: { user }, error: authError } = await supabase.auth.getUser();
 
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'background/process-invoices/route.ts:15',message:'Background auth check',data:{hasUser:!!user,authError:authError?.message,userId:user?.id},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-    // #endregion
-
     if (authError || !user) {
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'background/process-invoices/route.ts:17',message:'Background auth guard triggered',data:{authError:authError?.message,hasUser:!!user},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-      // #endregion
       return NextResponse.json(
         { error: "Unauthorized" },
         { status: 401 }
@@ -393,17 +383,11 @@ async function processSingleInvoice(
         
         // Attempt automatic reconciliation after transactions are created
         if (insertedTransactionIds.length > 0) {
-          // #region agent log
-          fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'background/process-invoices/route.ts:395',message:'Starting reconciliation for invoice',data:{documentId:doc.id,transactionIds:insertedTransactionIds.length,jobId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
-          // #endregion
           await reconcileInvoiceAfterProcessing(doc.id, insertedTransactionIds, userId, jobId, adminClient);
         }
       }
     } else {
       // Even if no transactions were created, try to reconcile the invoice document
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'background/process-invoices/route.ts:401',message:'Starting reconciliation for invoice (no transactions)',data:{documentId:doc.id,transactionIds:0,jobId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
-      // #endregion
       await reconcileInvoiceAfterProcessing(doc.id, [], userId, jobId, adminClient);
     }
   } catch (error: any) {
@@ -946,9 +930,6 @@ async function reconcileInvoiceAfterProcessing(
   adminClient: any
 ): Promise<void> {
   try {
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'background/process-invoices/route.ts:930',message:'Reconciliation started',data:{invoiceDocumentId,invoiceTransactionIds:invoiceTransactionIds.length,userId,jobId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
-    // #endregion
     // Get the invoice document details
     const { data: invoiceDoc, error: docError } = await adminClient
       .from("financial_documents")
@@ -957,20 +938,12 @@ async function reconcileInvoiceAfterProcessing(
       .eq("user_id", userId)
       .single();
 
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'background/process-invoices/route.ts:940',message:'Invoice doc fetched',data:{hasDoc:!!invoiceDoc,docError:docError?.message,reconciliationStatus:invoiceDoc?.reconciliation_status},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
-    // #endregion
-
     if (docError || !invoiceDoc || invoiceDoc.reconciliation_status === "matched") {
       return; // Already matched or not found
     }
 
     const invoiceAmount = invoiceDoc.total_amount || 0;
     const invoiceDate = invoiceDoc.document_date;
-
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'background/process-invoices/route.ts:947',message:'Invoice matching criteria',data:{invoiceAmount,invoiceDate,hasAmount:!!invoiceAmount,hasDate:!!invoiceDate},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
-    // #endregion
 
     if (!invoiceAmount || !invoiceDate) {
       return; // Need amount and date for matching
@@ -980,9 +953,6 @@ async function reconcileInvoiceAfterProcessing(
 
     // Try to match invoice document with existing bank transactions
     // Search across ALL account types (remove account filter)
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'background/process-invoices/route.ts:954',message:'Searching for matching transactions',data:{invoiceAmount,invoiceDate,userId,excludeTransactionIds:invoiceTransactionIds.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
-    // #endregion
     const { data: transactions, error: txError } = await adminClient
       .from("categorized_transactions")
       .select(`
@@ -998,10 +968,6 @@ async function reconcileInvoiceAfterProcessing(
       .neq("id", invoiceTransactionIds[0] || "") // Exclude transactions we just created
       .order("date", { ascending: false });
     
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'background/process-invoices/route.ts:968',message:'Found candidate transactions for matching',data:{transactionCount:transactions?.length||0,txError:txError?.message},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
-    // #endregion
-
     if (!txError && transactions) {
       for (const tx of transactions) {
         if (tx.matched_document_id) continue;
@@ -1043,9 +1009,6 @@ async function reconcileInvoiceAfterProcessing(
     }
 
     // If no match found, leave as unreconciled (don't create dummy transaction)
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'background/process-invoices/route.ts:1010',message:'Reconciliation result',data:{matchedCount,invoiceDocumentId,willRemainUnreconciled:matchedCount===0},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
-    // #endregion
     if (matchedCount > 0) {
       console.log(
         `[Reconciliation] Auto-matched invoice ${invoiceDocumentId} with ${matchedCount} transaction(s)`

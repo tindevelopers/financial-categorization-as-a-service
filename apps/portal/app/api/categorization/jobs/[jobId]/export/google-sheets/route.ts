@@ -69,10 +69,6 @@ export async function POST(
         bankAccountName = bankAccount.account_name;
         isSuspenseAccount = bankAccount.account_type === 'suspense' || bankAccount.is_default_suspense === true;
         
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'export/google-sheets/route.ts:69',message:'Bank account details',data:{accountName:bankAccountName,isSuspenseAccount,hasSpreadsheet:!!bankAccount.default_spreadsheet_id},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
-        // #endregion
-        
         // For suspense accounts, we'll use company master spreadsheet if available
         // Otherwise use the bank account's spreadsheet if it has one
         if (bankAccount.default_spreadsheet_id && !isSuspenseAccount) {
@@ -147,9 +143,6 @@ export async function POST(
     
     // For suspense accounts without a spreadsheet, use company master spreadsheet if available
     if (isSuspenseAccount && !linkedSpreadsheetId && companyProfile?.google_master_spreadsheet_id) {
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'export/google-sheets/route.ts:142',message:'Using company master spreadsheet for suspense account',data:{spreadsheetId:companyProfile.google_master_spreadsheet_id},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
-      // #endregion
       linkedSpreadsheetId = companyProfile.google_master_spreadsheet_id;
       linkedSpreadsheetSource = "company";
     }
@@ -328,10 +321,6 @@ export async function POST(
       
       // For suspense accounts, try to fall back to user OAuth if Enterprise BYO fails
       if (isSuspenseAccount && msg.includes("dwdSubjectEmail")) {
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'export/google-sheets/route.ts:318',message:'Enterprise BYO failed for suspense account, trying OAuth fallback',data:{error:msg},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
-        // #endregion
-        
         try {
           // Try to use user OAuth tokens as fallback
           const userOAuthTokens = await getUserOAuthTokens(user.id);
@@ -340,16 +329,10 @@ export async function POST(
             auth = oauthSheets.auth;
             sheets = oauthSheets.sheets;
             authMethod = "oauth";
-            // #region agent log
-            fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'export/google-sheets/route.ts:326',message:'OAuth fallback successful for suspense account',data:{hasAuth:!!auth,hasSheets:!!sheets},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
-            // #endregion
           } else {
             throw new Error("No OAuth tokens available for fallback");
           }
         } catch (fallbackError: any) {
-          // #region agent log
-          fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'export/google-sheets/route.ts:332',message:'OAuth fallback failed for suspense account',data:{error:fallbackError?.message},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
-          // #endregion
           // Check if this is an individual account trying to use enterprise BYO
           const cfg = await getTenantGoogleIntegrationConfig();
           const isIndividualAccount = cfg?.entityType === "individual";

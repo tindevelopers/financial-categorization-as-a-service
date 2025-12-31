@@ -21,7 +21,10 @@ export default function SyncButton({
   const [showDropdown, setShowDropdown] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const handleSync = async (mode: "incremental" | "full_refresh", retryCount = 0) => {
+  const handleSync = async (
+    mode: "incremental" | "full_refresh",
+    retryCount = 0
+  ) => {
     if (syncing || disabled) return;
 
     setSyncing(true);
@@ -43,7 +46,13 @@ export default function SyncButton({
         }
       );
 
-      const data = await response.json();
+      let data: any = null;
+      try {
+        data = await response.json();
+      } catch {
+        // Some failures can return non-JSON bodies (proxy errors, etc.)
+        data = null;
+      }
 
       if (!response.ok) {
         // Retry on network errors or 5xx server errors
@@ -55,27 +64,34 @@ export default function SyncButton({
           await new Promise((resolve) => setTimeout(resolve, retryDelay));
           return handleSync(mode, retryCount + 1);
         }
-        throw new Error(data.error || "Sync failed");
+        throw new Error(data?.error || `Sync failed (HTTP ${response.status})`);
       }
 
-      // Handle success case
-      if (data.success !== false) {
-        // Check for partial failures
-        if (data.errors && data.errors.length > 0) {
+      // Handle "success=false but 200 OK" case (partial/soft failures)
+      if (data?.success === false) {
+        if (Array.isArray(data?.errors) && data.errors.length > 0) {
           console.warn(`Sync completed with ${data.errors.length} errors:`, data.errors);
-          setError(`Sync completed with ${data.errors.length} error(s). Check console for details.`);
-        } else if (data.message) {
-          // Show informational message (e.g., "No pending transactions to sync")
-          console.log(data.message);
+          setError(
+            `Sync failed for ${data.errors.length} item(s). First error: ${data.errors[0]}`
+          );
+        } else {
+          setError(data?.error || "Sync failed");
         }
-
-        if (onSyncComplete) {
-          onSyncComplete();
-        }
-
-        // Show success notification (you can enhance this with a toast library)
-        console.log(`Sync completed: ${data.transactions_synced || 0} transactions synced`);
+      } else if (Array.isArray(data?.errors) && data.errors.length > 0) {
+        // Some implementations may still return errors with success=true
+        console.warn(`Sync completed with ${data.errors.length} errors:`, data.errors);
+        setError(`Sync completed with ${data.errors.length} error(s). Check console for details.`);
+      } else if (data?.message) {
+        // Informational message (e.g., "No pending transactions to sync")
+        console.log(data.message);
       }
+
+      // Always refresh after an OK response so status badges update
+      if (onSyncComplete) {
+        onSyncComplete();
+      }
+
+      console.log(`Sync finished: ${data?.transactions_synced || 0} transactions synced`);
     } catch (err: any) {
       // Retry on network errors
       if (retryCount < maxRetries && (err.name === "TypeError" || err.message.includes("fetch"))) {

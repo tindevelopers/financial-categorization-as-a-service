@@ -87,14 +87,8 @@ export default function SetupWizardPage() {
             setCompanyProfileId(company.id)
             const isCompleted = company.setup_completed === true
             setSetupCompleted(isCompleted)
-            // #region agent log
-            fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'setup/page.tsx:88',message:'Setup page: Loaded company profile',data:{companyId:company.id,setupCompleted:company.setup_completed,isCompleted},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A,B'})}).catch(()=>{});
-            // #endregion
             // If setup is already completed, redirect to dashboard
             if (isCompleted) {
-              // #region agent log
-              fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'setup/page.tsx:93',message:'Setup page: Redirecting to dashboard (already completed)',data:{companyId:company.id},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
-              // #endregion
               router.push('/dashboard')
               return
             }
@@ -143,9 +137,6 @@ export default function SetupWizardPage() {
 
   const handleSubmit = async () => {
     try {
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'setup/page.tsx:132',message:'handleSubmit called',data:{companyProfileId,hasFormData:!!formData},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A,B,C'})}).catch(()=>{});
-      // #endregion
       const method = companyProfileId ? 'PUT' : 'POST'
       const url = '/api/company'
       const body = companyProfileId
@@ -160,9 +151,6 @@ export default function SetupWizardPage() {
             setupCompleted: true,
             setupStep: totalSteps,
           }
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'setup/page.tsx:148',message:'Before API call',data:{method,url,bodySetupCompleted:body.setupCompleted},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A,B'})}).catch(()=>{});
-      // #endregion
       const response = await fetch(url, {
         method,
         headers: { 'Content-Type': 'application/json' },
@@ -176,24 +164,14 @@ export default function SetupWizardPage() {
       }
 
       const data = await response.json()
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'setup/page.tsx:160',message:'API response received',data:{responseOk:response.ok,setupCompleted:data.company?.setup_completed,companyId:data.company?.id},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A,B'})}).catch(()=>{});
-      // #endregion
       
       // Verify setup_completed was actually saved
       if (!data.company?.setup_completed) {
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'setup/page.tsx:164',message:'ERROR: setup_completed not saved',data:{responseOk:response.ok,setupCompleted:data.company?.setup_completed,companyId:data.company?.id},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
-        // #endregion
         throw new Error('Setup completion was not saved. Please try again.')
       }
       
       // Update local state to show "Setup Complete" before redirect
       setSetupCompleted(true)
-      
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'setup/page.tsx:172',message:'Before redirect to dashboard',data:{setupCompletedState:setupCompleted},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C,E'})}).catch(()=>{});
-      // #endregion
       
       // Use window.location instead of router.push to force a full page reload
       // This ensures the middleware sees the updated setup_completed value
@@ -203,9 +181,6 @@ export default function SetupWizardPage() {
         router.push('/dashboard')
       }
     } catch (error: any) {
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'setup/page.tsx:169',message:'Setup error',data:{error:error.message},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A,B'})}).catch(()=>{});
-      // #endregion
       console.error('Setup error:', error)
       alert(error.message || 'Failed to complete setup. Please try again.')
     }
@@ -244,12 +219,6 @@ export default function SetupWizardPage() {
       </div>
     )
   }
-
-  // #region agent log
-  useEffect(() => {
-    fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'setup/page.tsx:208',message:'Setup page rendering',data:{currentStep,setupCompleted,loading},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C,E'})}).catch(()=>{});
-  }, [currentStep, setupCompleted, loading]);
-  // #endregion
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center p-4">

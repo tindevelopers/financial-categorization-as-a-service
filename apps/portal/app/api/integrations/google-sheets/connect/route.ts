@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/database/server";
 import { getCredentialManager } from "@/lib/credentials/VercelCredentialManager";
 import { validateOAuthConfig } from "@/lib/google-sheets/oauth-config";
-import { getTenantGoogleIntegrationConfig } from "@/lib/google-sheets/tier-config";
 import crypto from "crypto";
 
 export async function GET(request: NextRequest) {
@@ -85,21 +84,30 @@ export async function GET(request: NextRequest) {
     
     const authUrl = new URL("https://accounts.google.com/o/oauth2/v2/auth");
     const clientIdForAuth = oauthCreds.clientId?.trim();
-    const redirectUriForAuth = redirectUriToUse.trim();    authUrl.searchParams.set("client_id", clientIdForAuth);
+    const redirectUriForAuth = redirectUriToUse.trim();
+    if (process.env.DEBUG_ENTERPRISE === "1" && user.email?.endsWith("@velocitypartners.info")) {
+      console.log("[google-sheets/connect][enterprise] auth request params", {
+        clientIdLength: clientIdForAuth?.length,
+        clientIdHasTrailingWs:
+          !!clientIdForAuth &&
+          (clientIdForAuth[clientIdForAuth.length - 1] === " " ||
+            clientIdForAuth[clientIdForAuth.length - 1] === "\n"),
+        redirectUriForAuth,
+        redirectUriLength: redirectUriForAuth.length,
+        redirectUriHasTrailingWs:
+          redirectUriForAuth[redirectUriForAuth.length - 1] === " " ||
+          redirectUriForAuth[redirectUriForAuth.length - 1] === "\n",
+        hasNewlineInMiddle: redirectUriForAuth.includes("\n"),
+      });
+    }
+    authUrl.searchParams.set("client_id", clientIdForAuth);
     authUrl.searchParams.set("redirect_uri", redirectUriForAuth);
     authUrl.searchParams.set("response_type", "code");
-    const tierCfg = await getTenantGoogleIntegrationConfig();
-    const isCompany = tierCfg?.entityType === "company";
-
-    // Consumer/Personal: drive.readonly is enough for listing Sheets; write is done via Sheets API.
-    // Business tiers: require Drive scope to create Shared Drives and folders.
-    const scopes = [
+    authUrl.searchParams.set("scope", [
       "https://www.googleapis.com/auth/spreadsheets",
-      isCompany ? "https://www.googleapis.com/auth/drive" : "https://www.googleapis.com/auth/drive.readonly",
-      "https://www.googleapis.com/auth/userinfo.email",
-    ];
-
-    authUrl.searchParams.set("scope", scopes.join(" "));
+      "https://www.googleapis.com/auth/drive.readonly",
+      "https://www.googleapis.com/auth/userinfo.email"
+    ].join(" "));
     authUrl.searchParams.set("access_type", "offline"); // Get refresh token
     authUrl.searchParams.set("prompt", "consent"); // Force consent to get refresh token
     authUrl.searchParams.set("state", state);

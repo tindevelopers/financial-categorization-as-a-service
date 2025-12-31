@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/database/server";
 import { createAdminClient } from "@/lib/database/admin-client";
 import { createTenantGoogleClientsForRequestUser } from "@/lib/google-sheets/tenant-clients";
-import { syncUploadTab, TransactionRow, findExistingJobTab } from "@/lib/google-sheets/master-spreadsheet";
+import { addUploadTab, syncUploadTab, TransactionRow, findExistingJobTab } from "@/lib/google-sheets/master-spreadsheet";
 import { syncTransactionsToSheet, getSheetId } from "@/lib/google-sheets/incremental-sync";
 import { generateTransactionFingerprint } from "@/lib/sync/fingerprint";
 
@@ -176,8 +176,9 @@ export async function POST(
       );
     }
     
-    // For incremental sync, if tab doesn't exist, we'll append to the end
-    // For full refresh, tab must exist
+    // If tab doesn't exist:
+    // - Full refresh: tab must exist (error)
+    // - Incremental: create the tab and do an initial full write (otherwise all rows would fail)
 
     let transactionsSynced = 0;
     let errors: string[] = [];
@@ -220,6 +221,62 @@ export async function POST(
         })
         .eq("job_id", jobId);
     } else {
+      // If incremental sync is requested but the tab doesn't exist, create it and write all rows.
+      if (!sheetId) {
+        // Re-fetch ALL transactions for initial tab creation so the sheet is complete.
+        const { data: allTransactions, error: allTxError } = await adminClient
+          .from("categorized_transactions")
+          .select("*")
+          .eq("job_id", jobId)
+          .order("date", { ascending: false });
+
+        if (allTxError || !allTransactions || allTransactions.length === 0) {
+          return NextResponse.json(
+            { error: "No transactions found to initialize sheet" },
+            { status: 400 }
+          );
+        }
+
+        const allRows: TransactionRow[] = allTransactions.map((tx: any) => ({
+          date: tx.date,
+          description: tx.original_description || tx.description || "",
+          amount: tx.amount,
+          category: tx.category || "",
+          subcategory: tx.subcategory || "",
+          confidence: tx.confidence_score || 0.5,
+          status: tx.user_confirmed ? "Confirmed" : "Pending",
+          fingerprint: generateTransactionFingerprint(
+            tx.original_description || tx.description || "",
+            tx.amount,
+            tx.date
+          ),
+        }));
+
+        const created = await addUploadTab(auth, spreadsheetId, tabName, allRows, jobId);
+        tabName = created.tabName;
+        sheetId = await getSheetId(sheets, spreadsheetId, tabName);
+
+        transactionsSynced = allTransactions.length;
+
+        await adminClient
+          .from("categorized_transactions")
+          .update({
+            sync_status: "synced",
+            last_synced_at: new Date().toISOString(),
+            sync_error: null,
+          })
+          .eq("job_id", jobId);
+
+        const duration = Date.now() - startTime;
+        return NextResponse.json({
+          success: true,
+          mode,
+          transactions_synced: transactionsSynced,
+          duration_ms: duration,
+          message: `Created tab "${tabName}" and synced ${transactionsSynced} transaction(s)`,
+        });
+      }
+
       // Incremental sync: update only changed transactions
       const transactionRows: TransactionRow[] = transactions.map((tx: any) => ({
         date: tx.date,

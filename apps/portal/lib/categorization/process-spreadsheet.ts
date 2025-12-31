@@ -532,12 +532,8 @@ const debugLog = async (location: string, message: string, data: any) => {
   // Only log if explicitly enabled and in development
   if (process.env.ENABLE_DEBUG_LOGGING === 'true') {
     try {
-      fetch('http://127.0.0.1:7242/ingest/0754215e-ba8c-4aec-82a2-3bd1cb63174e', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ location, message, data, timestamp: Date.now(), sessionId: 'debug-session', runId: 'ai-fix' }),
-        signal: AbortSignal.timeout(100) // 100ms timeout to avoid hanging
-      }).catch(() => {}); // Silently fail if server unavailable
+      // Use platform logs (Vercel) instead of trying to call localhost from a serverless environment.
+      console.debug("[process-spreadsheet]", { location, message, data });
     } catch {
       // Ignore errors
     }
