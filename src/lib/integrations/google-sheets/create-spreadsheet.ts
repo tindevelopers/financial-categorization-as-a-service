@@ -146,6 +146,14 @@ export async function ensureTemplateTabsAndFormulas(
     requests.push({ addSheet: { properties: { title: 'Transactions_By_Category' } } })
   }
 
+  if (!existingTitles.has('Audit_Matrix_All')) {
+    requests.push({ addSheet: { properties: { title: 'Audit_Matrix_All' } } })
+  }
+
+  if (!existingTitles.has('Audit_Matrix_Confirmed')) {
+    requests.push({ addSheet: { properties: { title: 'Audit_Matrix_Confirmed' } } })
+  }
+
   if (requests.length > 0) {
     await sheets.spreadsheets.batchUpdate({
       spreadsheetId,
@@ -193,6 +201,97 @@ export async function ensureTemplateTabsAndFormulas(
     range: 'Transactions_By_Category!A1',
     valueInputOption: 'USER_ENTERED',
     requestBody: { values: byCategoryFormula },
+  })
+
+  // Auditor-friendly matrix views (category columns) with Debit/Credit derived from Amount
+  // Notes:
+  // - Base columns: Date, Description, Status, Confirmed, Amount, Debit, Credit
+  // - Then one column per Category (amount appears only under its category)
+  // - Adds a totals row at bottom (per-category + debit/credit control totals + difference)
+  const auditMatrixAllFormula = `={
+    QUERY(
+      {
+        ROW(Transactions!A2:A),
+        Transactions!A2:A,
+        Transactions!B2:B,
+        Transactions!G2:G,
+        Transactions!H2:H,
+        Transactions!C2:C,
+        IF(Transactions!C2:C>0, Transactions!C2:C, ),
+        IF(Transactions!C2:C<0, ABS(Transactions!C2:C), ),
+        IF(Transactions!C2:C>0, Transactions!C2:C, 0) - IF(Transactions!C2:C<0, ABS(Transactions!C2:C), 0),
+        Transactions!D2:D,
+        Transactions!C2:C
+      },
+      "select Col2,Col3,Col4,Col5,Col6,Col7,Col8,Col9, sum(Col11) pivot Col10 where Col2 is not null group by Col1,Col2,Col3,Col4,Col5,Col6,Col7,Col8,Col9 label sum(Col11) ''",
+      0
+    );
+    {
+      "",
+      "TOTAL",
+      "",
+      "",
+      "",
+      "",
+      SUMIF(Transactions!C2:C,\">0\",Transactions!C2:C),
+      SUMIF(Transactions!C2:C,\"<0\",-Transactions!C2:C),
+      SUMIF(Transactions!C2:C,\">0\",Transactions!C2:C) - SUMIF(Transactions!C2:C,\"<0\",-Transactions!C2:C),
+      QUERY(
+        {Transactions!D2:D, Transactions!C2:C},
+        "select sum(Col2) pivot Col1 where Col1 is not null label sum(Col2) ''",
+        0
+      )
+    }
+  }`
+
+  const auditMatrixConfirmedFormula = `={
+    QUERY(
+      {
+        ROW(Transactions!A2:A),
+        Transactions!A2:A,
+        Transactions!B2:B,
+        Transactions!G2:G,
+        Transactions!H2:H,
+        Transactions!C2:C,
+        IF(Transactions!C2:C>0, Transactions!C2:C, ),
+        IF(Transactions!C2:C<0, ABS(Transactions!C2:C), ),
+        IF(Transactions!C2:C>0, Transactions!C2:C, 0) - IF(Transactions!C2:C<0, ABS(Transactions!C2:C), 0),
+        Transactions!D2:D,
+        Transactions!C2:C
+      },
+      "select Col2,Col3,Col4,Col5,Col6,Col7,Col8,Col9, sum(Col11) pivot Col10 where Col2 is not null and Col5 = TRUE group by Col1,Col2,Col3,Col4,Col5,Col6,Col7,Col8,Col9 label sum(Col11) ''",
+      0
+    );
+    {
+      "",
+      "TOTAL",
+      "",
+      "",
+      "",
+      "",
+      SUMIFS(Transactions!C2:C,Transactions!C2:C,\">0\",Transactions!H2:H,TRUE),
+      SUMIFS(-Transactions!C2:C,Transactions!C2:C,\"<0\",Transactions!H2:H,TRUE),
+      SUMIFS(Transactions!C2:C,Transactions!C2:C,\">0\",Transactions!H2:H,TRUE) - SUMIFS(-Transactions!C2:C,Transactions!C2:C,\"<0\",Transactions!H2:H,TRUE),
+      QUERY(
+        {Transactions!D2:D, Transactions!C2:C, Transactions!H2:H},
+        "select sum(Col2) pivot Col1 where Col1 is not null and Col3 = TRUE label sum(Col2) ''",
+        0
+      )
+    }
+  }`
+
+  await sheets.spreadsheets.values.update({
+    spreadsheetId,
+    range: 'Audit_Matrix_All!A1',
+    valueInputOption: 'USER_ENTERED',
+    requestBody: { values: [[auditMatrixAllFormula]] },
+  })
+
+  await sheets.spreadsheets.values.update({
+    spreadsheetId,
+    range: 'Audit_Matrix_Confirmed!A1',
+    valueInputOption: 'USER_ENTERED',
+    requestBody: { values: [[auditMatrixConfirmedFormula]] },
   })
 }
 
