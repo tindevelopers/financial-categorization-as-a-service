@@ -117,25 +117,60 @@ export function getServiceAccountAuth() {
 
 export async function ensureTemplateTabsAndFormulas(
   sheets: ReturnType<typeof google.sheets>,
-  spreadsheetId: string
+  spreadsheetId: string,
+  options?: {
+    /**
+     * Optional: if the spreadsheet has an existing sheet/tab that contains the
+     * transactions table, we can rename that tab to `Transactions` so the template
+     * applies without creating an empty Transactions sheet.
+     */
+    preferredSourceSheetName?: string
+  }
 ) {
   const spreadsheet = await sheets.spreadsheets.get({ spreadsheetId })
-  const firstSheet = spreadsheet.data.sheets?.[0]
+  const allSheets = spreadsheet.data.sheets || []
+  const firstSheet = allSheets[0]
   const firstSheetId = firstSheet?.properties?.sheetId
 
   const existingTitles = new Set(
-    (spreadsheet.data.sheets || []).map(s => s.properties?.title).filter(Boolean) as string[]
+    allSheets.map(s => s.properties?.title).filter(Boolean) as string[]
   )
 
   const requests: any[] = []
 
-  if (firstSheetId != null && firstSheet?.properties?.title !== 'Transactions') {
-    requests.push({
-      updateSheetProperties: {
-        properties: { sheetId: firstSheetId, title: 'Transactions' },
-        fields: 'title',
-      },
-    })
+  // Determine how to get a Transactions sheet without clobbering unrelated spreadsheets.
+  // Priority:
+  // 1) If `Transactions` already exists -> leave it.
+  // 2) If caller provides a preferred source sheet name and it exists -> rename it to Transactions.
+  // 3) If `All Transactions` exists -> rename it to Transactions (common legacy export tab).
+  // 4) If the spreadsheet has exactly 1 sheet -> rename it to Transactions.
+  // 5) Else -> add a new Transactions sheet (non-destructive; but may be empty until user syncs into it).
+  if (!existingTitles.has('Transactions')) {
+    const findSheetIdByTitle = (title: string) =>
+      allSheets.find(s => s.properties?.title === title)?.properties?.sheetId
+
+    const preferredId =
+      options?.preferredSourceSheetName && options.preferredSourceSheetName !== 'Transactions'
+        ? findSheetIdByTitle(options.preferredSourceSheetName)
+        : null
+
+    const legacyAllTxId = findSheetIdByTitle('All Transactions')
+
+    const shouldRenameSingleSheet = allSheets.length === 1 && firstSheetId != null
+    const renameTargetId = preferredId || legacyAllTxId || (shouldRenameSingleSheet ? firstSheetId : null)
+
+    if (renameTargetId != null) {
+      requests.push({
+        updateSheetProperties: {
+          properties: { sheetId: renameTargetId, title: 'Transactions' },
+          fields: 'title',
+        },
+      })
+      existingTitles.add('Transactions')
+    } else {
+      requests.push({ addSheet: { properties: { title: 'Transactions' } } })
+      existingTitles.add('Transactions')
+    }
   }
 
   if (!existingTitles.has('Category_Summary')) {

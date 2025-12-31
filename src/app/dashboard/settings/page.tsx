@@ -126,6 +126,7 @@ export default function SettingsPage() {
   const [spreadsheets, setSpreadsheets] = useState<Spreadsheet[]>([])
   const [sheetPreferences, setSheetPreferences] = useState<SheetPreferences | null>(null)
   const [loadingSheets, setLoadingSheets] = useState(false)
+  const [upgradingSheet, setUpgradingSheet] = useState(false)
   const [showSheetPicker, setShowSheetPicker] = useState(false)
   const [selectedSheet, setSelectedSheet] = useState<string>('')
   const [creatingSheet, setCreatingSheet] = useState(false)
@@ -323,6 +324,40 @@ export default function SettingsPage() {
       alert('Failed to create spreadsheet')
     } finally {
       setSaving(false)
+    }
+  }
+
+  const handleUpgradeSheetTemplate = async () => {
+    if (!integrations.googleSheets.connected) return
+    if (!sheetPreferences?.spreadsheet_id) {
+      alert('No default spreadsheet selected')
+      return
+    }
+
+    setUpgradingSheet(true)
+    try {
+      const response = await fetch('/api/integrations/google-sheets/upgrade-template', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          spreadsheetId: sheetPreferences.spreadsheet_id,
+          // If this user had an older export tab name, this helps the upgrader rename it cleanly.
+          preferredSourceSheetName: sheetPreferences.sheet_tab_name,
+        }),
+      })
+
+      const data = await response.json()
+      if (!response.ok) {
+        alert(data.error || 'Failed to upgrade sheet template')
+        return
+      }
+
+      alert('Sheet template upgraded! New tabs have been added.')
+    } catch (error) {
+      console.error('Failed to upgrade sheet template:', error)
+      alert('Failed to upgrade sheet template')
+    } finally {
+      setUpgradingSheet(false)
     }
   }
 
@@ -1239,13 +1274,22 @@ Window Origin: ${window.location.origin}`;
                             Tab: {sheetPreferences.sheet_tab_name}
                           </p>
                         </div>
-                        <Button
-                          color="white"
-                          onClick={loadSpreadsheets}
-                          disabled={loadingSheets}
-                        >
-                          {loadingSheets ? 'Loading...' : 'Change'}
-                        </Button>
+                        <div className="flex items-center gap-2">
+                          <Button
+                            color="white"
+                            onClick={handleUpgradeSheetTemplate}
+                            disabled={upgradingSheet}
+                          >
+                            {upgradingSheet ? 'Upgrading...' : 'Upgrade template'}
+                          </Button>
+                          <Button
+                            color="white"
+                            onClick={loadSpreadsheets}
+                            disabled={loadingSheets}
+                          >
+                            {loadingSheets ? 'Loading...' : 'Change'}
+                          </Button>
+                        </div>
                       </div>
                     </div>
                   ) : (
