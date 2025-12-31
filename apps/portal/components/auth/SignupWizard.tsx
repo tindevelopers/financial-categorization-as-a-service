@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { createBrowserClient } from "@supabase/ssr";
+import { signUp } from "@/app/actions/auth";
 
 type SubscriptionType = "individual" | "company" | "enterprise";
 
@@ -227,33 +228,40 @@ export default function SignupWizard() {
       return;
     }
 
-    if (!supabase) {
-      setError("Unable to connect. Please try again.");
+    if (!selectedSubscriptionType) {
+      setError("Please select a subscription type");
       setIsLoading(false);
       return;
     }
 
     try {
-      const { error: signUpError } = await supabase.auth.signUp({
+      // Map subscriptionType to plan
+      const planMap: Record<SubscriptionType, string> = {
+        individual: "starter",
+        company: "business_standard",
+        enterprise: "enterprise",
+      };
+
+      const plan = planMap[selectedSubscriptionType];
+      
+      // Generate tenant domain from email or organization name
+      const tenantDomain = formData.organizationName
+        ? formData.organizationName.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "")
+        : formData.email.split("@")[1] || "example.com";
+      
+      const tenantName = formData.organizationName || `${formData.fullName}'s Organization`;
+
+      // Call server action that properly creates tenant and user
+      const result = await signUp({
         email: formData.email,
         password: formData.password,
-        options: {
-          emailRedirectTo:
-            typeof window !== "undefined"
-              ? `${window.location.origin}/dashboard`
-              : undefined,
-          data: {
-            full_name: formData.fullName,
-            organization_name: formData.organizationName,
-            subscription_type: selectedSubscriptionType,
-          },
-        },
+        fullName: formData.fullName,
+        tenantName: tenantName,
+        tenantDomain: tenantDomain,
+        plan: plan,
+        subscriptionType: selectedSubscriptionType,
+        region: "us-east-1",
       });
-
-      if (signUpError) {
-        setError(signUpError.message);
-        return;
-      }
 
       if (typeof window !== "undefined") {
         sessionStorage.removeItem("selectedSubscriptionType");

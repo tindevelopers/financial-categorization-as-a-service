@@ -187,7 +187,28 @@ export async function createTenantGoogleClientsForRequestUser(): Promise<TenantG
 
   if (cfg.tier === "enterprise_byo") {
     if (!cfg.dwdSubjectEmail) {
-      throw new Error("Enterprise BYO requires dwdSubjectEmail in tenant settings");
+      // Fall back to user OAuth if enterprise_byo is configured but dwdSubjectEmail is missing
+      console.warn("Enterprise BYO tier detected but dwdSubjectEmail not set, falling back to user OAuth");
+      const tokens = await getUserOAuthTokens(user.id);
+      if (!tokens) {
+        throw new Error("No Google Sheets connection found. Please connect your Google account in Settings > Integrations > Google Sheets.");
+      }
+
+      const { auth, drive, sheets } = await createOAuthClients({
+        userId: user.id,
+        tenantId: cfg.tenantId,
+        tokens,
+        persistAs: "user",
+      });
+
+      return {
+        tenantId: cfg.tenantId,
+        tier: "consumer", // Downgrade to consumer tier since we're using user OAuth
+        authMethod: "oauth_user",
+        auth,
+        drive,
+        sheets,
+      };
     }
     const { auth, drive, sheets } = await createDwdClients({ tenantId: cfg.tenantId, subjectEmail: cfg.dwdSubjectEmail });
     return {
@@ -211,7 +232,28 @@ export async function createTenantGoogleClientsForRequestUser(): Promise<TenantG
   if (cfg.tier === "business_standard") {
     const adminConn = await getTenantGoogleAdminOAuthConnection(cfg.tenantId);
     if (!adminConn) {
-      throw new Error("No tenant admin Google OAuth connection found");
+      // Fall back to user OAuth if business_standard is configured but admin connection is missing
+      console.warn("Business Standard tier detected but no admin OAuth connection found, falling back to user OAuth");
+      const tokens = await getUserOAuthTokens(user.id);
+      if (!tokens) {
+        throw new Error("No Google Sheets connection found. Please connect your Google account in Settings > Integrations > Google Sheets.");
+      }
+
+      const { auth, drive, sheets } = await createOAuthClients({
+        userId: user.id,
+        tenantId: cfg.tenantId,
+        tokens,
+        persistAs: "user",
+      });
+
+      return {
+        tenantId: cfg.tenantId,
+        tier: "consumer", // Downgrade to consumer tier since we're using user OAuth
+        authMethod: "oauth_user",
+        auth,
+        drive,
+        sheets,
+      };
     }
 
     const { auth, drive, sheets } = await createOAuthClients({
