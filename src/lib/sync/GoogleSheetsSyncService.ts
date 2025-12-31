@@ -323,7 +323,7 @@ export class GoogleSheetsSyncService {
         try {
           const existingData = await sheets.spreadsheets.values.get({
             spreadsheetId,
-            range: `${sheetName}!A:G`,
+            range: `${sheetName}!A:H`,
           });
 
           const existingRows = existingData.data.values || [];
@@ -364,7 +364,7 @@ export class GoogleSheetsSyncService {
       rowsSkipped = transactions.length - transactionsToPush.length;
 
       // Prepare data for sheet
-      const headers = ['Date', 'Description', 'Amount', 'Category', 'Subcategory', 'Notes', 'Status'];
+      const headers = ['Date', 'Description', 'Amount', 'Category', 'Subcategory', 'Notes', 'Status', 'Confirmed'];
       const rows = transactionsToPush.map(tx => [
         typeof tx.date === 'string' ? tx.date : tx.date?.toISOString().split('T')[0] || '',
         tx.original_description,
@@ -373,13 +373,14 @@ export class GoogleSheetsSyncService {
         tx.subcategory || '',
         tx.user_notes || '',
         tx.reconciliation_status || 'unreconciled',
+        !!tx.user_confirmed,
       ]);
 
       if (options?.mode === 'replace' || existingFingerprints.size === 0) {
         // Clear existing data and write new (or replace mode)
         await sheets.spreadsheets.values.clear({
           spreadsheetId,
-          range: `${sheetName}!A:G`,
+          range: `${sheetName}!A:H`,
         });
 
         // Get all transactions for replace mode (not just new ones)
@@ -391,6 +392,7 @@ export class GoogleSheetsSyncService {
           tx.subcategory || '',
           tx.user_notes || '',
           tx.reconciliation_status || 'unreconciled',
+          !!tx.user_confirmed,
         ]);
 
         await sheets.spreadsheets.values.update({

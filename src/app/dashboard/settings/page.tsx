@@ -273,6 +273,59 @@ export default function SettingsPage() {
     }
   }
 
+  const handleCreateNewSpreadsheet = async () => {
+    if (!integrations.googleSheets.connected) return
+    setSaving(true)
+    try {
+      const response = await fetch('/api/integrations/google-sheets/create-spreadsheet', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          purpose: 'account',
+          spreadsheetName: 'FinCat Transactions Export',
+        }),
+      })
+
+      const data = await response.json()
+      if (!response.ok) {
+        alert(data.error || 'Failed to create spreadsheet')
+        return
+      }
+
+      // Save as default export sheet
+      const prefResponse = await fetch('/api/integrations/google-sheets/preferences', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          spreadsheet_id: data.spreadsheetId,
+          spreadsheet_name: data.spreadsheetName,
+          sheet_tab_name: 'Transactions',
+        }),
+      })
+
+      const prefData = await prefResponse.json()
+      if (!prefResponse.ok) {
+        alert(prefData.error || 'Spreadsheet created but failed to save as default')
+        return
+      }
+
+      setSheetPreferences(prefData.preferences)
+      setSelectedSheet(data.spreadsheetId)
+      setShowSheetPicker(false)
+
+      if (data.sheetUrl) {
+        window.open(data.sheetUrl, '_blank', 'noopener,noreferrer')
+      }
+
+      alert('Spreadsheet created and selected as default!')
+    } catch (error) {
+      console.error('Failed to create spreadsheet:', error)
+      alert('Failed to create spreadsheet')
+    } finally {
+      setSaving(false)
+    }
+  }
+
   const handleSelectSheet = async (spreadsheetId: string) => {
     const sheet = spreadsheets.find(s => s.id === spreadsheetId)
     if (!sheet) return
@@ -1344,7 +1397,14 @@ Window Origin: ${window.location.origin}`;
                             </div>
                           )}
                         </div>
-                        <div className="px-6 py-4 border-t border-gray-200 dark:border-zinc-700 flex justify-end">
+                        <div className="px-6 py-4 border-t border-gray-200 dark:border-zinc-700 flex justify-between gap-3">
+                          <Button
+                            color="blue"
+                            onClick={handleCreateNewSpreadsheet}
+                            disabled={saving}
+                          >
+                            {saving ? 'Creating...' : 'Create New Spreadsheet'}
+                          </Button>
                           <Button
                             color="white"
                             onClick={() => {
