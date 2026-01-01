@@ -19,6 +19,7 @@ export interface TransactionRow {
   confidence: number;
   status: string;
   fingerprint: string;
+  transactionId?: string;
   sourceTab?: string;
 }
 
@@ -261,6 +262,17 @@ export async function syncUploadTab(
     },
   });
 
+  // Ensure header includes Transaction ID column (newer schema). This is cheap and avoids
+  // drifting schemas when older tabs are re-synced.
+  await sheets.spreadsheets.values.update({
+    spreadsheetId,
+    range: `'${tabName}'!A1:I1`,
+    valueInputOption: "RAW",
+    requestBody: {
+      values: [["Date", "Description", "Amount", "Category", "Subcategory", "Confidence", "Status", "Fingerprint", "Transaction ID"]],
+    },
+  });
+
   // Prepare data rows
   const dataRows = transactions.map(tx => [
     tx.date,
@@ -271,6 +283,7 @@ export async function syncUploadTab(
     `${Math.round(tx.confidence * 100)}%`,
     tx.status,
     tx.fingerprint,
+    tx.transactionId || "",
   ]);
 
   // Write data starting at row 2
@@ -341,7 +354,7 @@ export async function addUploadTab(
   });
 
   // Prepare data rows
-  const header = ["Date", "Description", "Amount", "Category", "Subcategory", "Confidence", "Status", "Fingerprint"];
+  const header = ["Date", "Description", "Amount", "Category", "Subcategory", "Confidence", "Status", "Fingerprint", "Transaction ID"];
   const dataRows = transactions.map(tx => [
     tx.date,
     tx.description,
@@ -351,6 +364,7 @@ export async function addUploadTab(
     `${Math.round(tx.confidence * 100)}%`,
     tx.status,
     tx.fingerprint,
+    tx.transactionId || "",
   ]);
 
   // Write data to new tab
@@ -472,13 +486,15 @@ export async function rebuildAllTransactionsTab(
     confidence: string;
     status: string;
     source: string;
+    dedupeKey: string;
   }> = [];
 
   for (const tabName of uploadTabs) {
     try {
       const response = await sheets.spreadsheets.values.get({
         spreadsheetId,
-        range: `'${tabName}'!A:H`,
+        // Include Transaction ID column (I) if present. For older tabs, it will just be blank.
+        range: `'${tabName}'!A:I`,
       });
       
       const rows = response.data.values || [];
@@ -486,6 +502,12 @@ export async function rebuildAllTransactionsTab(
       for (let i = 1; i < rows.length; i++) {
         const row = rows[i];
         if (row[0]) { // Has date
+          const transactionId = (row[8] || "").toString().trim();
+          const fingerprint = (row[7] || "").toString().trim();
+          // Prefer stable DB id when available; fall back to fingerprint; finally compute a basic fingerprint.
+          const fallbackKey = `${row[0] || ""}_${row[1] || ""}_${row[2] || ""}`.toLowerCase().replace(/\s+/g, "_");
+          const dedupeKey = transactionId || fingerprint || fallbackKey;
+
           allTransactions.push({
             date: row[0] || "",
             description: row[1] || "",
@@ -495,6 +517,7 @@ export async function rebuildAllTransactionsTab(
             confidence: row[5] || "",
             status: row[6] || "",
             source: tabName,
+            dedupeKey,
           });
         }
       }
@@ -508,6 +531,16 @@ export async function rebuildAllTransactionsTab(
     const dateA = new Date(a.date);
     const dateB = new Date(b.date);
     return dateB.getTime() - dateA.getTime();
+  });
+
+  // De-dupe across tabs so re-exports / multiple uploads don't duplicate rows in "All Transactions".
+  // Because we sorted desc by date, the first occurrence wins (newest row retained).
+  const seen = new Set<string>();
+  const uniqueTransactions = allTransactions.filter(tx => {
+    if (!tx.dedupeKey) return true;
+    if (seen.has(tx.dedupeKey)) return false;
+    seen.add(tx.dedupeKey);
+    return true;
   });
 
   // Get All Transactions sheet ID
@@ -535,8 +568,8 @@ export async function rebuildAllTransactionsTab(
   }
 
   // Write merged data
-  if (allTransactions.length > 0) {
-    const dataRows = allTransactions.map(tx => [
+  if (uniqueTransactions.length > 0) {
+    const dataRows = uniqueTransactions.map(tx => [
       tx.date,
       tx.description,
       tx.amount,
@@ -557,7 +590,7 @@ export async function rebuildAllTransactionsTab(
     });
   }
 
-  return { totalRows: allTransactions.length };
+  return { totalRows: uniqueTransactions.length };
 }
 
 /**

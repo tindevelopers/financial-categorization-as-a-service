@@ -463,6 +463,7 @@ export async function POST(
             const fingerprint = `${tx.date || ''}_${tx.original_description || ''}_${tx.amount || 0}`.toLowerCase().replace(/\s+/g, '_');
             
             return {
+              transactionId: tx.id,
               date: tx.date || '',
               description: tx.original_description || '',
               amount: tx.amount || 0,
