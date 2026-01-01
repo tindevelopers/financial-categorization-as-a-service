@@ -1,5 +1,7 @@
 import { google } from 'googleapis'
 
+// Google Sheets integration for creating and managing spreadsheets
+
 export type SubscriptionLevel = 'individual' | 'business' | 'enterprise'
 
 export type CreateSpreadsheetOptions = {
