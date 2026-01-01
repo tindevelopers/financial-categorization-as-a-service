@@ -127,6 +127,7 @@ export default function BankStatementsPage() {
   const [statements, setStatements] = useState<BankStatement[]>([])
   const [loading, setLoading] = useState(true)
   const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [resettingStorage, setResettingStorage] = useState(false)
   const [showUpload, setShowUpload] = useState(false)
   const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null)
 
@@ -219,6 +220,38 @@ export default function BankStatementsPage() {
     }
   }
 
+  const handleResetStorage = async () => {
+    if (!confirm('Are you sure you want to delete EVERYTHING and start fresh? This will permanently delete ALL uploaded files (bank statements, receipts, invoices), transactions, and cannot be undone.')) {
+      return
+    }
+
+    if (!confirm('Final warning: this is irreversible. Delete EVERYTHING now?')) {
+      return
+    }
+
+    setResettingStorage(true)
+    try {
+      const response = await fetch('/api/categorization/jobs/reset-storage', {
+        method: 'POST',
+      })
+
+      const result = await response.json().catch(() => ({} as any))
+      if (!response.ok) {
+        throw new Error(result.error || 'Failed to reset storage')
+      }
+
+      // Clear local state and refetch
+      setStatements([])
+      await fetchStatements()
+      alert(`Deleted ${result.deletedCount || 0} upload(s). You’re starting fresh.`)
+    } catch (error: any) {
+      console.error('Error resetting storage:', error)
+      alert(`Failed to delete everything: ${error.message}`)
+    } finally {
+      setResettingStorage(false)
+    }
+  }
+
   const handleUploadComplete = () => {
     setShowUpload(false)
     fetchStatements()
@@ -245,6 +278,19 @@ export default function BankStatementsPage() {
           >
             <ArrowPathIcon className="h-4 w-4" />
             Refresh
+          </Button>
+          <Button
+            onClick={handleResetStorage}
+            color="red"
+            className="flex items-center gap-2"
+            disabled={resettingStorage}
+          >
+            {resettingStorage ? (
+              <ArrowPathIcon className="h-4 w-4 animate-spin" />
+            ) : (
+              <TrashIcon className="h-4 w-4" />
+            )}
+            Delete Everything
           </Button>
           <Button
             onClick={() => setShowUpload(!showUpload)}
