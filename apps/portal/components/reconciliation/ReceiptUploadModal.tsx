@@ -81,9 +81,12 @@ export function ReceiptUploadModal({ isOpen, onClose, onUploadComplete }: Receip
       const response = await fetch('/api/documents/upload', {
         method: 'POST',
         body: formData,
+        credentials: 'include',
       })
 
-      const result = await response.json()
+      // Be defensive: backend might return non-JSON on unexpected errors.
+      const text = await response.text()
+      const result = text ? JSON.parse(text) : { success: false, error: 'Empty response from server' }
 
       if (result.success) {
         setFiles(prev =>
