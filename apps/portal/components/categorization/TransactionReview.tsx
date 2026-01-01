@@ -132,7 +132,11 @@ export default function TransactionReview({ jobId }: TransactionReviewProps) {
   }, []);
 
   const authHeaders = useMemo(() => {
-    return accessToken ? { Authorization: `Bearer ${accessToken}` } : {};
+    const headers: Record<string, string> = {};
+    if (accessToken) {
+      headers.Authorization = `Bearer ${accessToken}`;
+    }
+    return headers;
   }, [accessToken]);
 
   // Use ref to track isEditing so polling interval doesn't need to re-create on every edit state change
