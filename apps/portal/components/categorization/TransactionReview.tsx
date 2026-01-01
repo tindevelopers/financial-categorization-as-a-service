@@ -242,7 +242,9 @@ export default function TransactionReview({ jobId }: TransactionReviewProps) {
 
   const loadTransactions = async () => {
     try {
-      const response = await fetch(`/api/categorization/jobs/${jobId}/transactions`);
+      const response = await fetch(`/api/categorization/jobs/${jobId}/transactions`, {
+        credentials: "include",
+      });
       if (!response.ok) {
         throw new Error("Failed to load transactions");
       }

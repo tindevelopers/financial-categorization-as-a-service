@@ -18,6 +18,31 @@ export interface SyncResult {
   failedFingerprints: string[];
 }
 
+function isQuotaError(error: any) {
+  const status = error?.code || error?.status || error?.response?.status;
+  return status === 429;
+}
+
+async function sleep(ms: number) {
+  await new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function withRetry<T>(fn: () => Promise<T>, label: string, attempts = 4): Promise<T> {
+  let lastErr: any;
+  for (let i = 0; i < attempts; i++) {
+    try {
+      return await fn();
+    } catch (err: any) {
+      lastErr = err;
+      if (!isQuotaError(err) || i === attempts - 1) break;
+      const backoff = 500 * Math.pow(2, i) + Math.floor(Math.random() * 250);
+      console.warn(`[sheets] quota hit during ${label}, retrying in ${backoff}ms (attempt ${i + 1}/${attempts})`);
+      await sleep(backoff);
+    }
+  }
+  throw lastErr;
+}
+
 /**
  * Find the row number of a transaction in a sheet by fingerprint
  */
@@ -135,6 +160,54 @@ export async function appendTransactionRow(
   }
 }
 
+type SheetIndex = {
+  fingerprintToRow: Map<string, number>;
+  nextRow: number;
+};
+
+async function getSheetIndex(
+  sheets: sheets_v4.Sheets,
+  spreadsheetId: string,
+  tabName: string
+): Promise<SheetIndex> {
+  // 1 read request for A:A + H2:H
+  const res = await withRetry(
+    () =>
+      sheets.spreadsheets.values.batchGet({
+        spreadsheetId,
+        ranges: [`'${tabName}'!A:A`, `'${tabName}'!H2:H`],
+      }),
+    "batchGet(sheetIndex)"
+  );
+
+  const valueRanges = res.data.valueRanges || [];
+  const colA = valueRanges[0]?.values || [];
+  const fpCol = valueRanges[1]?.values || [];
+
+  const fingerprintToRow = new Map<string, number>();
+  for (let i = 0; i < fpCol.length; i++) {
+    const fp = fpCol[i]?.[0];
+    if (fp) fingerprintToRow.set(fp, i + 2); // starts at row 2
+  }
+
+  // next row after the last non-empty A cell (A includes header row)
+  const nextRow = (colA?.length || 0) + 1;
+  return { fingerprintToRow, nextRow };
+}
+
+function toRowData(transaction: TransactionRow) {
+  return [
+    transaction.date,
+    transaction.description,
+    transaction.amount,
+    transaction.category,
+    transaction.subcategory || "",
+    `${Math.round(transaction.confidence * 100)}%`,
+    transaction.status,
+    transaction.fingerprint,
+  ];
+}
+
 /**
  * Sync multiple transactions incrementally to a Google Sheet
  */
@@ -154,53 +227,73 @@ export async function syncTransactionsToSheet(
     failedFingerprints: [],
   };
 
-  for (const transaction of transactions) {
-    try {
-      const rowNumber = await findTransactionRow(
-        sheets,
-        spreadsheetId,
-        tabName,
-        transaction.fingerprint
-      );
+  // Build index with 1-2 reads total (instead of per-transaction reads).
+  const { fingerprintToRow } = await getSheetIndex(sheets, spreadsheetId, tabName);
 
-      if (rowNumber) {
-        // Update existing row
-        const updated = await updateTransactionRow(
-          sheets,
-          spreadsheetId,
-          tabName,
-          rowNumber,
-          transaction
-        );
-        if (updated) {
-          result.transactionsUpdated++;
-          result.syncedFingerprints.push(transaction.fingerprint);
-        } else {
-          result.errors.push(`Failed to update transaction ${transaction.fingerprint}`);
-          result.failedFingerprints.push(transaction.fingerprint);
-          result.success = false;
-        }
-      } else {
-        // Append new row
-        const appended = await appendTransactionRow(
-          sheets,
-          spreadsheetId,
-          tabName,
-          transaction
-        );
-        if (appended) {
-          result.transactionsAppended++;
-          result.syncedFingerprints.push(transaction.fingerprint);
-        } else {
-          result.errors.push(`Failed to append transaction ${transaction.fingerprint}`);
-          result.failedFingerprints.push(transaction.fingerprint);
-          result.success = false;
-        }
-      }
+  const updates: Array<{ range: string; values: any[][]; fingerprint: string }> = [];
+  const appends: Array<{ values: any[]; fingerprint: string }> = [];
+
+  for (const tx of transactions) {
+    const row = fingerprintToRow.get(tx.fingerprint);
+    if (row) {
+      updates.push({
+        range: `'${tabName}'!A${row}:H${row}`,
+        values: [toRowData(tx)],
+        fingerprint: tx.fingerprint,
+      });
+    } else {
+      appends.push({ values: toRowData(tx), fingerprint: tx.fingerprint });
+    }
+  }
+
+  // Batch update existing rows (chunked to keep request size sane)
+  const chunkSize = 200;
+  for (let i = 0; i < updates.length; i += chunkSize) {
+    const chunk = updates.slice(i, i + chunkSize);
+    try {
+      await withRetry(
+        () =>
+          sheets.spreadsheets.values.batchUpdate({
+            spreadsheetId,
+            requestBody: {
+              valueInputOption: "RAW",
+              data: chunk.map((u) => ({ range: u.range, values: u.values })),
+            },
+          }),
+        "batchUpdate(rows)"
+      );
+      result.transactionsUpdated += chunk.length;
+      result.syncedFingerprints.push(...chunk.map((c) => c.fingerprint));
     } catch (error: any) {
-      result.errors.push(`Error syncing transaction ${transaction.fingerprint}: ${error.message}`);
-      result.failedFingerprints.push(transaction.fingerprint);
       result.success = false;
+      result.errors.push(`Failed to update ${chunk.length} transaction(s): ${error.message}`);
+      result.failedFingerprints.push(...chunk.map((c) => c.fingerprint));
+    }
+  }
+
+  // Append new rows in a single call (also chunked)
+  for (let i = 0; i < appends.length; i += chunkSize) {
+    const chunk = appends.slice(i, i + chunkSize);
+    try {
+      await withRetry(
+        () =>
+          sheets.spreadsheets.values.append({
+            spreadsheetId,
+            range: `'${tabName}'!A1`,
+            valueInputOption: "RAW",
+            insertDataOption: "INSERT_ROWS",
+            requestBody: {
+              values: chunk.map((c) => c.values),
+            },
+          }),
+        "append(rows)"
+      );
+      result.transactionsAppended += chunk.length;
+      result.syncedFingerprints.push(...chunk.map((c) => c.fingerprint));
+    } catch (error: any) {
+      result.success = false;
+      result.errors.push(`Failed to append ${chunk.length} transaction(s): ${error.message}`);
+      result.failedFingerprints.push(...chunk.map((c) => c.fingerprint));
     }
   }
 

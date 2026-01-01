@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/database/server";
+import { createAdminClient } from "@/lib/database/admin-client";
 import { waitUntil } from "@vercel/functions";
 
 export async function PATCH(
@@ -20,8 +21,11 @@ export async function PATCH(
     const { id } = await params;
     const { category, subcategory, supplier_id } = await request.json();
 
-    // Verify transaction belongs to user's job
-    const { data: transaction, error: txError } = await supabase
+    // Use admin client to bypass RLS on categorized_transactions (ownership is enforced below via job check)
+    const admin = createAdminClient();
+
+    // Fetch transaction job_id
+    const { data: transaction, error: txError } = await admin
       .from("categorized_transactions")
       .select("job_id")
       .eq("id", id)
@@ -44,8 +48,8 @@ export async function PATCH(
 
     if (jobError || !job) {
       return NextResponse.json(
-        { error: "Transaction not found" },
-        { status: 404 }
+        { error: "Forbidden" },
+        { status: 403 }
       );
     }
 
@@ -75,7 +79,7 @@ export async function PATCH(
     // Mark as pending sync since it was updated
     updateData.sync_status = "pending";
 
-    const { error: updateError } = await supabase
+    const { error: updateError } = await admin
       .from("categorized_transactions")
       .update(updateData)
       .eq("id", id);
