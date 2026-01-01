@@ -23,7 +23,19 @@ export async function DELETE(
 ) {
   try {
     const supabase = await createClient();
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    let { data: { user }, error: authError } = await supabase.auth.getUser();
+    // Fallback: accept bearer token when cookies are missing (some browser/env combinations)
+    if ((!user || authError) && request.headers.get("authorization")) {
+      const authHeader = request.headers.get("authorization") || "";
+      const match = authHeader.match(/^Bearer\s+(.+)$/i);
+      if (match?.[1]) {
+        const bearer = match[1];
+        const fallback = await supabase.auth.getUser(bearer);
+        user = fallback.data.user;
+        authError = fallback.error;
+      }
+    }
+
     if (authError || !user) {
       return NextResponse.json(
         { error: "Unauthorized" },
@@ -89,7 +101,19 @@ export async function GET(
 ) {
   try {
     const supabase = await createClient();
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    let { data: { user }, error: authError } = await supabase.auth.getUser();
+
+    // Fallback: accept bearer token when cookies are missing (some browser/env combinations)
+    if ((!user || authError) && request.headers.get("authorization")) {
+      const authHeader = request.headers.get("authorization") || "";
+      const match = authHeader.match(/^Bearer\s+(.+)$/i);
+      if (match?.[1]) {
+        const bearer = match[1];
+        const fallback = await supabase.auth.getUser(bearer);
+        user = fallback.data.user;
+        authError = fallback.error;
+      }
+    }
 
     if (authError || !user) {
       return NextResponse.json(

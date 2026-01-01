@@ -144,6 +144,9 @@ export async function GET() {
     const scopes = [
       'https://www.googleapis.com/auth/spreadsheets',
       'https://www.googleapis.com/auth/drive.file',
+      // Needed for one-click Apps Script installer (container-bound script + triggers)
+      'https://www.googleapis.com/auth/script.projects',
+      'https://www.googleapis.com/auth/script.scriptapp',
       'https://www.googleapis.com/auth/userinfo.email',
     ]
 

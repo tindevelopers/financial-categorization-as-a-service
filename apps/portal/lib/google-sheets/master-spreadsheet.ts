@@ -21,6 +21,9 @@ export interface TransactionRow {
   fingerprint: string;
   transactionId?: string;
   sourceTab?: string;
+  portalModifiedAt?: string;
+  sheetModifiedAt?: string;
+  sheetModifiedBy?: string;
 }
 
 interface MasterSpreadsheetConfig {
@@ -32,6 +35,40 @@ interface MasterSpreadsheetConfig {
 
 const ALL_TRANSACTIONS_TAB = "All Transactions";
 const FINGERPRINTS_TAB = "_Fingerprints";
+
+// Canonical schema for the editable All Transactions tab.
+// Columns A-M (13):
+// A Date
+// B Description
+// C Amount
+// D Category
+// E Subcategory
+// F Confidence
+// G Status
+// H Source
+// I Fingerprint
+// J Transaction ID
+// K Portal Modified At
+// L Sheet Modified At
+// M Sheet Modified By
+const ALL_TRANSACTIONS_HEADER = [
+  "Date",
+  "Description",
+  "Amount",
+  "Category",
+  "Subcategory",
+  "Confidence",
+  "Status",
+  "Source",
+  "Fingerprint",
+  "Transaction ID",
+  "Portal Modified At",
+  "Sheet Modified At",
+  "Sheet Modified By",
+];
+
+const ALL_TRANSACTIONS_RANGE = `'${ALL_TRANSACTIONS_TAB}'!A:M`;
+const ALL_TRANSACTIONS_HEADER_RANGE = `'${ALL_TRANSACTIONS_TAB}'!A1:M1`;
 
 /**
  * Get or create the master spreadsheet in the shared drive
@@ -93,10 +130,10 @@ export async function getOrCreateMasterSpreadsheet(
   // Initialize headers for All Transactions tab
   await sheets.spreadsheets.values.update({
     spreadsheetId,
-    range: `'${ALL_TRANSACTIONS_TAB}'!A1:H1`,
+    range: ALL_TRANSACTIONS_HEADER_RANGE,
     valueInputOption: "RAW",
     requestBody: {
-      values: [["Date", "Description", "Amount", "Category", "Subcategory", "Confidence", "Status", "Source"]],
+      values: [ALL_TRANSACTIONS_HEADER],
     },
   });
 
@@ -140,6 +177,20 @@ export async function getOrCreateMasterSpreadsheet(
             fields: "gridProperties.frozenRowCount",
           },
         },
+        // Hide system columns (I-M) by default to keep the sheet accountant-friendly.
+        // Accountants can still unhide if needed.
+        {
+          updateDimensionProperties: {
+            range: {
+              sheetId: spreadsheet.data.sheets?.[0]?.properties?.sheetId,
+              dimension: "COLUMNS",
+              startIndex: 8, // I (0-based)
+              endIndex: 13, // M (exclusive)
+            },
+            properties: { hiddenByUser: true },
+            fields: "hiddenByUser",
+          },
+        },
       ],
     },
   });
@@ -150,6 +201,198 @@ export async function getOrCreateMasterSpreadsheet(
     sharedDriveId,
     parentFolderId: parentFolderId || undefined,
   };
+}
+
+/**
+ * Ensure the All Transactions tab has the canonical header and hidden system columns.
+ * Safe to call on every export/sync.
+ */
+export async function ensureAllTransactionsSchema(
+  auth: any,
+  spreadsheetId: string
+): Promise<void> {
+  const sheets = google.sheets({ version: "v4", auth });
+
+  // Ensure header exists
+  await sheets.spreadsheets.values.update({
+    spreadsheetId,
+    range: ALL_TRANSACTIONS_HEADER_RANGE,
+    valueInputOption: "RAW",
+    requestBody: {
+      values: [ALL_TRANSACTIONS_HEADER],
+    },
+  });
+
+  // Attempt to hide system columns (I-M). If sheet IDs cannot be resolved, ignore.
+  try {
+    const spreadsheet = await sheets.spreadsheets.get({ spreadsheetId });
+    const allTxSheet = spreadsheet.data.sheets?.find(
+      (s) => s.properties?.title === ALL_TRANSACTIONS_TAB
+    );
+    const sheetId = allTxSheet?.properties?.sheetId;
+    if (sheetId == null) return;
+
+    await sheets.spreadsheets.batchUpdate({
+      spreadsheetId,
+      requestBody: {
+        requests: [
+          {
+            updateDimensionProperties: {
+              range: {
+                sheetId,
+                dimension: "COLUMNS",
+                startIndex: 8,
+                endIndex: 13,
+              },
+              properties: { hiddenByUser: true },
+              fields: "hiddenByUser",
+            },
+          },
+        ],
+      },
+    });
+  } catch {
+    // Non-fatal (permissions / missing sheet / transient)
+  }
+}
+
+export interface UpsertAllTransactionsResult {
+  inserted: number;
+  updated: number;
+  skippedDueToNewerSheetEdit: number;
+}
+
+/**
+ * Upsert rows into the canonical All Transactions tab by transactionId.
+ * Respects LWW by skipping overwrites when sheet_modified_at is newer than portal_modified_at.
+ */
+export async function upsertAllTransactionsRows(
+  auth: any,
+  spreadsheetId: string,
+  rows: TransactionRow[]
+): Promise<UpsertAllTransactionsResult> {
+  const sheets = google.sheets({ version: "v4", auth });
+
+  await ensureAllTransactionsSchema(auth, spreadsheetId);
+
+  // Read existing rows
+  const existingResp = await sheets.spreadsheets.values.get({
+    spreadsheetId,
+    range: ALL_TRANSACTIONS_RANGE,
+  });
+
+  const existingValues = existingResp.data.values || [];
+  // Row 1 is header. Data starts at row 2.
+  const existingById = new Map<
+    string,
+    { rowNumber: number; portalModifiedAt?: string; sheetModifiedAt?: string }
+  >();
+
+  for (let i = 1; i < existingValues.length; i++) {
+    const row = existingValues[i] || [];
+    const transactionId = (row[9] || "").toString().trim(); // J
+    if (!transactionId) continue;
+    existingById.set(transactionId, {
+      rowNumber: i + 1, // 1-indexed in Sheets UI
+      portalModifiedAt: (row[10] || "").toString().trim(), // K
+      sheetModifiedAt: (row[11] || "").toString().trim(), // L
+    });
+  }
+
+  const nowIso = new Date().toISOString();
+
+  // Prepare batch update requests
+  const dataUpdates: sheets_v4.Schema$ValueRange[] = [];
+  let inserted = 0;
+  let updated = 0;
+  let skippedDueToNewerSheetEdit = 0;
+
+  const normalizeIso = (v?: string) => {
+    if (!v) return "";
+    const d = new Date(v);
+    return isNaN(d.getTime()) ? "" : d.toISOString();
+  };
+
+  // Determine append start row (after existing data)
+  const appendStartRow = Math.max(2, existingValues.length + 1);
+  let appendCursor = appendStartRow;
+
+  for (const tx of rows) {
+    const transactionId = (tx.transactionId || "").trim();
+    if (!transactionId) continue; // cannot upsert without stable id
+
+    const existing = existingById.get(transactionId);
+    const portalModifiedAt = nowIso;
+
+    if (existing) {
+      const existingPortal = normalizeIso(existing.portalModifiedAt);
+      const existingSheet = normalizeIso(existing.sheetModifiedAt);
+      if (existingSheet && (!existingPortal || existingSheet > existingPortal)) {
+        // Sheet has a newer edit; do not overwrite on push.
+        skippedDueToNewerSheetEdit++;
+        continue;
+      }
+
+      // Update the existing row (A-M)
+      const rowValues = [
+        tx.date,
+        tx.description,
+        tx.amount,
+        tx.category,
+        tx.subcategory || "",
+        `${Math.round(tx.confidence * 100)}%`,
+        tx.status,
+        tx.sourceTab || "", // Source
+        tx.fingerprint,
+        transactionId,
+        portalModifiedAt,
+        "", // sheet_modified_at cleared on portal push
+        "", // sheet_modified_by cleared on portal push
+      ];
+
+      dataUpdates.push({
+        range: `'${ALL_TRANSACTIONS_TAB}'!A${existing.rowNumber}:M${existing.rowNumber}`,
+        values: [rowValues],
+      });
+      updated++;
+    } else {
+      // Append new row
+      const rowValues = [
+        tx.date,
+        tx.description,
+        tx.amount,
+        tx.category,
+        tx.subcategory || "",
+        `${Math.round(tx.confidence * 100)}%`,
+        tx.status,
+        tx.sourceTab || "",
+        tx.fingerprint,
+        transactionId,
+        portalModifiedAt,
+        "",
+        "",
+      ];
+
+      dataUpdates.push({
+        range: `'${ALL_TRANSACTIONS_TAB}'!A${appendCursor}:M${appendCursor}`,
+        values: [rowValues],
+      });
+      appendCursor++;
+      inserted++;
+    }
+  }
+
+  if (dataUpdates.length > 0) {
+    await sheets.spreadsheets.values.batchUpdate({
+      spreadsheetId,
+      requestBody: {
+        valueInputOption: "RAW",
+        data: dataUpdates,
+      },
+    });
+  }
+
+  return { inserted, updated, skippedDueToNewerSheetEdit };
 }
 
 /**

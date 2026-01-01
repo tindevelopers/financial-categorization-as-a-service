@@ -106,6 +106,9 @@ export async function GET(request: NextRequest) {
     authUrl.searchParams.set("scope", [
       "https://www.googleapis.com/auth/spreadsheets",
       "https://www.googleapis.com/auth/drive.readonly",
+      // Needed for one-click Apps Script installer (container-bound script + triggers)
+      "https://www.googleapis.com/auth/script.projects",
+      "https://www.googleapis.com/auth/script.scriptapp",
       "https://www.googleapis.com/auth/userinfo.email"
     ].join(" "));
     authUrl.searchParams.set("access_type", "offline"); // Get refresh token

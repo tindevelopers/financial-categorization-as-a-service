@@ -13,7 +13,8 @@ import {
   getExistingFingerprints, 
   addUploadTab, 
   appendFingerprints, 
-  rebuildAllTransactionsTab,
+  ensureAllTransactionsSchema,
+  upsertAllTransactionsRows,
   generateTabName,
   findExistingJobTab,
   syncUploadTab,
@@ -456,11 +457,14 @@ export async function POST(
             );
         }
 
-        // Generate fingerprint for each transaction
+        // Generate fingerprint for each transaction (prefer DB transaction_fingerprint)
         const transactionsWithFingerprints: TransactionRow[] = transactions
           .map((tx: any) => {
-            // Create unique fingerprint from date + description + amount
-            const fingerprint = `${tx.date || ''}_${tx.original_description || ''}_${tx.amount || 0}`.toLowerCase().replace(/\s+/g, '_');
+            const fingerprint =
+              (tx.transaction_fingerprint as string | null | undefined) ||
+              `${tx.date || ''}_${tx.original_description || ''}_${tx.amount || 0}`
+                .toLowerCase()
+                .replace(/\s+/g, '_');
             
             return {
               transactionId: tx.id,
@@ -472,6 +476,7 @@ export async function POST(
               confidence: tx.confidence_score || 0,
               status: tx.user_confirmed ? 'Confirmed' : 'Pending',
               fingerprint,
+              sourceTab: "portal", // canonical tab source label
             };
           });
 
@@ -528,8 +533,13 @@ export async function POST(
           await appendFingerprints(auth, masterConfig.spreadsheetId, fingerprintRecords);
         }
 
-        // Rebuild All Transactions tab
-        const { totalRows } = await rebuildAllTransactionsTab(auth, masterConfig.spreadsheetId);
+        // Ensure canonical All Transactions schema and upsert rows (do NOT rebuild/wipe user edits)
+        await ensureAllTransactionsSchema(auth, masterConfig.spreadsheetId);
+        const upsertResult = await upsertAllTransactionsRows(
+          auth,
+          masterConfig.spreadsheetId,
+          transactionsWithFingerprints
+        );
 
         // Store spreadsheet_id in job record for reference
         await supabase
@@ -538,7 +548,9 @@ export async function POST(
           .eq("id", jobId)
           .eq("user_id", user.id);
 
-        console.log(`Google Sheets export: Shared Drive export complete. Tab: ${finalTabName}, Rows: ${rowCount}, Total: ${totalRows}, Sync: ${isSyncUpdate}`);
+        console.log(
+          `Google Sheets export: Shared Drive export complete. Tab: ${finalTabName}, Rows: ${rowCount}, Upsert(inserted=${upsertResult.inserted},updated=${upsertResult.updated},skippedSheetNewer=${upsertResult.skippedDueToNewerSheetEdit}), Sync: ${isSyncUpdate}`
+        );
 
         return NextResponse.json({
           success: true,
@@ -551,7 +563,7 @@ export async function POST(
           isSyncUpdate,
           tabName: finalTabName,
           rowsAppended: rowCount,
-          totalTransactions: totalRows,
+          allTransactionsUpsert: upsertResult,
           authMethod,
           exportMode: "shared_drive",
         });

@@ -9,6 +9,7 @@ import {
   ArrowPathIcon,
   LinkIcon,
 } from '@heroicons/react/24/outline'
+import { SheetSelector } from '@/components/setup/SheetSelector'
 
 function getErrorMessage(errorCode: string, errorDescription?: string | null, expectedRedirectUri?: string | null, usedRedirectUri?: string | null): string {
   let baseMessage = '';
@@ -78,6 +79,10 @@ function GoogleSheetsIntegrationContent() {
   const [error, setError] = useState<string | null>(null)
   const [providerEmail, setProviderEmail] = useState<string | null>(null)
   const [copyStatus, setCopyStatus] = useState<string | null>(null)
+  const [installerSheetId, setInstallerSheetId] = useState<string | null>(null)
+  const [installerSheetName, setInstallerSheetName] = useState<string | null>(null)
+  const [installing, setInstalling] = useState(false)
+  const [installResult, setInstallResult] = useState<string | null>(null)
 
   const checkConnection = useCallback(async () => {
     try {
@@ -201,6 +206,36 @@ function GoogleSheetsIntegrationContent() {
       console.error('Error connecting:', err)
       setError(err.message || 'Failed to initiate connection')
       setConnecting(false)
+    }
+  }
+
+  const handleInstallAppScript = async () => {
+    if (!installerSheetId) return
+    setInstalling(true)
+    setInstallResult(null)
+    try {
+      const resp = await fetch('/api/integrations/google-sheets/install-appscript', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          spreadsheetId: installerSheetId,
+          spreadsheetName: installerSheetName,
+        }),
+      })
+      const data = await resp.json().catch(() => null)
+      if (!resp.ok) {
+        const msg =
+          data?.error_code === 'INSUFFICIENT_SCOPES'
+            ? 'Permissions missing. Click “Switch Account” (or reconnect) to grant Apps Script access, then try again.'
+            : (data?.error || `Install failed (HTTP ${resp.status})`)
+        setInstallResult(msg)
+        return
+      }
+      setInstallResult(data?.message || 'Installed')
+    } catch (e: any) {
+      setInstallResult(e?.message || 'Install failed')
+    } finally {
+      setInstalling(false)
     }
   }
 
@@ -413,56 +448,107 @@ function GoogleSheetsIntegrationContent() {
       )}
 
       {connected ? (
-        <div className="bg-white dark:bg-gray-800 rounded-xl shadow p-6">
-          <div className="flex items-start justify-between">
-            <div className="flex items-start gap-4">
-              <div className="flex-shrink-0">
-                <div className="h-12 w-12 rounded-full bg-green-100 dark:bg-green-900/20 flex items-center justify-center">
-                  <CheckCircleIcon className="h-6 w-6 text-green-600 dark:text-green-400" />
-                </div>
-              </div>
-              <div className="flex-1">
-                <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
-                  Connected to Google Sheets
-                </h3>
-                <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-                  Your Google account is connected and ready to use.
-                </p>
-                {providerEmail && (
-                  <div className="mt-2">
-                    <p className="text-sm text-gray-600 dark:text-gray-300">
-                      Connected as: <span className="font-medium text-gray-900 dark:text-white">{providerEmail}</span>
-                  </p>
+        <div className="space-y-6">
+          <div className="bg-white dark:bg-gray-800 rounded-xl shadow p-6">
+            <div className="flex items-start justify-between">
+              <div className="flex items-start gap-4">
+                <div className="flex-shrink-0">
+                  <div className="h-12 w-12 rounded-full bg-green-100 dark:bg-green-900/20 flex items-center justify-center">
+                    <CheckCircleIcon className="h-6 w-6 text-green-600 dark:text-green-400" />
                   </div>
-                )}
-                <div className="mt-4 flex items-center gap-4 flex-wrap">
-                  <Badge color="green">Active</Badge>
-                  <a
-                    href="/dashboard/settings/spreadsheets"
-                    className="flex items-center gap-1 text-sm text-blue-600 dark:text-blue-400 hover:underline"
-                  >
-                    <LinkIcon className="h-4 w-4" />
-                    View Available Spreadsheets
-                  </a>
+                </div>
+                <div className="flex-1">
+                  <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+                    Connected to Google Sheets
+                  </h3>
+                  <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                    Your Google account is connected and ready to use.
+                  </p>
+                  {providerEmail && (
+                    <div className="mt-2">
+                      <p className="text-sm text-gray-600 dark:text-gray-300">
+                        Connected as: <span className="font-medium text-gray-900 dark:text-white">{providerEmail}</span>
+                    </p>
+                    </div>
+                  )}
+                  <div className="mt-4 flex items-center gap-4 flex-wrap">
+                    <Badge color="green">Active</Badge>
+                    <a
+                      href="/dashboard/settings/spreadsheets"
+                      className="flex items-center gap-1 text-sm text-blue-600 dark:text-blue-400 hover:underline"
+                    >
+                      <LinkIcon className="h-4 w-4" />
+                      View Available Spreadsheets
+                    </a>
+                  </div>
                 </div>
               </div>
-            </div>
-            <div className="flex flex-col gap-2">
+              <div className="flex flex-col gap-2">
+                <Button
+                  onClick={handleSwitchAccount}
+                  outline
+                  className="whitespace-nowrap"
+                >
+                  Switch Account
+                </Button>
               <Button
-                onClick={handleSwitchAccount}
+                onClick={handleDisconnect}
                 outline
-                className="whitespace-nowrap"
+                  className="whitespace-nowrap text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20"
               >
-                Switch Account
+                Disconnect
               </Button>
-            <Button
-              onClick={handleDisconnect}
-              outline
-                className="whitespace-nowrap text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20"
-            >
-              Disconnect
-            </Button>
+              </div>
             </div>
+          </div>
+
+          <div className="bg-white dark:bg-gray-800 rounded-xl shadow p-6">
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+              Initialize bidirectional sync (one click)
+            </h3>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+              Pick the spreadsheet your accountant will edit. We’ll install the Apps Script that stamps per-row edit timestamps
+              in <code>All Transactions</code>.
+            </p>
+
+            <div className="mt-4">
+              <SheetSelector
+                value={installerSheetId}
+                sheetName={installerSheetName}
+                onChange={(id, name) => {
+                  setInstallerSheetId(id)
+                  setInstallerSheetName(name)
+                }}
+                placeholder="Paste Google Sheet URL or ID"
+                disabled={installing}
+              />
+            </div>
+
+            <div className="mt-4 flex items-center gap-3 flex-wrap">
+              <Button
+                onClick={handleInstallAppScript}
+                disabled={!installerSheetId || installing}
+                className="gap-2"
+              >
+                {installing ? (
+                  <>
+                    <ArrowPathIcon className="h-5 w-5 animate-spin" />
+                    Installing…
+                  </>
+                ) : (
+                  'Initialize Sync'
+                )}
+              </Button>
+              {installResult && (
+                <Text className="text-sm text-gray-600 dark:text-gray-300">
+                  {installResult}
+                </Text>
+              )}
+            </div>
+
+            <Text className="text-xs text-gray-400 dark:text-gray-500 mt-3">
+              If you see a permissions error, reconnect Google Sheets so Google can grant the new Apps Script scopes.
+            </Text>
           </div>
         </div>
       ) : (

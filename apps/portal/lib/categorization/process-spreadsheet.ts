@@ -1,6 +1,7 @@
 import * as XLSX from "xlsx";
 import { TransactionMergeService, createMergeService } from "@/lib/sync/TransactionMergeService";
 import type { Transaction as SyncTransaction } from "@/lib/sync/types";
+import { generateTransactionFingerprint } from "@/lib/sync/fingerprint";
 
 export interface Transaction {
   date: Date | string;
@@ -836,14 +837,16 @@ export async function processSpreadsheetFile(
       .eq("id", userId)
       .single();
 
-    // Get bank_account_id from job
+    // Get bank_account_id and any extracted date range from job
     const { data: jobData } = await supabase
       .from("categorization_jobs")
-      .select("bank_account_id")
+      .select("bank_account_id, extracted_date_start, extracted_date_end")
       .eq("id", jobId)
       .single();
 
     const bankAccountId = jobData?.bank_account_id || null;
+    const extractedDateStart = jobData?.extracted_date_start as string | null | undefined;
+    const extractedDateEnd = jobData?.extracted_date_end as string | null | undefined;
 
     await debugLog('process-spreadsheet.ts:315', 'Job data fetched', {
       hasJobData: !!jobData,
@@ -911,26 +914,102 @@ export async function processSpreadsheetFile(
         ...tx,
         category: categorized.category,
         subcategory: categorized.subcategory,
+        confidence_score: categorized.confidenceScore,
       };
     });
 
+    // Determine statement period (prefer filename-extracted range; fallback to min/max tx dates)
+    const txDates = categorizedSyncTransactions
+      .map((t) => (typeof t.date === "string" ? t.date : t.date.toISOString().split("T")[0]))
+      .filter(Boolean)
+      .sort();
+    const minTxDate = txDates[0];
+    const maxTxDate = txDates[txDates.length - 1];
+
+    const periodStart = extractedDateStart || minTxDate;
+    const periodEnd = extractedDateEnd || maxTxDate;
+
+    // Persist computed period back to job if missing
+    try {
+      const clientForJobUpdate = adminClient || supabase;
+      const updatePayload: Record<string, string> = {};
+      if (!extractedDateStart && periodStart) updatePayload.extracted_date_start = periodStart;
+      if (!extractedDateEnd && periodEnd) updatePayload.extracted_date_end = periodEnd;
+      if (Object.keys(updatePayload).length > 0) {
+        await clientForJobUpdate.from("categorization_jobs").update(updatePayload).eq("id", jobId);
+      }
+    } catch {
+      // Non-fatal
+    }
+
+    // Replace-by-period: delete existing transactions for this bank account within the statement period
+    if (bankAccountId && periodStart && periodEnd) {
+      const clientForDeletes = adminClient || supabase;
+      try {
+        // Find all jobs for this user+bank account
+        const { data: jobsForAccount } = await clientForDeletes
+          .from("categorization_jobs")
+          .select("id")
+          .eq("user_id", userId)
+          .eq("bank_account_id", bankAccountId);
+
+        const jobIds = (jobsForAccount || []).map((j: any) => j.id).filter(Boolean);
+        if (jobIds.length > 0) {
+          // Batch deletes (avoid very large IN lists)
+          const CHUNK = 200;
+          for (let i = 0; i < jobIds.length; i += CHUNK) {
+            const chunk = jobIds.slice(i, i + CHUNK);
+            await clientForDeletes
+              .from("categorized_transactions")
+              .delete()
+              .in("job_id", chunk)
+              .gte("date", periodStart)
+              .lte("date", periodEnd);
+          }
+        }
+      } catch (e) {
+        console.warn("Replace-by-period deletion failed (continuing with insert):", e);
+      }
+    }
+
+    // De-dupe within the upload itself (prevents duplicates if the spreadsheet repeats a row)
+    const seen = new Set<string>();
+    let intraFileDuplicates = 0;
+    const uniqueCategorizedSyncTransactions: SyncTransaction[] = [];
+    for (const tx of categorizedSyncTransactions) {
+      const dateStr = typeof tx.date === "string" ? tx.date : tx.date.toISOString().split("T")[0];
+      const fp =
+        tx.transaction_fingerprint ||
+        generateTransactionFingerprint(tx.original_description, tx.amount, dateStr);
+      if (seen.has(fp)) {
+        intraFileDuplicates++;
+        continue;
+      }
+      seen.add(fp);
+      uniqueCategorizedSyncTransactions.push({
+        ...tx,
+        transaction_fingerprint: fp,
+      });
+    }
+
     // Process with merge service (handles duplicate detection)
     console.log('[DEBUG] Starting merge service', {
-      syncTransactionCount: categorizedSyncTransactions.length,
+      syncTransactionCount: uniqueCategorizedSyncTransactions.length,
       jobId,
       bankAccountId,
-      categorizedCount: categorizedSyncTransactions.filter(tx => tx.category).length
+      categorizedCount: uniqueCategorizedSyncTransactions.filter(tx => tx.category).length
     });
     await debugLog('process-spreadsheet.ts:365', 'Starting merge service', {
       syncTransactionCount: categorizedSyncTransactions.length
     });
     
-    const mergeResult = await mergeService.processUploadWithMerge(categorizedSyncTransactions, {
+    // For period-replace uploads, we intentionally skip global duplicate detection (we already deleted by period).
+    const mergeResult = await mergeService.processUploadWithMerge(uniqueCategorizedSyncTransactions, {
       sourceType: "upload",
       sourceIdentifier: `job_${jobId}`,
       jobId: jobId,
       createJob: false,
-      skipDuplicateCheck: false,
+      skipDuplicateCheck: true,
       bankAccountId: bankAccountId,
     });
 
@@ -951,9 +1030,9 @@ export async function processSpreadsheetFile(
     await supabase
       .from("categorization_jobs")
       .update({
-        total_items: transactions.length,
+        total_items: uniqueCategorizedSyncTransactions.length,
         processed_items: mergeResult.inserted,
-        failed_items: mergeResult.skipped > 0 ? mergeResult.skipped : 0,
+        failed_items: intraFileDuplicates,
       })
       .eq("id", jobId);
 
@@ -977,9 +1056,9 @@ export async function processSpreadsheetFile(
 
     return {
       success: true,
-      transactionCount: transactions.length,
+      transactionCount: uniqueCategorizedSyncTransactions.length,
       insertedCount: mergeResult.inserted,
-      skippedCount: mergeResult.skipped,
+      skippedCount: intraFileDuplicates,
       duplicateDetails: duplicateDetails.length > 0 ? duplicateDetails : undefined,
     };
   } catch (error: any) {

@@ -35,6 +35,23 @@ export default function SyncButton({
     const retryDelay = 1000 * (retryCount + 1); // Exponential backoff: 1s, 2s, 3s
 
     try {
+      // Step 0: Pull sheet edits back into the portal first (LWW safety).
+      // This avoids overwriting accountant edits during the push step.
+      try {
+        const pullResp = await fetch(`/api/categorization/sync/google-sheets/pull`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({ jobId }),
+        });
+        if (!pullResp.ok) {
+          const pullData = await pullResp.json().catch(() => null);
+          console.warn("Pull sync failed (continuing to push):", pullData?.error || pullResp.status);
+        }
+      } catch (e) {
+        console.warn("Pull sync request failed (continuing to push):", e);
+      }
+
       const response = await fetch(
         `/api/categorization/jobs/${jobId}/sync-sheets?mode=${mode}`,
         {

@@ -155,6 +155,9 @@ async function createDwdClients(params: { tenantId: string; subjectEmail: string
     scopes: [
       "https://www.googleapis.com/auth/drive",
       "https://www.googleapis.com/auth/spreadsheets",
+      // Needed for one-click Apps Script installer (enterprise DWD path)
+      "https://www.googleapis.com/auth/script.projects",
+      "https://www.googleapis.com/auth/script.scriptapp",
     ],
   });
 

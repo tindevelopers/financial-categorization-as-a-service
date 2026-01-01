@@ -1,7 +1,8 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
-import { ArrowDownTrayIcon, DocumentTextIcon, LinkIcon } from "@heroicons/react/24/outline";
+import React, { useMemo, useState, useEffect } from "react";
+import { ArrowDownTrayIcon, ArrowPathIcon, DocumentTextIcon, LinkIcon } from "@heroicons/react/24/outline";
+import { createBrowserClient } from "@supabase/ssr";
 import ViewSwitcher, {
   getStoredViewPreference,
   type ViewType,
@@ -72,6 +73,10 @@ export default function TransactionReview({ jobId }: TransactionReviewProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [accessToken, setAccessToken] = useState<string | null>(null);
+  const [installingSync, setInstallingSync] = useState(false);
+  const [installSyncMessage, setInstallSyncMessage] = useState<string | null>(null);
   
   // Track if any child view is in editing mode to pause polling
   const [isEditing, setIsEditing] = useState(false);
@@ -107,6 +112,28 @@ export default function TransactionReview({ jobId }: TransactionReviewProps) {
   useEffect(() => {
     setCurrentView(getStoredViewPreference());
   }, []);
+
+  // Load access token for bearer fallback (helps when cookies are not sent in some environments)
+  useEffect(() => {
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+    if (!supabaseUrl || !supabaseAnonKey) return;
+
+    const supabase = createBrowserClient(supabaseUrl, supabaseAnonKey);
+    supabase.auth
+      .getSession()
+      .then(({ data }) => {
+        const token = data.session?.access_token || null;
+        setAccessToken(token);
+      })
+      .catch(() => {
+        // ignore
+      });
+  }, []);
+
+  const authHeaders = useMemo(() => {
+    return accessToken ? { Authorization: `Bearer ${accessToken}` } : {};
+  }, [accessToken]);
 
   // Use ref to track isEditing so polling interval doesn't need to re-create on every edit state change
   const isEditingRef = React.useRef(isEditing);
@@ -244,6 +271,9 @@ export default function TransactionReview({ jobId }: TransactionReviewProps) {
     try {
       const response = await fetch(`/api/categorization/jobs/${jobId}/transactions`, {
         credentials: "include",
+        headers: {
+          ...authHeaders,
+        },
       });
       if (!response.ok) {
         throw new Error("Failed to load transactions");
@@ -300,6 +330,9 @@ export default function TransactionReview({ jobId }: TransactionReviewProps) {
       const response = await fetch(`/api/categorization/transactions/${transactionId}/confirm`, {
         method: "POST",
         credentials: "include",
+        headers: {
+          ...authHeaders,
+        },
       });
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({ error: "Failed to confirm" }));
@@ -365,6 +398,9 @@ export default function TransactionReview({ jobId }: TransactionReviewProps) {
       const txResponse = await fetch(`/api/categorization/jobs/${jobId}/transactions?documentId=${encodeURIComponent(documentId)}`, {
         method: "DELETE",
         credentials: "include",
+        headers: {
+          ...authHeaders,
+        },
       });
       
       if (!txResponse.ok) {        throw new Error("Failed to delete transaction");
@@ -477,6 +513,42 @@ export default function TransactionReview({ jobId }: TransactionReviewProps) {
   const hasDocuments = transactions.some((tx) => tx.document_id && tx.document);
   const isBankStatementJob = transactions.length > 0 && !hasDocuments;
 
+  const filteredTransactions = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return transactions;
+
+    return transactions.filter((tx) => {
+      const parts: Array<string> = [];
+      parts.push(tx.id);
+      parts.push(tx.original_description || "");
+      parts.push(tx.category || "");
+      parts.push(tx.subcategory || "");
+      parts.push(tx.invoice_number || "");
+      parts.push(tx.sync_status || "");
+      parts.push(tx.user_notes || "");
+      parts.push(String(tx.amount ?? ""));
+      parts.push(tx.date || "");
+
+      // Useful when users paste a displayed date (e.g. 31/12/2025)
+      try {
+        parts.push(new Date(tx.date).toLocaleDateString());
+      } catch {
+        // ignore
+      }
+
+      if (tx.document) {
+        parts.push(tx.document.vendor_name || "");
+        parts.push(tx.document.original_filename || "");
+        parts.push(tx.document.invoice_number || "");
+        parts.push(tx.document.order_number || "");
+        parts.push(tx.document.po_number || "");
+        parts.push(tx.document.notes || "");
+      }
+
+      return parts.join(" ").toLowerCase().includes(q);
+    });
+  }, [transactions, searchQuery]);
+
   const handleEditCategory = async (transactionId: string, category: string) => {
     try {
       const response = await fetch(`/api/categorization/transactions/${transactionId}`, {
@@ -497,12 +569,63 @@ export default function TransactionReview({ jobId }: TransactionReviewProps) {
     }
   };
 
+  const handleInitializeSheetSync = async () => {
+    if (installingSync) return;
+    setInstallingSync(true);
+    setInstallSyncMessage(null);
+    try {
+      // Find the spreadsheet this job will export to / is linked to
+      const infoResp = await fetch(`/api/categorization/jobs/${jobId}/export-info`, {
+        credentials: "include",
+        headers: { ...authHeaders },
+      });
+      const info = await infoResp.json().catch(() => null);
+      const spreadsheetId = info?.spreadsheetId as string | null | undefined;
+      const spreadsheetName = info?.spreadsheetName as string | null | undefined;
+
+      if (!infoResp.ok || !spreadsheetId) {
+        setInstallSyncMessage(
+          "No spreadsheet is linked yet. Export to Google Sheets first (or link a default spreadsheet in Settings), then try Initialize Sync."
+        );
+        return;
+      }
+
+      const installResp = await fetch(`/api/integrations/google-sheets/install-appscript`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...authHeaders },
+        credentials: "include",
+        body: JSON.stringify({
+          spreadsheetId,
+          spreadsheetName,
+        }),
+      });
+      const installData = await installResp.json().catch(() => null);
+
+      if (!installResp.ok) {
+        if (installData?.error_code === "INSUFFICIENT_SCOPES") {
+          setInstallSyncMessage(
+            "Permissions missing. Please reconnect Google Sheets (Switch Account / Connect), approve the new permissions, then try Initialize Sync again."
+          );
+          return;
+        }
+        setInstallSyncMessage(installData?.error || `Initialize Sync failed (HTTP ${installResp.status})`);
+        return;
+      }
+
+      setInstallSyncMessage(installData?.message || "Initialized.");
+    } catch (e: any) {
+      setInstallSyncMessage(e?.message || "Initialize Sync failed.");
+    } finally {
+      setInstallingSync(false);
+    }
+  };
+
   const renderView = () => {
     // For bank statement jobs (transactions without documents), use dedicated view
     if (isBankStatementJob) {
       return (
         <BankStatementTableView
-          transactions={transactions}
+          transactions={filteredTransactions}
           onConfirm={handleConfirm}
           onEditCategory={handleEditCategory}
           onEditingChange={setIsEditing}
@@ -512,7 +635,7 @@ export default function TransactionReview({ jobId }: TransactionReviewProps) {
 
     // For invoice jobs (transactions with documents), use invoice views
     const commonProps = {
-      transactions,
+      transactions: filteredTransactions,
       documentUrls,
       onEdit: handleEdit,
       onDelete: handleDelete,
@@ -580,15 +703,56 @@ export default function TransactionReview({ jobId }: TransactionReviewProps) {
 
       {/* View Switcher and Export */}
       <div className="flex items-center justify-between flex-wrap gap-4">
-        <ViewSwitcher currentView={currentView} onViewChange={setCurrentView} />
-        <button
-          onClick={handleExportToGoogleSheets}
-          disabled={exporting || transactions.length === 0}
-          className="flex items-center gap-2 px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          <ArrowDownTrayIcon className="h-5 w-5" />
-          {exporting ? "Exporting..." : "Export to Google Sheets"}
-        </button>
+        <div className="flex items-center gap-3 flex-wrap">
+          <ViewSwitcher currentView={currentView} onViewChange={setCurrentView} />
+          <div className="flex items-center gap-2">
+            <input
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search transactions…"
+              className="w-72 max-w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-white text-sm"
+            />
+            {searchQuery.trim() ? (
+              <button
+                type="button"
+                onClick={() => setSearchQuery("")}
+                className="text-sm text-gray-600 dark:text-gray-300 hover:underline"
+              >
+                Clear
+              </button>
+            ) : null}
+            <span className="text-sm text-gray-500 dark:text-gray-400">
+              Showing {filteredTransactions.length} / {transactions.length}
+            </span>
+          </div>
+        </div>
+        <div className="flex items-center gap-3 flex-wrap justify-end">
+          <div className="flex flex-col items-end gap-1">
+            <button
+              onClick={handleInitializeSheetSync}
+              disabled={installingSync}
+              className="flex items-center gap-2 px-4 py-3 bg-white dark:bg-gray-900 text-gray-900 dark:text-white border border-gray-300 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed"
+              title="Install the Apps Script that stamps row edit timestamps so accountant edits sync back to FinCat"
+            >
+              <ArrowPathIcon className={`h-5 w-5 ${installingSync ? "animate-spin" : ""}`} />
+              {installingSync ? "Initializing..." : "Initialize Sync"}
+            </button>
+            {installSyncMessage && (
+              <span className="text-xs text-gray-500 dark:text-gray-400 text-right max-w-[420px]">
+                {installSyncMessage}
+              </span>
+            )}
+          </div>
+
+          <button
+            onClick={handleExportToGoogleSheets}
+            disabled={exporting || transactions.length === 0}
+            className="flex items-center gap-2 px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <ArrowDownTrayIcon className="h-5 w-5" />
+            {exporting ? "Exporting..." : "Export to Google Sheets"}
+          </button>
+        </div>
       </div>
 
       {/* Selected View */}

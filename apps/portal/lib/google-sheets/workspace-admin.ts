@@ -133,6 +133,9 @@ export async function createWorkspaceAdminSheetsClient(
       scopes: [
         "https://www.googleapis.com/auth/spreadsheets",
         "https://www.googleapis.com/auth/drive", // Required for Shared Drives + folder/file creation
+        // Needed for one-click Apps Script installer (workspace admin DWD path)
+        "https://www.googleapis.com/auth/script.projects",
+        "https://www.googleapis.com/auth/script.scriptapp",
       ],
       subject: subjectEmail, // Impersonate this user (required for DWD)
     });
