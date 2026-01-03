@@ -24,6 +24,7 @@ import type { Database } from "@/core/database";
 type Tenant = Database["public"]["Tables"]["tenants"]["Row"] & {
   userCount?: number;
   workspaceCount?: number;
+  tenant_type?: string;
 };
 
 interface TenantSettings {
