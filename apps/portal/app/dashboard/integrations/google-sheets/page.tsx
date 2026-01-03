@@ -86,8 +86,14 @@ function GoogleSheetsIntegrationContent() {
 
   const checkConnection = useCallback(async () => {
     try {
+      // #region agent log
+      fetch('http://127.0.0.1:7243/ingest/0c1b14f8-8590-4e1a-a5b8-7e9645e1d13e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'integrations/google-sheets/page.tsx:87',message:'checkConnection started',data:{timestamp:Date.now()},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+      // #endregion
       setLoading(true)
       const response = await fetch('/api/integrations/google-sheets/list')
+      // #region agent log
+      fetch('http://127.0.0.1:7243/ingest/0c1b14f8-8590-4e1a-a5b8-7e9645e1d13e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'integrations/google-sheets/page.tsx:90',message:'checkConnection response received',data:{status:response.status,ok:response.ok,timestamp:Date.now()},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+      // #endregion
       
       if (response.status === 401) {
         // Unauthorized - user not logged in, but still show the page
@@ -102,8 +108,14 @@ function GoogleSheetsIntegrationContent() {
       let data: any = null
       try {
         data = await response.json()
+        // #region agent log
+        fetch('http://127.0.0.1:7243/ingest/0c1b14f8-8590-4e1a-a5b8-7e9645e1d13e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'integrations/google-sheets/page.tsx:104',message:'checkConnection data parsed',data:{success:data.success,error_code:data.error_code,hasError:!!data.error,timestamp:Date.now()},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+        // #endregion
       } catch {
         // If JSON parsing fails, set a generic error
+        // #region agent log
+        fetch('http://127.0.0.1:7243/ingest/0c1b14f8-8590-4e1a-a5b8-7e9645e1d13e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'integrations/google-sheets/page.tsx:106',message:'checkConnection JSON parse failed',data:{timestamp:Date.now()},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+        // #endregion
         setConnected(false)
         setError('Failed to parse server response')
         setProviderEmail(null)
@@ -138,12 +150,18 @@ function GoogleSheetsIntegrationContent() {
         setProviderEmail(null)
       }
     } catch (err: any) {
+      // #region agent log
+      fetch('http://127.0.0.1:7243/ingest/0c1b14f8-8590-4e1a-a5b8-7e9645e1d13e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'integrations/google-sheets/page.tsx:140',message:'checkConnection exception',data:{error:err?.message||String(err),timestamp:Date.now()},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+      // #endregion
       console.error('Error checking connection:', err)
       setConnected(false)
       setError('Failed to check connection status')
       setProviderEmail(null)
     } finally {
       setLoading(false)
+      // #region agent log
+      fetch('http://127.0.0.1:7243/ingest/0c1b14f8-8590-4e1a-a5b8-7e9645e1d13e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'integrations/google-sheets/page.tsx:146',message:'checkConnection finally - loading set to false',data:{timestamp:Date.now()},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+      // #endregion
     }
   }, [])
 

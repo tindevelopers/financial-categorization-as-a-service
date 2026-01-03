@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 import { Heading, Text, Button, Badge } from '@/components/catalyst'
 import { 
   DocumentTextIcon,
@@ -9,6 +10,7 @@ import {
   CheckCircleIcon,
   LinkIcon,
   ClipboardDocumentIcon,
+  ChevronLeftIcon,
 } from '@heroicons/react/24/outline'
 
 interface SpreadsheetTab {
@@ -29,10 +31,13 @@ interface Spreadsheet {
 }
 
 export default function SpreadsheetsPage() {
+  const router = useRouter()
   const [spreadsheets, setSpreadsheets] = useState<Spreadsheet[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [refreshing, setRefreshing] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [selectedSheetId, setSelectedSheetId] = useState<string | null>(null)
 
   useEffect(() => {
     fetchSpreadsheets()
@@ -88,6 +93,53 @@ export default function SpreadsheetsPage() {
     // You could add a toast notification here
   }
 
+  const handleSelectSheet = async (spreadsheetId: string, spreadsheetName: string) => {
+    // #region agent log
+    fetch('http://127.0.0.1:7243/ingest/0c1b14f8-8590-4e1a-a5b8-7e9645e1d13e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'settings/spreadsheets/page.tsx:handleSelectSheet',message:'handleSelectSheet called from spreadsheets page',data:{spreadsheetId,spreadsheetName,timestamp:Date.now()},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+    // #endregion
+    setSaving(true)
+    setSelectedSheetId(spreadsheetId)
+    try {
+      const response = await fetch('/api/integrations/google-sheets/preferences', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          spreadsheet_id: spreadsheetId,
+          spreadsheet_name: spreadsheetName,
+          sheet_tab_name: 'Transactions',
+        }),
+      })
+      // #region agent log
+      fetch('http://127.0.0.1:7243/ingest/0c1b14f8-8590-4e1a-a5b8-7e9645e1d13e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'settings/spreadsheets/page.tsx:handleSelectSheet',message:'Preferences API response',data:{ok:response.ok,status:response.status,timestamp:Date.now()},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+      // #endregion
+
+      if (response.ok) {
+        const data = await response.json()
+        // #region agent log
+        fetch('http://127.0.0.1:7243/ingest/0c1b14f8-8590-4e1a-a5b8-7e9645e1d13e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'settings/spreadsheets/page.tsx:handleSelectSheet',message:'Sheet selected successfully',data:{hasPreferences:!!data.preferences,timestamp:Date.now()},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+        // #endregion
+        alert('Sheet selected as default export sheet!')
+        router.push('/dashboard/settings')
+      } else {
+        const error = await response.json()
+        // #region agent log
+        fetch('http://127.0.0.1:7243/ingest/0c1b14f8-8590-4e1a-a5b8-7e9645e1d13e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'settings/spreadsheets/page.tsx:handleSelectSheet',message:'Sheet selection failed',data:{status:response.status,error:error.error||'unknown',timestamp:Date.now()},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+        // #endregion
+        alert(error.error || 'Failed to select sheet')
+        setSelectedSheetId(null)
+      }
+    } catch (error) {
+      // #region agent log
+      fetch('http://127.0.0.1:7243/ingest/0c1b14f8-8590-4e1a-a5b8-7e9645e1d13e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'settings/spreadsheets/page.tsx:handleSelectSheet',message:'Sheet selection exception',data:{error:error instanceof Error?error.message:String(error),timestamp:Date.now()},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+      // #endregion
+      console.error('Failed to select sheet:', error)
+      alert('Failed to select sheet')
+      setSelectedSheetId(null)
+    } finally {
+      setSaving(false)
+    }
+  }
+
   const formatDate = (dateString?: string) => {
     if (!dateString) return 'Unknown'
     return new Date(dateString).toLocaleDateString('en-US', {
@@ -119,11 +171,20 @@ export default function SpreadsheetsPage() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <div>
-          <Heading>Available Spreadsheets</Heading>
-          <Text className="mt-2">
-            View all Google Sheets you have access to. Use the spreadsheet ID when configuring bank accounts.
-          </Text>
+        <div className="flex items-center gap-4">
+          <button
+            onClick={() => router.push('/dashboard/settings')}
+            className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
+            title="Back to Settings"
+          >
+            <ChevronLeftIcon className="h-5 w-5 text-gray-600 dark:text-gray-400" />
+          </button>
+          <div>
+            <Heading>Available Spreadsheets</Heading>
+            <Text className="mt-2">
+              View all Google Sheets you have access to. Click "Select as Default" to set a spreadsheet as your default export sheet.
+            </Text>
+          </div>
         </div>
         <Button onClick={handleRefresh} disabled={refreshing} className="gap-2">
           <ArrowPathIcon className={`h-5 w-5 ${refreshing ? 'animate-spin' : ''}`} />
@@ -228,7 +289,7 @@ export default function SpreadsheetsPage() {
                       </div>
                     )}
 
-                    <div className="mt-4 flex items-center gap-4">
+                    <div className="mt-4 flex items-center gap-4 flex-wrap">
                       <div className="flex items-center gap-2">
                         <Text className="text-xs font-mono text-gray-600 dark:text-gray-400">
                           ID: {spreadsheet.id}
@@ -250,6 +311,21 @@ export default function SpreadsheetsPage() {
                         <LinkIcon className="h-4 w-4" />
                         Open in Google Sheets
                       </a>
+                      <Button
+                        onClick={() => handleSelectSheet(spreadsheet.id, spreadsheet.name)}
+                        disabled={saving || selectedSheetId === spreadsheet.id}
+                        color="blue"
+                        className="gap-2"
+                      >
+                        {saving && selectedSheetId === spreadsheet.id ? (
+                          <>
+                            <ArrowPathIcon className="h-4 w-4 animate-spin" />
+                            Selecting...
+                          </>
+                        ) : (
+                          'Select as Default'
+                        )}
+                      </Button>
                     </div>
                   </div>
                   <div className="ml-4">

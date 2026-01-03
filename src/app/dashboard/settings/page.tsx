@@ -157,6 +157,9 @@ export default function SettingsPage() {
 
   const loadSettings = async () => {
     try {
+      // #region agent log
+      fetch('http://127.0.0.1:7243/ingest/0c1b14f8-8590-4e1a-a5b8-7e9645e1d13e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'settings/page.tsx:158',message:'loadSettings started',data:{timestamp:Date.now()},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+      // #endregion
       // Load entity type and tenant settings
       const settingsResponse = await fetch('/api/tenant-settings/integrations')
       if (settingsResponse.ok) {
@@ -192,9 +195,18 @@ export default function SettingsPage() {
       }
 
       // Load Google Sheets connection status
+      // #region agent log
+      fetch('http://127.0.0.1:7243/ingest/0c1b14f8-8590-4e1a-a5b8-7e9645e1d13e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'settings/page.tsx:195',message:'Starting Google Sheets status check',data:{timestamp:Date.now()},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+      // #endregion
       const gsResponse = await fetch('/api/integrations/google-sheets/status')
+      // #region agent log
+      fetch('http://127.0.0.1:7243/ingest/0c1b14f8-8590-4e1a-a5b8-7e9645e1d13e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'settings/page.tsx:196',message:'Google Sheets status response received',data:{ok:gsResponse.ok,status:gsResponse.status,timestamp:Date.now()},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+      // #endregion
       if (gsResponse.ok) {
         const gsData = await gsResponse.json()
+        // #region agent log
+        fetch('http://127.0.0.1:7243/ingest/0c1b14f8-8590-4e1a-a5b8-7e9645e1d13e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'settings/page.tsx:198',message:'Google Sheets status data parsed',data:{connected:gsData.connected,email:gsData.email,timestamp:Date.now()},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+        // #endregion
         setIntegrations(prev => ({ ...prev, googleSheets: gsData }))
       }
 
@@ -222,10 +234,19 @@ export default function SettingsPage() {
         setTeamInvitations(teamData.invitations || [])
         setTeamMembers(teamData.teamMembers || [])
       }
+      // #region agent log
+      fetch('http://127.0.0.1:7243/ingest/0c1b14f8-8590-4e1a-a5b8-7e9645e1d13e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'settings/page.tsx:228',message:'loadSettings completed successfully',data:{timestamp:Date.now()},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+      // #endregion
     } catch (error) {
+      // #region agent log
+      fetch('http://127.0.0.1:7243/ingest/0c1b14f8-8590-4e1a-a5b8-7e9645e1d13e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'settings/page.tsx:226',message:'loadSettings error',data:{error:error instanceof Error?error.message:String(error),timestamp:Date.now()},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+      // #endregion
       console.error('Failed to load settings:', error)
     } finally {
       setLoading(false)
+      // #region agent log
+      fetch('http://127.0.0.1:7243/ingest/0c1b14f8-8590-4e1a-a5b8-7e9645e1d13e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'settings/page.tsx:228',message:'loadSettings finally block - loading set to false',data:{timestamp:Date.now()},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+      // #endregion
     }
   }
 
@@ -362,10 +383,21 @@ export default function SettingsPage() {
   }
 
   const handleSelectSheet = async (spreadsheetId: string) => {
+    // #region agent log
+    fetch('http://127.0.0.1:7243/ingest/0c1b14f8-8590-4e1a-a5b8-7e9645e1d13e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'settings/page.tsx:364',message:'handleSelectSheet called',data:{spreadsheetId,spreadsheetsCount:spreadsheets.length,timestamp:Date.now()},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+    // #endregion
     const sheet = spreadsheets.find(s => s.id === spreadsheetId)
-    if (!sheet) return
+    if (!sheet) {
+      // #region agent log
+      fetch('http://127.0.0.1:7243/ingest/0c1b14f8-8590-4e1a-a5b8-7e9645e1d13e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'settings/page.tsx:366',message:'Sheet not found in spreadsheets array',data:{spreadsheetId,timestamp:Date.now()},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+      // #endregion
+      return
+    }
 
     setSaving(true)
+    // #region agent log
+    fetch('http://127.0.0.1:7243/ingest/0c1b14f8-8590-4e1a-a5b8-7e9645e1d13e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'settings/page.tsx:368',message:'Starting API call to save preferences',data:{spreadsheetId,spreadsheetName:sheet.name,timestamp:Date.now()},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+    // #endregion
     try {
       const response = await fetch('/api/integrations/google-sheets/preferences', {
         method: 'POST',
@@ -376,22 +408,37 @@ export default function SettingsPage() {
           sheet_tab_name: 'Transactions',
         }),
       })
+      // #region agent log
+      fetch('http://127.0.0.1:7243/ingest/0c1b14f8-8590-4e1a-a5b8-7e9645e1d13e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'settings/page.tsx:380',message:'Preferences API response received',data:{ok:response.ok,status:response.status,timestamp:Date.now()},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+      // #endregion
 
       if (response.ok) {
         const data = await response.json()
+        // #region agent log
+        fetch('http://127.0.0.1:7243/ingest/0c1b14f8-8590-4e1a-a5b8-7e9645e1d13e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'settings/page.tsx:381',message:'Preferences saved successfully',data:{hasPreferences:!!data.preferences,timestamp:Date.now()},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+        // #endregion
         setSheetPreferences(data.preferences)
         setSelectedSheet(spreadsheetId)
         setShowSheetPicker(false)
         alert('Sheet selection saved!')
       } else {
         const error = await response.json()
+        // #region agent log
+        fetch('http://127.0.0.1:7243/ingest/0c1b14f8-8590-4e1a-a5b8-7e9645e1d13e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'settings/page.tsx:387',message:'Preferences API error',data:{status:response.status,error:error.error||'unknown',timestamp:Date.now()},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+        // #endregion
         alert(error.error || 'Failed to save sheet selection')
       }
     } catch (error) {
+      // #region agent log
+      fetch('http://127.0.0.1:7243/ingest/0c1b14f8-8590-4e1a-a5b8-7e9645e1d13e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'settings/page.tsx:390',message:'handleSelectSheet exception',data:{error:error instanceof Error?error.message:String(error),timestamp:Date.now()},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+      // #endregion
       console.error('Failed to save sheet:', error)
       alert('Failed to save sheet selection')
     } finally {
       setSaving(false)
+      // #region agent log
+      fetch('http://127.0.0.1:7243/ingest/0c1b14f8-8590-4e1a-a5b8-7e9645e1d13e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'settings/page.tsx:394',message:'handleSelectSheet completed',data:{timestamp:Date.now()},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+      // #endregion
     }
   }
 
