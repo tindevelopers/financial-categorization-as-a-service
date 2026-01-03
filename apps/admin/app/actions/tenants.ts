@@ -169,6 +169,44 @@ export interface CreateTenantData {
 }
 
 /**
+ * Get a single tenant by ID (platform-admin only)
+ */
+export async function getTenantById(tenantId: string): Promise<Tenant | null> {
+  await requirePermission("tenants.read");
+
+  const adminClient = createAdminClient();
+
+  const { data: tenant, error } = await (adminClient.from("tenants") as any)
+    .select("*")
+    .eq("id", tenantId)
+    .single();
+
+  if (error) {
+    console.error("[getTenantById] Error fetching tenant:", error);
+    throw error;
+  }
+
+  if (!tenant) return null;
+
+  // Fetch counts to display in admin UI
+  const { count: userCount } = await (adminClient
+    .from("users")
+    .select("id", { count: "exact", head: true }) as any)
+    .eq("tenant_id", tenantId);
+
+  const { count: workspaceCount } = await (adminClient
+    .from("workspaces")
+    .select("id", { count: "exact", head: true }) as any)
+    .eq("tenant_id", tenantId);
+
+  return {
+    ...(tenant as Tenant),
+    userCount: userCount ?? 0,
+    workspaceCount: workspaceCount ?? 0,
+  };
+}
+
+/**
  * Create a new tenant
  * Only Platform Admins can create tenants
  */

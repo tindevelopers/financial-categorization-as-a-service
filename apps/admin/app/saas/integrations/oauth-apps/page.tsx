@@ -1,14 +1,15 @@
 "use client";
+import Link from "next/link";
 import PageBreadcrumb from "@/components/common/PageBreadCrumb";
 import Button from "@/components/ui/button/Button";
 import { Modal } from "@/components/ui/modal";
 import { useModal } from "@/hooks/useModal";
 import Input from "@/components/form/input/InputField";
 import Label from "@/components/form/Label";
-import { 
-  PlusIcon, 
-  PencilIcon, 
-  EyeIcon, 
+import {
+  PlusIcon,
+  PencilIcon,
+  EyeIcon,
   EyeSlashIcon,
   BuildingOffice2Icon,
   CheckCircleIcon,
@@ -288,12 +289,12 @@ export default function EnterpriseOAuthManagementPage() {
                   No tenants found. Tenants appear here if they are marked as Enterprise or have BYO enabled (Google Sheets integration settings).
                 </p>
                 <div className="mt-4 flex items-center justify-center gap-2">
-                  <a
+                  <Link
                     className="text-sm font-medium text-brand-600 hover:underline dark:text-brand-400"
                     href="/saas/admin/entity/tenant-management"
                   >
                     Go to Tenant Management
-                  </a>
+                  </Link>
                 </div>
               </div>
             ) : (
