@@ -199,21 +199,46 @@ export async function middleware(request: NextRequest) {
               .eq('id', user.id)
               .single();
 
+            const tenantId = userData?.tenant_id ?? null;
+
             const roleName = (userData?.roles as any)?.name;
             const isPlatformAdmin = roleName === 'Platform Admin' && !userData?.tenant_id;
 
             // Platform Admins bypass company setup check
             if (!isPlatformAdmin) {
+              // Load tenant subscription type to detect enterprise
+              let tenantSubscription: string | null = null;
+              if (tenantId) {
+                try {
+                  const { data: tenantRow } = await supabase
+                    .from('tenants')
+                    .select('subscription_type')
+                    .eq('id', tenantId)
+                    .maybeSingle();
+                  tenantSubscription = tenantRow?.subscription_type ?? null;
+                } catch (tenantErr) {
+                  console.error('Error fetching tenant subscription_type:', tenantErr);
+                }
+              }
+
+              const isEnterpriseTenant = tenantSubscription === 'enterprise';
+
               // Check if user has completed company setup
               // Also filter by tenant_id if user has one to ensure we get the right company profile
-              const { data: companies, error } = await supabase
+              let companyQuery = supabase
                 .from('company_profiles')
-                .select('id, setup_completed, tenant_id')
+                .select('id, setup_completed, tenant_id, setup_step')
                 .eq('user_id', user.id)
                 .order('created_at', { ascending: false })
                 .limit(1);
+
+              if (tenantId) {
+                companyQuery = companyQuery.eq('tenant_id', tenantId);
+              }
+
+              const { data: companies, error } = await companyQuery;
               maybeLogEnterprise("companySetup.check", {
-                userTenantId: userData?.tenant_id ?? null,
+                userTenantId: tenantId,
                 hasError: !!error,
                 error: (error as any)?.message,
                 companiesCount: companies?.length ?? 0,
@@ -238,9 +263,68 @@ export async function middleware(request: NextRequest) {
                 willRedirect: !hasCompany || !isSetupCompleted,
               });
               
-              if (!hasCompany || !isSetupCompleted) {
+              let finalHasCompany = hasCompany;
+              let finalIsSetupCompleted = isSetupCompleted;
+
+              // Enterprise tenants: auto-create/complete company profile to avoid setup loop
+              if (isEnterpriseTenant && (!hasCompany || !isSetupCompleted)) {
+                let rechecked: { id: string; setup_completed: boolean } | null = null;
+                try {
+                  if (hasCompany && companies?.[0]?.id) {
+                    // Update existing profile to mark completed
+                    await supabase
+                      .from('company_profiles')
+                      .update({
+                        setup_completed: true,
+                        setup_step: (companies as any)?.[0]?.setup_step ?? 5,
+                      })
+                      .eq('id', companies[0].id)
+                      .eq('user_id', user.id);
+                  } else {
+                    // Create minimal profile for enterprise tenant
+                    await supabase
+                      .from('company_profiles')
+                      .insert({
+                        user_id: user.id,
+                        tenant_id: tenantId,
+                        company_name: user.email || 'Enterprise Company',
+                        company_type: 'limited_company',
+                        default_currency: 'GBP',
+                        setup_completed: true,
+                        setup_step: 5,
+                      });
+                  }
+
+                  // Re-fetch to verify completion
+                  const { data: recheckCompanies } = await supabase
+                    .from('company_profiles')
+                    .select('id, setup_completed')
+                    .eq('user_id', user.id)
+                    .eq('tenant_id', tenantId ?? undefined)
+                    .order('created_at', { ascending: false })
+                    .limit(1);
+
+                  if (recheckCompanies && recheckCompanies.length > 0) {
+                    rechecked = recheckCompanies[0] as any;
+                  }
+
+                  const recheckCompleted = rechecked?.setup_completed === true;
+                  if (recheckCompleted) {
+                    finalHasCompany = true;
+                    finalIsSetupCompleted = true;
+                    maybeLogEnterprise("companySetup.autocomplete.enterprise", {
+                      tenantId,
+                      companyId: rechecked?.id,
+                    });
+                  }
+                } catch (enterpriseErr) {
+                  console.error('Enterprise auto-complete failed:', enterpriseErr);
+                }
+              }
+
+              if (!finalHasCompany || !finalIsSetupCompleted) {
                 maybeLogEnterprise("redirect.toDashboardSetup", {
-                  reason: !hasCompany ? "no_companies" : !isSetupCompleted ? "setup_not_completed" : "unknown",
+                  reason: !finalHasCompany ? "no_companies" : !finalIsSetupCompleted ? "setup_not_completed" : "unknown",
                 });
                 return NextResponse.redirect(new URL('/dashboard/setup', request.url));
               }

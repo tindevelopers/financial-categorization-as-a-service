@@ -219,23 +219,42 @@ export default function SettingsPage() {
 
   const loadSpreadsheets = async () => {
     if (!integrations.googleSheets.connected) return
-    
+
     setLoadingSheets(true)
     try {
-      const response = await fetch('/api/integrations/google-sheets/list-sheets')
-      if (response.ok) {
-        const data = await response.json()
+      const response = await fetch('/api/integrations/google-sheets/list')
+      const data = await response.json().catch(() => ({}))
+
+      if (response.ok && data.success) {
         setSpreadsheets(data.spreadsheets || [])
         setShowSheetPicker(true)
-      } else {
-        const error = await response.json()
-        if (error.needsReconnect) {
-          alert('Your Google connection has expired. Please reconnect.')
-          setIntegrations(prev => ({ ...prev, googleSheets: { connected: false } }))
-        }
+        return
       }
+
+      // Handle known error codes from the modern list endpoint
+      const errorCode = data.error_code || data.error
+      if (errorCode === 'TOKEN_DECRYPT_FAILED' || data.needsReconnect) {
+        alert('Your Google connection has expired. Please reconnect Google Sheets.')
+        setIntegrations(prev => ({ ...prev, googleSheets: { connected: false } }))
+        return
+      }
+
+      if (errorCode === 'SHARED_DRIVE_NOT_PROVISIONED') {
+        alert('Company Shared Drive is not provisioned yet. Please complete Company Setup.')
+        return
+      }
+
+      if (errorCode === 'NOT_CONNECTED') {
+        setIntegrations(prev => ({ ...prev, googleSheets: { connected: false } }))
+        return
+      }
+
+      alert(data.error || 'Failed to load spreadsheets. Please reconnect Google Sheets.')
+      setIntegrations(prev => ({ ...prev, googleSheets: { connected: false } }))
     } catch (error) {
       console.error('Failed to load spreadsheets:', error)
+      alert('Failed to load spreadsheets. Network error.')
+      setIntegrations(prev => ({ ...prev, googleSheets: { connected: false } }))
     } finally {
       setLoadingSheets(false)
     }
