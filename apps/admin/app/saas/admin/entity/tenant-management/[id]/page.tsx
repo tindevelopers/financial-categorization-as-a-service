@@ -131,7 +131,6 @@ export default function TenantManagementDetailPage() {
 
   const googleSettings = tenantSettings.find((s) => s.provider === "google_sheets");
   const airtableSettings = tenantSettings.find((s) => s.provider === "airtable");
-  const isCompany = tenant.tenant_type === "company";
 
   return (
     <div className="space-y-6 p-6">
