@@ -15,6 +15,7 @@ export default function ConsumerSignUpForm() {
   const [isChecked, setIsChecked] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [errorCode, setErrorCode] = useState<string | null>(null);
   
   const [formData, setFormData] = useState({
     firstName: "",
@@ -28,6 +29,7 @@ export default function ConsumerSignUpForm() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+    setErrorCode(null);
     setIsLoading(true);
 
     if (!isChecked) {
@@ -47,6 +49,12 @@ export default function ConsumerSignUpForm() {
         region: "us-east-1",
       });
 
+      if (!result.ok) {
+        setErrorCode(result.error.code);
+        setError(result.error.message);
+        return;
+      }
+
       // Redirect to dashboard after successful signup (consumer flow)
       router.push("/dashboard");
     } catch (err) {
@@ -62,7 +70,17 @@ export default function ConsumerSignUpForm() {
     <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-8">
       {error && (
         <div className="mb-6 p-4 text-sm text-red-600 bg-red-50 rounded-lg dark:bg-red-900/20 dark:text-red-400">
-          {error}
+          <div className="flex items-center justify-between gap-3">
+            <span>{error}</span>
+            {errorCode === "ACCOUNT_EXISTS" && (
+              <Link
+                href="/signin"
+                className="text-red-700 dark:text-red-300 underline underline-offset-2 whitespace-nowrap"
+              >
+                Sign in
+              </Link>
+            )}
+          </div>
         </div>
       )}
       <form onSubmit={handleSubmit} className="space-y-5">

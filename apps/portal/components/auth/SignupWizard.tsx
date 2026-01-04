@@ -87,6 +87,7 @@ export default function SignupWizard() {
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [errorCode, setErrorCode] = useState<string | null>(null);
   const [passwordStrength, setPasswordStrength] = useState(0);
   const [agreedToTerms, setAgreedToTerms] = useState(false);
 
@@ -220,6 +221,7 @@ export default function SignupWizard() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+    setErrorCode(null);
     setIsLoading(true);
 
     if (!agreedToTerms) {
@@ -262,6 +264,12 @@ export default function SignupWizard() {
         subscriptionType: selectedSubscriptionType,
         region: "us-east-1",
       });
+
+      if (!result.ok) {
+        setErrorCode(result.error.code);
+        setError(result.error.message);
+        return;
+      }
 
       if (typeof window !== "undefined") {
         sessionStorage.removeItem("selectedSubscriptionType");
@@ -424,7 +432,15 @@ export default function SignupWizard() {
                   clipRule="evenodd"
                 />
               </svg>
-              {error}
+              <span className="flex-1">{error}</span>
+              {errorCode === "ACCOUNT_EXISTS" && (
+                <Link
+                  href="/signin"
+                  className="text-red-700 dark:text-red-300 underline underline-offset-2"
+                >
+                  Sign in
+                </Link>
+              )}
             </div>
           )}
 

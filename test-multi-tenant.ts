@@ -62,8 +62,12 @@ async function testMultiTenant() {
         tenantName: "Acme Corp",
         tenantDomain: "acme.com",
       });
-      console.log("✅ User signed up:", signupResult.user?.email);
-      console.log("   Tenant ID:", signupResult.user?.tenant_id);
+      if (!signupResult.ok) {
+        console.log(`⚠️  Signup failed: ${signupResult.error.code} - ${signupResult.error.message}`);
+      } else {
+        console.log("✅ User signed up:", signupResult.data.user?.email);
+        console.log("   Tenant ID:", signupResult.data.user?.tenant_id);
+      }
     } catch (err) {
       console.log("⚠️  Signup test skipped (user may already exist)");
     }

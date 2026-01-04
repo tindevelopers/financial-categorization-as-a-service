@@ -78,14 +78,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               </SidebarItem>
 
               <SidebarItem
-                href="/dashboard/setup"
-                current={pathname === '/dashboard/setup'}
-              >
-                <BuildingOfficeIcon />
-                <SidebarLabel>Company Setup</SidebarLabel>
-              </SidebarItem>
-
-              <SidebarItem
                 href="/dashboard/transactions"
                 current={pathname.startsWith('/dashboard/transactions')}
               >
@@ -153,10 +145,19 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
               <SidebarItem
                 href="/dashboard/settings"
-                current={pathname.startsWith('/dashboard/settings')}
+                current={pathname.startsWith('/dashboard/settings') || pathname === '/dashboard/setup'}
               >
                 <Cog6ToothIcon />
                 <SidebarLabel>Settings</SidebarLabel>
+              </SidebarItem>
+
+              <SidebarItem
+                href="/dashboard/setup"
+                current={pathname === '/dashboard/setup'}
+                className="ml-6"
+              >
+                <BuildingOfficeIcon />
+                <SidebarLabel>Company Setup</SidebarLabel>
               </SidebarItem>
             </SidebarSection>
           </SidebarBody>

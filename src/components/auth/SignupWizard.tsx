@@ -88,6 +88,7 @@ export default function SignupWizard() {
   const [isChecked, setIsChecked] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [errorCode, setErrorCode] = useState<string | null>(null);
   const [passwordStrength, setPasswordStrength] = useState(0);
 
   const [formData, setFormData] = useState({
@@ -183,6 +184,7 @@ export default function SignupWizard() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+    setErrorCode(null);
     setIsLoading(true);
 
     if (!isChecked) {
@@ -198,7 +200,7 @@ export default function SignupWizard() {
     }
 
     try {
-      await signUp({
+      const result = await signUp({
         email: formData.email,
         password: formData.password,
         fullName: `${formData.firstName} ${formData.lastName}`,
@@ -208,6 +210,12 @@ export default function SignupWizard() {
         region: "us-east-1",
         subscriptionType: selectedSubscriptionType,
       });
+
+      if (!result.ok) {
+        setErrorCode(result.error.code);
+        setError(result.error.message);
+        return;
+      }
 
       // Clear the stored plan
       if (typeof window !== "undefined") {
@@ -340,7 +348,15 @@ export default function SignupWizard() {
             <svg className="w-4 h-4 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
               <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
             </svg>
-            {error}
+            <span className="flex-1">{error}</span>
+            {errorCode === "ACCOUNT_EXISTS" && (
+              <Link
+                href="/signin"
+                className="text-red-700 dark:text-red-300 underline underline-offset-2"
+              >
+                Sign in
+              </Link>
+            )}
           </div>
         )}
 

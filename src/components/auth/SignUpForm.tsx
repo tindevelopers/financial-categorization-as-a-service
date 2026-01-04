@@ -15,6 +15,7 @@ export default function SignUpForm() {
   const [isChecked, setIsChecked] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [errorCode, setErrorCode] = useState<string | null>(null);
   
   const [formData, setFormData] = useState({
     firstName: "",
@@ -28,6 +29,7 @@ export default function SignUpForm() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+    setErrorCode(null);
     setIsLoading(true);
 
     if (!isChecked) {
@@ -46,6 +48,12 @@ export default function SignUpForm() {
         plan: "starter",
         region: "us-east-1",
       });
+
+      if (!result.ok) {
+        setErrorCode(result.error.code);
+        setError(result.error.message);
+        return;
+      }
 
       // Redirect to welcome screen (user can skip)
       // Check if welcome was already seen
@@ -95,7 +103,17 @@ export default function SignUpForm() {
             </div>
             {error && (
               <div className="mb-4 p-3 text-sm text-red-600 bg-red-50 rounded-lg dark:bg-red-900/20 dark:text-red-400">
-                {error}
+                <div className="flex items-center justify-between gap-3">
+                  <span>{error}</span>
+                  {errorCode === "ACCOUNT_EXISTS" && (
+                    <Link
+                      href="/signin"
+                      className="text-red-700 dark:text-red-300 underline underline-offset-2 whitespace-nowrap"
+                    >
+                      Sign in
+                    </Link>
+                  )}
+                </div>
               </div>
             )}
             <form onSubmit={handleSubmit}>

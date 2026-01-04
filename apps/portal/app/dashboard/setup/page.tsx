@@ -87,11 +87,6 @@ export default function SetupWizardPage() {
             setCompanyProfileId(company.id)
             const isCompleted = company.setup_completed === true
             setSetupCompleted(isCompleted)
-            // If setup is already completed, redirect to dashboard
-            if (isCompleted) {
-              router.push('/dashboard')
-              return
-            }
             // Populate form with existing data
             setFormData({
               companyName: company.company_name || '',
@@ -113,8 +108,10 @@ export default function SetupWizardPage() {
               // Enterprise BYO Domain-Wide Delegation
               dwdSubjectEmail: company.dwd_subject_email || null,
             })
-            // Restore the step if saved
-            if (company.setup_step) {
+            // If setup was completed, start at step 1 (edit mode). Otherwise, restore saved step.
+            if (isCompleted) {
+              setCurrentStep(1)
+            } else if (company.setup_step) {
               setCurrentStep(company.setup_step)
             }
           }
@@ -314,7 +311,7 @@ export default function SetupWizardPage() {
                 </Button>
               ) : (
                 <Button color="blue" onClick={handleSubmit}>
-                  Complete Setup
+                  {setupCompleted ? 'Save Changes' : 'Complete Setup'}
                 </Button>
               )}
             </div>

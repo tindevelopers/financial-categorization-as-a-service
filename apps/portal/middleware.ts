@@ -216,6 +216,9 @@ export async function middleware(request: NextRequest) {
                     .eq('id', tenantId)
                     .maybeSingle();
                   tenantSubscription = tenantRow?.subscription_type ?? null;
+                  // #region agent log
+                  fetch('http://127.0.0.1:7243/ingest/0c1b14f8-8590-4e1a-a5b8-7e9645e1d13e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'pre-run1',hypothesisId:'A',location:'apps/portal/middleware.ts:tenant-subscription',message:'Tenant subscription fetched',data:{userId:user.id,tenantId,tenantSubscription,pathname},timestamp:Date.now()})}).catch(()=>{});
+                  // #endregion
                 } catch (tenantErr) {
                   console.error('Error fetching tenant subscription_type:', tenantErr);
                 }
@@ -245,6 +248,9 @@ export async function middleware(request: NextRequest) {
                 setupCompleted: (companies as any)?.[0]?.setup_completed,
                 companyTenantId: (companies as any)?.[0]?.tenant_id,
               });
+              // #region agent log
+              fetch('http://127.0.0.1:7243/ingest/0c1b14f8-8590-4e1a-a5b8-7e9645e1d13e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'pre-run1',hypothesisId:'B',location:'apps/portal/middleware.ts:company-query',message:'Company query result',data:{userId:user.id,tenantId,companyCount:companies?.length||0,setupCompleted:(companies as any)?.[0]?.setup_completed ?? null,error: error ? (error as any)?.message : null,pathname},timestamp:Date.now()})}).catch(()=>{});
+              // #endregion
               
               // If query fails, log error but allow access (fail open)
               if (error) {
@@ -319,13 +325,23 @@ export async function middleware(request: NextRequest) {
                   }
                 } catch (enterpriseErr) {
                   console.error('Enterprise auto-complete failed:', enterpriseErr);
+                  // #region agent log
+                  fetch('http://127.0.0.1:7243/ingest/0c1b14f8-8590-4e1a-a5b8-7e9645e1d13e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'pre-run1',hypothesisId:'C',location:'apps/portal/middleware.ts:autocomplete',message:'Enterprise auto-complete error',data:{userId:user.id,tenantId,error: enterpriseErr instanceof Error ? enterpriseErr.message : String(enterpriseErr)},timestamp:Date.now()})}).catch(()=>{});
+                  // #endregion
                 }
+
+                // #region agent log
+                fetch('http://127.0.0.1:7243/ingest/0c1b14f8-8590-4e1a-a5b8-7e9645e1d13e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'pre-run1',hypothesisId:'C',location:'apps/portal/middleware.ts:autocomplete',message:'Enterprise auto-complete outcome',data:{userId:user.id,tenantId,finalHasCompany,finalIsSetupCompleted,recheckedId: rechecked?.id},timestamp:Date.now()})}).catch(()=>{});
+                // #endregion
               }
 
               if (!finalHasCompany || !finalIsSetupCompleted) {
                 maybeLogEnterprise("redirect.toDashboardSetup", {
                   reason: !finalHasCompany ? "no_companies" : !finalIsSetupCompleted ? "setup_not_completed" : "unknown",
                 });
+                // #region agent log
+                fetch('http://127.0.0.1:7243/ingest/0c1b14f8-8590-4e1a-a5b8-7e9645e1d13e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'pre-run1',hypothesisId:'D',location:'apps/portal/middleware.ts:redirect',message:'Redirecting to setup',data:{userId:user.id,tenantId,reason:!finalHasCompany ? 'no_companies' : !finalIsSetupCompleted ? 'setup_not_completed' : 'unknown',pathname},timestamp:Date.now()})}).catch(()=>{});
+                // #endregion
                 return NextResponse.redirect(new URL('/dashboard/setup', request.url));
               }
             }

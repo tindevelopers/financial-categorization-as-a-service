@@ -35,6 +35,28 @@ export interface SignUpData {
   subscriptionType?: "individual" | "company" | "enterprise";
 }
 
+export type SignUpErrorCode =
+  | "ACCOUNT_EXISTS"
+  | "TENANT_DOMAIN_EXISTS"
+  | "UNKNOWN";
+
+export type SignUpResult =
+  | {
+      ok: true;
+      data: {
+        user: UserRow;
+        tenant: TenantRow;
+        session: any;
+      };
+    }
+  | {
+      ok: false;
+      error: {
+        code: SignUpErrorCode;
+        message: string;
+      };
+    };
+
 export interface SignInData {
   email: string;
   password: string;
@@ -44,7 +66,7 @@ export interface SignInData {
  * Sign up a new user and create their tenant
  * This is a server action that uses the admin client to bypass RLS
  */
-export async function signUp(data: SignUpData) {
+export async function signUp(data: SignUpData): Promise<SignUpResult> {
   const adminClient = createAdminClient();
 
   try {
@@ -134,7 +156,14 @@ export async function signUp(data: SignUpData) {
           if (existing) {
             tenant = existing;
           } else {
-            throw new Error(`A tenant with domain "${data.tenantDomain}" already exists. Please choose a different domain.`);
+            return {
+              ok: false,
+              error: {
+                code: "TENANT_DOMAIN_EXISTS",
+                message:
+                  "That organization domain is already in use. Please choose a different domain.",
+              },
+            };
           }
         } else {
           throw tenantError || new Error("Failed to create tenant");
@@ -175,7 +204,13 @@ export async function signUp(data: SignUpData) {
         authError?.message?.includes("User already registered") ||
         authError?.status === 422
       ) {
-        throw new Error(`An account with email "${data.email}" already exists. Please sign in instead.`);
+        return {
+          ok: false,
+          error: {
+            code: "ACCOUNT_EXISTS",
+            message: "This account already exists. Would you like to sign in?",
+          },
+        };
       }
       
       throw authError || new Error("Failed to create user");
@@ -244,20 +279,28 @@ export async function signUp(data: SignUpData) {
         userError?.message?.includes("unique") ||
         userError?.message?.includes("already exists")
       ) {
-        throw new Error(`An account with email "${data.email}" already exists. Please sign in instead.`);
+        return {
+          ok: false,
+          error: {
+            code: "ACCOUNT_EXISTS",
+            message: "This account already exists. Would you like to sign in?",
+          },
+        };
       }
       
       throw userError || new Error("Failed to create user record");
     }
 
-    return {
-      user,
-      tenant,
-      session: authData.session,
-    };
+    return { ok: true, data: { user, tenant, session: authData.session } };
   } catch (error) {
     console.error("Signup error:", error);
-    throw error;
+    return {
+      ok: false,
+      error: {
+        code: "UNKNOWN",
+        message: "We couldn't create your account. Please try again.",
+      },
+    };
   }
 }
 
