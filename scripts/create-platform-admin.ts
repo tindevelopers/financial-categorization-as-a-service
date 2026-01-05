@@ -185,6 +185,8 @@ async function createPlatformAdmin(email: string, password: string, fullName: st
             .update({ 
               role_id: roleId,
               tenant_id: null, // Platform admins have no tenant
+              plan: 'enterprise',
+              status: 'active',
             })
             .eq('id', existingAuthUser.id);
 
@@ -210,6 +212,8 @@ async function createPlatformAdmin(email: string, password: string, fullName: st
               full_name: fullName,
               role_id: roleId,
               tenant_id: null, // Platform admins have no tenant
+              plan: 'enterprise',
+              status: 'active',
             });
 
           if (insertError) {
@@ -241,6 +245,8 @@ async function createPlatformAdmin(email: string, password: string, fullName: st
         full_name: fullName,
         role_id: roleId,
         tenant_id: null, // Platform admins have no tenant
+        plan: 'enterprise',
+        status: 'active',
       });
 
     if (userError) {

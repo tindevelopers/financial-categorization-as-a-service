@@ -222,6 +222,10 @@ export async function middleware(request: NextRequest) {
                 } catch (tenantErr) {
                   console.error('Error fetching tenant subscription_type:', tenantErr);
                 }
+              } else {
+                // #region agent log
+                fetch('http://127.0.0.1:7243/ingest/0c1b14f8-8590-4e1a-a5b8-7e9645e1d13e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'pre-run1',hypothesisId:'E',location:'apps/portal/middleware.ts:no-tenant',message:'User has no tenant_id',data:{userId:user.id,pathname},timestamp:Date.now()})}).catch(()=>{});
+                // #endregion
               }
 
               const isEnterpriseTenant = tenantSubscription === 'enterprise';
@@ -274,6 +278,9 @@ export async function middleware(request: NextRequest) {
 
               // Enterprise tenants: auto-create/complete company profile to avoid setup loop
               if (isEnterpriseTenant && (!hasCompany || !isSetupCompleted)) {
+                // #region agent log
+                fetch('http://127.0.0.1:7243/ingest/0c1b14f8-8590-4e1a-a5b8-7e9645e1d13e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'pre-run1',hypothesisId:'C',location:'apps/portal/middleware.ts:autocomplete-enter',message:'Entering enterprise autocomplete',data:{userId:user.id,tenantId,hasCompany,isSetupCompleted,tenantSubscription},timestamp:Date.now()})}).catch(()=>{});
+                // #endregion
                 let rechecked: { id: string; setup_completed: boolean } | null = null;
                 try {
                   if (hasCompany && companies?.[0]?.id) {
