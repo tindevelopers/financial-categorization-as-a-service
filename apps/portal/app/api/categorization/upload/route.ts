@@ -55,6 +55,9 @@ export async function POST(request: NextRequest) {
     const bankAccountId = bankAccountIdRaw?.trim() || null; // Handle empty strings
     const spreadsheetId = formData.get("spreadsheet_id") as string | null;
     const spreadsheetTabId = formData.get("spreadsheet_tab_id") as string | null;
+    // #region agent log
+    fetch('http://127.0.0.1:7243/ingest/0c1b14f8-8590-4e1a-a5b8-7e9645e1d13e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'bank-upload',hypothesisId:'H3',location:'apps/portal/app/api/categorization/upload/route.ts:POST',message:'upload route parsed formData',data:{hasFile:!!file,fileExt:(file?.name||'').slice(((file?.name||'').lastIndexOf('.'))).toLowerCase()||null,fileType:file?.type||null,fileSize:file?.size||null,hasBankAccountId:!!bankAccountId,bankAccountIdSuffix:(bankAccountId&&bankAccountId.length>=6)?bankAccountId.slice(-6):null,hasSpreadsheetId:!!spreadsheetId,hasSpreadsheetTabId:!!spreadsheetTabId,hasTenantId:!!userData?.tenant_id},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
 
     if (!file) {
       const errorResponse = createJobErrorResponse("INVALID_FILE_TYPE", "No file provided");
@@ -95,6 +98,9 @@ export async function POST(request: NextRequest) {
             body: pdfFormData,
           }
         );
+        // #region agent log
+        fetch('http://127.0.0.1:7243/ingest/0c1b14f8-8590-4e1a-a5b8-7e9645e1d13e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'bank-upload',hypothesisId:'H4',location:'apps/portal/app/api/categorization/upload/route.ts:PDF-forward',message:'forwarded PDF to process-bank-statement-pdf',data:{status:pdfResponse.status,ok:pdfResponse.ok,hasBankAccountId:!!bankAccountId},timestamp:Date.now()})}).catch(()=>{});
+        // #endregion
 
         const pdfResult = await pdfResponse.json();
         return NextResponse.json(pdfResult, { status: pdfResponse.status });
@@ -145,6 +151,9 @@ export async function POST(request: NextRequest) {
     const profile = profiles && profiles.length > 0 ? profiles[0] : null;
 
     if (!profile || !profile.company_name || profile.company_name.trim() === '') {
+      // #region agent log
+      fetch('http://127.0.0.1:7243/ingest/0c1b14f8-8590-4e1a-a5b8-7e9645e1d13e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'bank-upload',hypothesisId:'H5',location:'apps/portal/app/api/categorization/upload/route.ts:profile-check',message:'profile incomplete - blocking upload',data:{hasProfile:!!profile,hasCompanyName:!!profile?.company_name,companyNameLen:profile?.company_name?.length||0},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
       return NextResponse.json(
         { error: "PROFILE_INCOMPLETE", error_code: "PROFILE_INCOMPLETE" },
         { status: 400 }
@@ -328,6 +337,9 @@ export async function POST(request: NextRequest) {
     const fileName = `${user.id}/${Date.now()}-${file.name}`;
     
     
+    // #region agent log
+    fetch('http://127.0.0.1:7243/ingest/0c1b14f8-8590-4e1a-a5b8-7e9645e1d13e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'bank-upload',hypothesisId:'H6',location:'apps/portal/app/api/categorization/upload/route.ts:storage-upload',message:'starting storage upload',data:{bucket:'categorization-uploads',contentType:file.type||null,storagePathSuffix:fileName.slice(-40),fileSize:file.size},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
     const { data: uploadData, error: uploadError } = await supabase.storage
       .from("categorization-uploads")
       .upload(fileName, fileBuffer, {
@@ -337,8 +349,16 @@ export async function POST(request: NextRequest) {
 
     if (uploadError) {
       console.error("Storage upload error:", uploadError);
+      // #region agent log
+      fetch('http://127.0.0.1:7243/ingest/0c1b14f8-8590-4e1a-a5b8-7e9645e1d13e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'bank-upload',hypothesisId:'H6',location:'apps/portal/app/api/categorization/upload/route.ts:storage-upload',message:'storage upload failed',data:{errorMessage:uploadError.message||null,errorCode:(uploadError as any)?.code||null},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
       const errorCode = mapErrorToCode(uploadError);
-      const errorResponse = createJobErrorResponse(errorCode, uploadError.message);
+      const errorResponse = createJobErrorResponse(
+        errorCode,
+        errorCode === "STORAGE_BUCKET_MISSING"
+          ? "Storage bucket 'categorization-uploads' not found"
+          : uploadError.message
+      );
       return NextResponse.json(
         { 
           error: errorResponse.error_message,
@@ -428,6 +448,9 @@ export async function POST(request: NextRequest) {
         user_id: user.id,
         tenant_id: userData?.tenant_id,
       });
+      // #region agent log
+      fetch('http://127.0.0.1:7243/ingest/0c1b14f8-8590-4e1a-a5b8-7e9645e1d13e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'bank-upload',hypothesisId:'H7',location:'apps/portal/app/api/categorization/upload/route.ts:job-create',message:'job creation failed',data:{message:jobError.message||null,code:(jobError as any)?.code||null,details:(jobError as any)?.details||null},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
       const errorCode = mapErrorToCode(jobError);
       const errorResponse = createJobErrorResponse(errorCode, jobError.message);
       return NextResponse.json(
@@ -440,6 +463,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // #region agent log
+    fetch('http://127.0.0.1:7243/ingest/0c1b14f8-8590-4e1a-a5b8-7e9645e1d13e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'bank-upload',hypothesisId:'H8',location:'apps/portal/app/api/categorization/upload/route.ts:job-create',message:'job created successfully',data:{jobIdSuffix:(jobData?.id&&String(jobData.id).length>=6)?String(jobData.id).slice(-6):null,status:jobData?.status||null,processingMode:jobData?.processing_mode||null},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
     // Also create a record in financial_documents for long-term storage tracking
     const { error: docError } = await supabase
       .from("financial_documents")

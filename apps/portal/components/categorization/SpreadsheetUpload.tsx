@@ -111,10 +111,7 @@ export default function SpreadsheetUpload() {
   const fetchBankAccounts = async () => {
     try {
       const response = await fetch("/api/bank-accounts");
-      
-      
       const data = await response.json();
-      
       
       if (data.success && data.bank_accounts) {
         setBankAccounts(data.bank_accounts);
@@ -215,6 +212,9 @@ export default function SpreadsheetUpload() {
     const currentProfileReady = profileReadyRef.current;
     const currentProfileLoading = profileLoadingRef.current;
     const currentSelectedBankAccount = currentBankAccounts.find(acc => acc.id === currentBankAccountId);    
+    // #region agent log
+    fetch('http://127.0.0.1:7243/ingest/0c1b14f8-8590-4e1a-a5b8-7e9645e1d13e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'bank-upload',hypothesisId:'H1',location:'apps/portal/components/categorization/SpreadsheetUpload.tsx:handleUpload',message:'handleUpload entry',data:{fileExt:(file?.name||'').split('.').pop()?.toLowerCase()||null,fileType:file?.type||null,fileSize:file?.size||null,profileReady:currentProfileReady,profileLoading:currentProfileLoading,bankAccountsCount:currentBankAccounts?.length||0,selectedBankAccountIdType:typeof currentBankAccountId,selectedBankAccountIdSuffix:(typeof currentBankAccountId==='string'&&currentBankAccountId.length>=6)?currentBankAccountId.slice(-6):null},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
     // Gating checks
     if (!currentProfileReady && !currentProfileLoading) {
       setUploadState(prev => ({ ...prev, error: "Please complete your profile (individual/company name) before uploading." }));
@@ -283,6 +283,9 @@ export default function SpreadsheetUpload() {
       // Handle completion
       const uploadPromise = new Promise<any>((resolve, reject) => {
         xhr.addEventListener('load', () => {
+          // #region agent log
+          fetch('http://127.0.0.1:7243/ingest/0c1b14f8-8590-4e1a-a5b8-7e9645e1d13e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'bank-upload',hypothesisId:'H2',location:'apps/portal/components/categorization/SpreadsheetUpload.tsx:xhr.load',message:'XHR load (upload completed)',data:{status:xhr.status,hasResponseText:!!xhr.responseText,responseTextLength:xhr.responseText?.length||0,elapsedMs:Date.now()-startTime},timestamp:Date.now()})}).catch(()=>{});
+          // #endregion
           if (xhr.status >= 200 && xhr.status < 300) {
             try {
               const data = JSON.parse(xhr.responseText);

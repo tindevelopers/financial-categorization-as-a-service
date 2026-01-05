@@ -199,6 +199,7 @@ export default function SettingsPage() {
           setSheetPreferences(prefsData.preferences)
           setSelectedSheet(prefsData.preferences.spreadsheet_id)
         }
+      } else {
       }
 
       // Load team data (for companies)

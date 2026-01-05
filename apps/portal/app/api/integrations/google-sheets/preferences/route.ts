@@ -74,6 +74,12 @@ export async function POST(request: NextRequest) {
       .single()
 
     if (error) {
+      console.error('Database error saving preferences:', {
+        code: error.code,
+        message: error.message,
+        details: error.details,
+        hint: error.hint,
+      })
       throw error
     }
 
@@ -83,8 +89,17 @@ export async function POST(request: NextRequest) {
     })
   } catch (error: any) {
     console.error('Error saving preferences:', error)
+    // Return more detailed error information for debugging
+    const errorMessage = error?.message || 'Failed to save preferences'
+    const errorCode = error?.code || 'UNKNOWN_ERROR'
+
     return NextResponse.json(
-      { error: 'Failed to save preferences' },
+      {
+        error: 'Failed to save preferences',
+        details: errorMessage,
+        code: errorCode,
+        hint: error?.hint || 'The user_sheet_preferences table may not exist. Please run database migrations.',
+      },
       { status: 500 }
     )
   }
@@ -113,4 +128,3 @@ export async function DELETE() {
     )
   }
 }
-

@@ -89,7 +89,7 @@ export async function GET(request: Request) {
       settings: maskedSettings,
     });
 
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error in GET /api/tenant-settings/integrations:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }

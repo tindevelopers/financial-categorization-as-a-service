@@ -2,9 +2,12 @@
 -- Phase 1: Basic categorization functionality
 -- Created: 2025-12-19
 
+-- Ensure UUID generation function is available in Supabase
+CREATE EXTENSION IF NOT EXISTS "pgcrypto" WITH SCHEMA extensions;
+
 -- User uploads/jobs
 CREATE TABLE IF NOT EXISTS categorization_jobs (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
   tenant_id UUID REFERENCES tenants(id) ON DELETE CASCADE,
   job_type TEXT NOT NULL CHECK (job_type IN ('spreadsheet', 'invoice', 'batch_invoice')),
@@ -26,7 +29,7 @@ CREATE TABLE IF NOT EXISTS categorization_jobs (
 
 -- Categorized transactions
 CREATE TABLE IF NOT EXISTS categorized_transactions (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   job_id UUID NOT NULL REFERENCES categorization_jobs(id) ON DELETE CASCADE,
   original_description TEXT NOT NULL,
   amount DECIMAL(10,2) NOT NULL,
@@ -42,7 +45,7 @@ CREATE TABLE IF NOT EXISTS categorized_transactions (
 
 -- Category mappings (user-specific)
 CREATE TABLE IF NOT EXISTS user_category_mappings (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
   tenant_id UUID REFERENCES tenants(id) ON DELETE CASCADE,
   pattern TEXT NOT NULL, -- Merchant name, keyword, etc.
@@ -156,7 +159,7 @@ CREATE TRIGGER update_user_category_mappings_updated_at
 
 -- Document metadata (for search)
 CREATE TABLE IF NOT EXISTS documents (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
   tenant_id UUID REFERENCES tenants(id) ON DELETE CASCADE,
   job_id UUID REFERENCES categorization_jobs(id) ON DELETE CASCADE,

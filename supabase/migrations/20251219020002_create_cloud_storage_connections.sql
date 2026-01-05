@@ -2,9 +2,12 @@
 -- Phase 2: Cloud storage integration
 -- Created: 2025-12-19
 
+-- Ensure UUID generation function is available in Supabase
+CREATE EXTENSION IF NOT EXISTS "pgcrypto" WITH SCHEMA extensions;
+
 -- Cloud storage connections (Dropbox, Google Drive)
 CREATE TABLE IF NOT EXISTS cloud_storage_connections (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
   tenant_id UUID REFERENCES tenants(id) ON DELETE CASCADE,
   provider TEXT NOT NULL CHECK (provider IN ('dropbox', 'google_drive')),

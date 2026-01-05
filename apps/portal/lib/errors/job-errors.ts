@@ -15,6 +15,7 @@ export type JobErrorCode =
   | "UNKNOWN_ERROR"
   | "DUPLICATE_FILE"
   | "STORAGE_ERROR"
+  | "STORAGE_BUCKET_MISSING"
   | "AUTHENTICATION_ERROR";
 
 export interface JobError {
@@ -104,6 +105,15 @@ export const JOB_ERRORS: Record<JobErrorCode, Omit<JobError, "code">> = {
     retryable: true,
     suggestedAction: "Try again in a few moments",
   },
+  STORAGE_BUCKET_MISSING: {
+    message: "Storage bucket not found",
+    userMessage:
+      "Storage is not set up yet (missing bucket). Please run the Supabase migrations or create the 'categorization-uploads' bucket in Supabase Storage, then try again.",
+    statusCode: 500,
+    retryable: false,
+    suggestedAction:
+      "Apply `supabase/migrations/20251219020001_create_storage_bucket.sql` to your Supabase project (or create the bucket in the dashboard)",
+  },
   AUTHENTICATION_ERROR: {
     message: "Authentication failed",
     userMessage: "Your session has expired. Please log in again.",
@@ -150,6 +160,11 @@ export function createJobErrorResponse(
 export function mapErrorToCode(error: any): JobErrorCode {
   const errorMessage = error?.message?.toLowerCase() || "";
   const errorCode = error?.code?.toLowerCase() || "";
+
+  // Specific storage bootstrap error: bucket doesn't exist
+  if (errorMessage.includes("bucket not found")) {
+    return "STORAGE_BUCKET_MISSING";
+  }
 
   // File size errors
   if (

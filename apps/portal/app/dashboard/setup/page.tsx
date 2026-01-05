@@ -186,8 +186,36 @@ export default function SetupWizardPage() {
   // Save progress when moving to next step
   const handleNext = async () => {
     if (currentStep < totalSteps) {
-      // Save progress if we have a company profile
-      if (companyProfileId) {
+      const nextStep = currentStep + 1
+
+      // Ensure we have a company profile early so we can persist progress and resume after OAuth bounces.
+      if (!companyProfileId) {
+        try {
+          const response = await fetch('/api/company', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              ...formData,
+              setupCompleted: false,
+              setupStep: nextStep,
+            }),
+          })
+
+          if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}))
+            throw new Error(errorData.error || 'Failed to create company profile')
+          }
+
+          const data = await response.json()
+          const createdId = data.company?.id ?? null
+          setCompanyProfileId(createdId)
+        } catch (error: any) {
+          console.error('Error creating company profile:', error)
+          alert(error.message || 'Failed to save setup progress. Please try again.')
+          return
+        }
+      } else {
+        // Save progress on existing company profile
         try {
           await fetch('/api/company', {
             method: 'PUT',
@@ -195,7 +223,7 @@ export default function SetupWizardPage() {
             body: JSON.stringify({
               id: companyProfileId,
               ...formData,
-              setupStep: currentStep + 1,
+              setupStep: nextStep,
             }),
           })
         } catch (error) {
@@ -203,7 +231,8 @@ export default function SetupWizardPage() {
           // Don't block navigation on save error
         }
       }
-      setCurrentStep(currentStep + 1)
+
+      setCurrentStep(nextStep)
     }
   }
 

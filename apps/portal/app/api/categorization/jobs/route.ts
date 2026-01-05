@@ -31,6 +31,9 @@ export async function GET(request: NextRequest) {
     const { data: { user }, error: authError } = await supabase.auth.getUser();
 
     if (authError || !user) {
+      // #region agent log
+      fetch('http://127.0.0.1:7243/ingest/0c1b14f8-8590-4e1a-a5b8-7e9645e1d13e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'uploads-list',hypothesisId:'H9',location:'apps/portal/app/api/categorization/jobs/route.ts:GET',message:'jobs endpoint unauthorized',data:{hasUser:!!user,hasAuthError:!!authError,authErrorCode:(authError as any)?.code||null,authErrorMsg:authError?.message||null},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
       return NextResponse.json(
         { error: "Unauthorized" },
         { 
@@ -43,6 +46,10 @@ export async function GET(request: NextRequest) {
         }
       );
     }
+
+    // #region agent log
+    fetch('http://127.0.0.1:7243/ingest/0c1b14f8-8590-4e1a-a5b8-7e9645e1d13e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'uploads-list',hypothesisId:'H9',location:'apps/portal/app/api/categorization/jobs/route.ts:GET',message:'jobs endpoint entry',data:{userIdSuffix:(user.id&&user.id.length>=6)?user.id.slice(-6):null,limit:request.nextUrl.searchParams.get('limit')||null,offset:request.nextUrl.searchParams.get('offset')||null,status:request.nextUrl.searchParams.get('status')||null,jobType:request.nextUrl.searchParams.get('job_type')||null},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
 
     // Parse query parameters
     const searchParams = request.nextUrl.searchParams;
@@ -94,6 +101,9 @@ export async function GET(request: NextRequest) {
 
     if (jobsError) {
       console.error("Error fetching jobs:", jobsError);
+      // #region agent log
+      fetch('http://127.0.0.1:7243/ingest/0c1b14f8-8590-4e1a-a5b8-7e9645e1d13e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'uploads-list',hypothesisId:'H10',location:'apps/portal/app/api/categorization/jobs/route.ts:GET',message:'jobs query failed',data:{code:(jobsError as any)?.code||null,message:jobsError.message||null,details:(jobsError as any)?.details||null,hint:(jobsError as any)?.hint||null},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
       return NextResponse.json(
         { error: "Failed to fetch jobs", details: jobsError.message },
         { 
@@ -115,6 +125,9 @@ export async function GET(request: NextRequest) {
         .select("job_id, storage_tier, archived_at, file_size_bytes, file_type")
         .in("job_id", jobIds);      documents = docs;
     }
+    // #region agent log
+    fetch('http://127.0.0.1:7243/ingest/0c1b14f8-8590-4e1a-a5b8-7e9645e1d13e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'uploads-list',hypothesisId:'H11',location:'apps/portal/app/api/categorization/jobs/route.ts:GET',message:'jobs endpoint returning',data:{jobsCount:jobs?.length||0,jobIdsCount:jobIds.length,docsCount:documents?.length||0},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
 
     // Create a map of job_id -> document info
     const docMap = new Map();

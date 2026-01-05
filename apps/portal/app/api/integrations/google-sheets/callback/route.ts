@@ -56,6 +56,7 @@ export async function GET(request: NextRequest) {
     const accountType = request.cookies.get("google_sheets_account_type")?.value || "personal";
     const redirectUriCookie = request.cookies.get("google_sheets_redirect_uri")?.value;
 
+
     // Get tenant_id first (needed for credential lookup)
     const { data: userData } = await supabase
       .from("users")
@@ -66,7 +67,7 @@ export async function GET(request: NextRequest) {
     // Get OAuth credentials for logging error details
     const credentialManager = getCredentialManager();
     const oauthCredsForError = await credentialManager.getBestGoogleOAuth(userData?.tenant_id || undefined);
-    
+
     // Validate OAuth config for debugging
     const { validateOAuthConfig } = await import("@/lib/google-sheets/oauth-config");
     const configValidationForError = await validateOAuthConfig(userData?.tenant_id || undefined);
@@ -74,7 +75,7 @@ export async function GET(request: NextRequest) {
     // Handle OAuth errors from Google
     if (errorParam) {
       const guidance = getOAuthErrorGuidance(
-        errorParam, 
+        errorParam,
         errorDescription || undefined,
         configValidationForError?.expectedRedirectUri
       );
@@ -87,7 +88,7 @@ export async function GET(request: NextRequest) {
         expectedRedirectUri: configValidationForError?.expectedRedirectUri,
         clientId: oauthCredsForError?.clientId ? `${oauthCredsForError.clientId.substring(0, 20)}...` : "missing",
       });
-      
+
       // Redirect with detailed error information
       const errorUrl = new URL("/dashboard/integrations/google-sheets", request.url);
       errorUrl.searchParams.set("error", errorParam);
@@ -102,7 +103,7 @@ export async function GET(request: NextRequest) {
       if (redirectUriCookie) {
         errorUrl.searchParams.set("request_redirect_uri", redirectUriCookie);
       }
-      
+
       return NextResponse.redirect(errorUrl.toString());
     }
 
@@ -133,9 +134,10 @@ export async function GET(request: NextRequest) {
       return NextResponse.redirect(noCredsUrl.toString());
     }
 
+
     // Validate OAuth config for debugging
     const configValidation = await validateOAuthConfig(userData?.tenant_id || undefined);
-    
+
     console.log("OAuth callback received:", {
       hasCode: !!code,
       hasState: !!state,
@@ -172,6 +174,8 @@ export async function GET(request: NextRequest) {
     const clientIdForTokenExchange = oauthCreds.clientId?.trim();
     const clientSecretForTokenExchange = oauthCreds.clientSecret?.trim();
     const redirectUriForTokenExchangeFinal = redirectUriForTokenExchange.trim();
+
+
     const oauth2Client = new google.auth.OAuth2(
       clientIdForTokenExchange,
       clientSecretForTokenExchange,
@@ -184,26 +188,53 @@ export async function GET(request: NextRequest) {
       tokens = tokenResponse.tokens;
     } catch (tokenError: any) {
       console.error("Failed to exchange authorization code for tokens:", tokenError);
-      
+
+
       // Extract error details
-      const errorCode = tokenError.code || "token_exchange_failed";
-      const errorMessage = tokenError.message || "Failed to obtain access token";
-      const guidance = getOAuthErrorGuidance(errorCode, errorMessage);
-      
+      const errorMessage: string = tokenError?.message || "Failed to obtain access token";
+      let errorCode: string =
+        typeof tokenError?.code === "string"
+          ? tokenError.code
+          : "token_exchange_failed";
+
+      // googleapis often surfaces token endpoint failures as numeric HTTP status codes.
+      // Map common cases to Google OAuth error strings so the UI renders the right guidance.
+      if (typeof tokenError?.code === "number") {
+        const msg = (errorMessage || "").toLowerCase();
+        if (msg.includes("invalid_client")) errorCode = "invalid_client";
+        else if (msg.includes("redirect_uri_mismatch")) errorCode = "redirect_uri_mismatch";
+        else if (msg.includes("invalid_grant")) errorCode = "invalid_grant";
+        else errorCode = "token_exchange_failed";
+      }
+
+      const guidance = getOAuthErrorGuidance(
+        errorCode,
+        errorMessage,
+        configValidation?.expectedRedirectUri
+      );
+
       const errorUrl = new URL("/dashboard/integrations/google-sheets", request.url);
       errorUrl.searchParams.set("error", errorCode);
       errorUrl.searchParams.set("error_description", guidance.message);
       errorUrl.searchParams.set("help_url", guidance.helpUrl || "");
-      
+      if (configValidation?.expectedRedirectUri) {
+        errorUrl.searchParams.set("expected_redirect_uri", configValidation.expectedRedirectUri);
+      }
+      if (oauthCreds?.redirectUri) {
+        errorUrl.searchParams.set("used_redirect_uri", oauthCreds.redirectUri);
+      }
+
+
       return NextResponse.redirect(errorUrl.toString());
     }
-    
+
     if (!tokens.access_token) {
       console.error("No access token in token response");
       const noTokenUrl = new URL("/dashboard/integrations/google-sheets", request.url);
       noTokenUrl.searchParams.set("error", "no_access_token");
       return NextResponse.redirect(noTokenUrl.toString());
     }
+
 
     // Get user info to get email and detect workspace domain
     oauth2Client.setCredentials(tokens);
@@ -215,21 +246,21 @@ export async function GET(request: NextRequest) {
       console.error("Failed to get user info:", userInfoError);
       // Continue without user info - we can still store tokens
     }
-    
+
     const providerEmail = userInfo?.data?.email || null;
-    
+
     // Detect if this is a Google Workspace account (domain != gmail.com or googlemail.com)
     const emailDomain = providerEmail?.split("@")[1] || null;
-    const isWorkspaceAccount = emailDomain && 
-      emailDomain !== "gmail.com" && 
+    const isWorkspaceAccount = emailDomain &&
+      emailDomain !== "gmail.com" &&
       emailDomain !== "googlemail.com";
-    
+
     // Extract workspace domain if applicable
     const workspaceDomain = isWorkspaceAccount ? emailDomain : null;
-    
+
     // Determine account type based on account_type cookie or workspace detection
-    const finalAccountType = accountType === "workspace_admin" || isWorkspaceAccount 
-      ? "workspace_admin" 
+    const finalAccountType = accountType === "workspace_admin" || isWorkspaceAccount
+      ? "workspace_admin"
       : "personal";
 
     // Encrypt tokens before storing
@@ -238,17 +269,17 @@ export async function GET(request: NextRequest) {
       configErrorUrl.searchParams.set("error", "configuration_error");
       return NextResponse.redirect(configErrorUrl.toString());
     }
-    
+
     const encryptedAccessToken = encrypt(tokens.access_token, encryptionKey);
-    const encryptedRefreshToken = tokens.refresh_token 
-      ? encrypt(tokens.refresh_token, encryptionKey) 
+    const encryptedRefreshToken = tokens.refresh_token
+      ? encrypt(tokens.refresh_token, encryptionKey)
       : null;
 
 
     // Calculate expiration
-    const expiresAt = tokens.expiry_date 
+    const expiresAt = tokens.expiry_date
       ? new Date(tokens.expiry_date)
-      : tokens.access_token 
+      : tokens.access_token
         ? new Date(Date.now() + 3600 * 1000) // Default 1 hour
         : null;
 
@@ -261,7 +292,7 @@ export async function GET(request: NextRequest) {
       hasRefreshToken: !!encryptedRefreshToken,
       accountType: finalAccountType,
     });
-    
+
     const { error: insertError1, data: insertData1 } = await supabase
       .from("cloud_storage_connections")
       .upsert({
@@ -291,7 +322,7 @@ export async function GET(request: NextRequest) {
       provider: "google_sheets",
       provider_email: providerEmail,
     });
-    
+
     // Note: user_integrations uses token_expires_at not expires_at
     const { error: insertError2, data: insertData2 } = await supabase
       .from("user_integrations")
@@ -306,12 +337,12 @@ export async function GET(request: NextRequest) {
       }, {
         onConflict: "user_id,provider",
       });
-    
+
     console.log("user_integrations insert result:", {
       error: insertError2,
       hasData: !!insertData2,
     });
-    
+
     console.log(`Google Sheets connected for user ${user.id}`, {
       email: providerEmail,
       accountType: finalAccountType,
@@ -334,7 +365,7 @@ export async function GET(request: NextRequest) {
     if (insertError1) {
       console.warn("cloud_storage_connections insert failed, but user_integrations succeeded:", insertError1);
     }
-    
+
     if (insertError2) {
       console.warn("user_integrations insert failed, but cloud_storage_connections succeeded:", insertError2);
     }
@@ -342,6 +373,8 @@ export async function GET(request: NextRequest) {
     // Clear state and account_type cookies
     const successUrl = new URL("/dashboard/integrations/google-sheets", request.url);
     successUrl.searchParams.set("connected", "true");
+
+
     const response = NextResponse.redirect(successUrl.toString());
     response.cookies.delete("google_sheets_oauth_state");
     response.cookies.delete("google_sheets_account_type");

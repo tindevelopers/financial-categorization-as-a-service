@@ -51,12 +51,22 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
         const { data: userData } = await supabase
           .from('users')
-          .select('tenant_id, roles:role_id(name), tenants:tenant_id(subscription_type)')
+          .select('tenant_id, roles:role_id(name)')
           .eq('id', user.id)
           .single()
 
         const roleName = (userData?.roles as any)?.name
-        const subscriptionType = (userData?.tenants as any)?.subscription_type
+        let subscriptionType: string | null = null
+
+        // Fetch subscription_type separately if tenant_id exists
+        if (userData?.tenant_id) {
+          const { data: tenantData } = await supabase
+            .from('tenants')
+            .select('subscription_type')
+            .eq('id', userData.tenant_id)
+            .single()
+          subscriptionType = tenantData?.subscription_type || null
+        }
         const isEnterpriseTenant = subscriptionType === 'enterprise' && !!userData?.tenant_id
         const allowedEnterpriseRoles = ['Organization Admin', 'Enterprise Admin']
         setIsEnterpriseAdmin(isEnterpriseTenant && allowedEnterpriseRoles.includes(roleName))
@@ -159,14 +169,34 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 <SidebarLabel>Exports</SidebarLabel>
               </SidebarItem>
 
+              {/* Settings group (non-clickable header) */}
+              <div className="mt-4 px-3 text-xs font-semibold tracking-wide text-zinc-500 dark:text-zinc-400">
+                Settings
+              </div>
               <SidebarItem
                 href="/dashboard/settings"
-                current={pathname.startsWith('/dashboard/settings') || pathname === '/dashboard/setup'}
+                current={pathname === '/dashboard/settings'}
+                className="ml-6"
               >
                 <Cog6ToothIcon />
-                <SidebarLabel>Settings</SidebarLabel>
+                <SidebarLabel>Overview</SidebarLabel>
               </SidebarItem>
-
+              <SidebarItem
+                href="/dashboard/settings/bank-accounts"
+                current={pathname.startsWith('/dashboard/settings/bank-accounts')}
+                className="ml-6"
+              >
+                <BanknotesIcon />
+                <SidebarLabel>Bank Accounts</SidebarLabel>
+              </SidebarItem>
+              <SidebarItem
+                href="/dashboard/settings/spreadsheets"
+                current={pathname.startsWith('/dashboard/settings/spreadsheets')}
+                className="ml-6"
+              >
+                <DocumentTextIcon />
+                <SidebarLabel>Spreadsheets</SidebarLabel>
+              </SidebarItem>
               <SidebarItem
                 href="/dashboard/setup"
                 current={pathname === '/dashboard/setup'}
@@ -210,4 +240,3 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     </SidebarLayout>
   )
 }
-

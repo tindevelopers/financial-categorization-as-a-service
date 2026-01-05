@@ -39,6 +39,15 @@ export default function SpreadsheetsPage() {
   const [saving, setSaving] = useState(false)
   const [selectedSheetId, setSelectedSheetId] = useState<string | null>(null)
 
+  const pickerMode = (() => {
+    if (typeof window === 'undefined') return null as null | { returnTo: string }
+    const sp = new URLSearchParams(window.location.search)
+    const picker = sp.get('picker')
+    const returnTo = sp.get('return_to')
+    if (picker === 'bank_account' && returnTo) return { returnTo }
+    return null
+  })()
+
   useEffect(() => {
     fetchSpreadsheets()
   }, [])
@@ -94,9 +103,14 @@ export default function SpreadsheetsPage() {
   }
 
   const handleSelectSheet = async (spreadsheetId: string, spreadsheetName: string) => {
-    // #region agent log
-    fetch('http://127.0.0.1:7243/ingest/0c1b14f8-8590-4e1a-a5b8-7e9645e1d13e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'settings/spreadsheets/page.tsx:handleSelectSheet',message:'handleSelectSheet called from spreadsheets page',data:{spreadsheetId,spreadsheetName,timestamp:Date.now()},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
-    // #endregion
+    // Picker mode: return selection back to bank account form (no preference write).
+    if (pickerMode?.returnTo) {
+      const sep = pickerMode.returnTo.includes('?') ? '&' : '?'
+      const target = `${pickerMode.returnTo}${sep}spreadsheet_id=${encodeURIComponent(spreadsheetId)}&spreadsheet_name=${encodeURIComponent(spreadsheetName)}`
+      window.location.href = target
+      return
+    }
+
     setSaving(true)
     setSelectedSheetId(spreadsheetId)
     try {
@@ -109,29 +123,17 @@ export default function SpreadsheetsPage() {
           sheet_tab_name: 'Transactions',
         }),
       })
-      // #region agent log
-      fetch('http://127.0.0.1:7243/ingest/0c1b14f8-8590-4e1a-a5b8-7e9645e1d13e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'settings/spreadsheets/page.tsx:handleSelectSheet',message:'Preferences API response',data:{ok:response.ok,status:response.status,timestamp:Date.now()},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
-      // #endregion
 
       if (response.ok) {
         const data = await response.json()
-        // #region agent log
-        fetch('http://127.0.0.1:7243/ingest/0c1b14f8-8590-4e1a-a5b8-7e9645e1d13e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'settings/spreadsheets/page.tsx:handleSelectSheet',message:'Sheet selected successfully',data:{hasPreferences:!!data.preferences,timestamp:Date.now()},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
-        // #endregion
         alert('Sheet selected as default export sheet!')
         router.push('/dashboard/settings')
       } else {
         const error = await response.json()
-        // #region agent log
-        fetch('http://127.0.0.1:7243/ingest/0c1b14f8-8590-4e1a-a5b8-7e9645e1d13e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'settings/spreadsheets/page.tsx:handleSelectSheet',message:'Sheet selection failed',data:{status:response.status,error:error.error||'unknown',timestamp:Date.now()},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
-        // #endregion
         alert(error.error || 'Failed to select sheet')
         setSelectedSheetId(null)
       }
     } catch (error) {
-      // #region agent log
-      fetch('http://127.0.0.1:7243/ingest/0c1b14f8-8590-4e1a-a5b8-7e9645e1d13e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'settings/spreadsheets/page.tsx:handleSelectSheet',message:'Sheet selection exception',data:{error:error instanceof Error?error.message:String(error),timestamp:Date.now()},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
-      // #endregion
       console.error('Failed to select sheet:', error)
       alert('Failed to select sheet')
       setSelectedSheetId(null)
@@ -173,7 +175,10 @@ export default function SpreadsheetsPage() {
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
           <button
-            onClick={() => router.push('/dashboard/settings')}
+            onClick={() => {
+              if (pickerMode?.returnTo) window.location.href = pickerMode.returnTo
+              else router.push('/dashboard/settings')
+            }}
             className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
             title="Back to Settings"
           >
@@ -182,7 +187,9 @@ export default function SpreadsheetsPage() {
           <div>
             <Heading>Available Spreadsheets</Heading>
             <Text className="mt-2">
-              View all Google Sheets you have access to. Click "Select as Default" to set a spreadsheet as your default export sheet.
+              {pickerMode?.returnTo
+                ? 'Select a spreadsheet to use for your bank account export — we will fill the ID automatically.'
+                : 'View all Google Sheets you have access to. Click "Select as Default" to set a spreadsheet as your default export sheet.'}
             </Text>
           </div>
         </div>
@@ -320,10 +327,10 @@ export default function SpreadsheetsPage() {
                         {saving && selectedSheetId === spreadsheet.id ? (
                           <>
                             <ArrowPathIcon className="h-4 w-4 animate-spin" />
-                            Selecting...
+                            {pickerMode?.returnTo ? 'Selecting...' : 'Saving...'}
                           </>
                         ) : (
-                          'Select as Default'
+                          pickerMode?.returnTo ? 'Use for Bank Account' : 'Select as Default'
                         )}
                       </Button>
                     </div>

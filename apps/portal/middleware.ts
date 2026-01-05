@@ -44,6 +44,75 @@ export async function middleware(request: NextRequest) {
 
     const isPublicPage = publicPages.some((page) => pathname.startsWith(page));
 
+    // Precompute mismatched Supabase cookie names to clear (local dev only).
+    // Important: middleware may recreate `response` later (e.g. in Supabase cookie adapters),
+    // so we store this list and re-apply clears whenever `response` is rebuilt.
+    let mismatchedSbCookieNamesToClear: string[] = [];
+    let mismatchMeta: {
+      supabaseHost: string | null;
+      supabaseProjectRef: string | null;
+      mismatchedRefs: string[];
+    } = { supabaseHost: null, supabaseProjectRef: null, mismatchedRefs: [] };
+
+    {
+      let supabaseHost: string | null = null;
+      let supabaseProjectRef: string | null = null;
+      try {
+        const u = new URL(process.env.NEXT_PUBLIC_SUPABASE_URL || "");
+        supabaseHost = u.host;
+        supabaseProjectRef = u.host.split(".")[0] || null;
+      } catch {
+        // ignore
+      }
+
+      const isLocalSupabase =
+        !!supabaseHost &&
+        (supabaseHost.startsWith("127.0.0.1:") ||
+          supabaseHost.startsWith("localhost:") ||
+          supabaseHost.endsWith(".local"));
+
+      if (isLocalSupabase && supabaseProjectRef) {
+        const cookieNames = request.cookies.getAll().map((c) => c.name);
+        const cookieProjectRefs = Array.from(
+          new Set(
+            cookieNames
+              .filter((n) => n.startsWith("sb-"))
+              .map((n) => {
+                const m = n.match(/^sb-([^-]+)-/);
+                return m?.[1] || null;
+              })
+              .filter(Boolean) as string[]
+          )
+        );
+
+        const mismatchedRefs = cookieProjectRefs.filter((r) => r !== supabaseProjectRef);
+        mismatchedSbCookieNamesToClear = cookieNames.filter((n) =>
+          mismatchedRefs.some((r) => n.startsWith(`sb-${r}-`))
+        );
+        mismatchMeta = { supabaseHost, supabaseProjectRef, mismatchedRefs };
+      }
+    }
+
+    const applyMismatchedSupabaseCookieClears = (resp: NextResponse) => {
+      if (mismatchedSbCookieNamesToClear.length === 0) return;
+      for (const name of mismatchedSbCookieNamesToClear) {
+        resp.cookies.set({
+          name,
+          value: "",
+          maxAge: 0,
+          path: "/",
+        });
+      }
+    };
+
+    // Apply immediately for this middleware response.
+    applyMismatchedSupabaseCookieClears(response);
+
+
+    if (mismatchedSbCookieNamesToClear.length > 0) {
+      // Cookies cleared silently
+    }
+
     // Only set up Supabase client if environment variables are configured
     if (process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
       try {
@@ -68,6 +137,7 @@ export async function middleware(request: NextRequest) {
                     headers: request.headers,
                   },
                 });
+                applyMismatchedSupabaseCookieClears(response);
                 response.cookies.set({
                   name,
                   value,
@@ -85,6 +155,7 @@ export async function middleware(request: NextRequest) {
                     headers: request.headers,
                   },
                 });
+                applyMismatchedSupabaseCookieClears(response);
                 response.cookies.set({
                   name,
                   value: "",
@@ -110,6 +181,7 @@ export async function middleware(request: NextRequest) {
         const {
           data: { user },
         } = await supabase.auth.getUser();
+
 
         const maybeLogEnterprise = (message: string, data?: Record<string, unknown>) => {
           if (!debugEnterprise) return;
@@ -216,16 +288,9 @@ export async function middleware(request: NextRequest) {
                     .eq('id', tenantId)
                     .maybeSingle();
                   tenantSubscription = tenantRow?.subscription_type ?? null;
-                  // #region agent log
-                  fetch('http://127.0.0.1:7243/ingest/0c1b14f8-8590-4e1a-a5b8-7e9645e1d13e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'pre-run1',hypothesisId:'A',location:'apps/portal/middleware.ts:tenant-subscription',message:'Tenant subscription fetched',data:{userId:user.id,tenantId,tenantSubscription,pathname},timestamp:Date.now()})}).catch(()=>{});
-                  // #endregion
                 } catch (tenantErr) {
                   console.error('Error fetching tenant subscription_type:', tenantErr);
                 }
-              } else {
-                // #region agent log
-                fetch('http://127.0.0.1:7243/ingest/0c1b14f8-8590-4e1a-a5b8-7e9645e1d13e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'pre-run1',hypothesisId:'E',location:'apps/portal/middleware.ts:no-tenant',message:'User has no tenant_id',data:{userId:user.id,pathname},timestamp:Date.now()})}).catch(()=>{});
-                // #endregion
               }
 
               const isEnterpriseTenant = tenantSubscription === 'enterprise';
@@ -252,9 +317,6 @@ export async function middleware(request: NextRequest) {
                 setupCompleted: (companies as any)?.[0]?.setup_completed,
                 companyTenantId: (companies as any)?.[0]?.tenant_id,
               });
-              // #region agent log
-              fetch('http://127.0.0.1:7243/ingest/0c1b14f8-8590-4e1a-a5b8-7e9645e1d13e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'pre-run1',hypothesisId:'B',location:'apps/portal/middleware.ts:company-query',message:'Company query result',data:{userId:user.id,tenantId,companyCount:companies?.length||0,setupCompleted:(companies as any)?.[0]?.setup_completed ?? null,error: error ? (error as any)?.message : null,pathname},timestamp:Date.now()})}).catch(()=>{});
-              // #endregion
               
               // If query fails, log error but allow access (fail open)
               if (error) {
@@ -278,9 +340,6 @@ export async function middleware(request: NextRequest) {
 
               // Enterprise tenants: auto-create/complete company profile to avoid setup loop
               if (isEnterpriseTenant && (!hasCompany || !isSetupCompleted)) {
-                // #region agent log
-                fetch('http://127.0.0.1:7243/ingest/0c1b14f8-8590-4e1a-a5b8-7e9645e1d13e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'pre-run1',hypothesisId:'C',location:'apps/portal/middleware.ts:autocomplete-enter',message:'Entering enterprise autocomplete',data:{userId:user.id,tenantId,hasCompany,isSetupCompleted,tenantSubscription},timestamp:Date.now()})}).catch(()=>{});
-                // #endregion
                 let rechecked: { id: string; setup_completed: boolean } | null = null;
                 try {
                   if (hasCompany && companies?.[0]?.id) {
@@ -332,23 +391,13 @@ export async function middleware(request: NextRequest) {
                   }
                 } catch (enterpriseErr) {
                   console.error('Enterprise auto-complete failed:', enterpriseErr);
-                  // #region agent log
-                  fetch('http://127.0.0.1:7243/ingest/0c1b14f8-8590-4e1a-a5b8-7e9645e1d13e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'pre-run1',hypothesisId:'C',location:'apps/portal/middleware.ts:autocomplete',message:'Enterprise auto-complete error',data:{userId:user.id,tenantId,error: enterpriseErr instanceof Error ? enterpriseErr.message : String(enterpriseErr)},timestamp:Date.now()})}).catch(()=>{});
-                  // #endregion
                 }
-
-                // #region agent log
-                fetch('http://127.0.0.1:7243/ingest/0c1b14f8-8590-4e1a-a5b8-7e9645e1d13e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'pre-run1',hypothesisId:'C',location:'apps/portal/middleware.ts:autocomplete',message:'Enterprise auto-complete outcome',data:{userId:user.id,tenantId,finalHasCompany,finalIsSetupCompleted,recheckedId: rechecked?.id},timestamp:Date.now()})}).catch(()=>{});
-                // #endregion
               }
 
               if (!finalHasCompany || !finalIsSetupCompleted) {
                 maybeLogEnterprise("redirect.toDashboardSetup", {
                   reason: !finalHasCompany ? "no_companies" : !finalIsSetupCompleted ? "setup_not_completed" : "unknown",
                 });
-                // #region agent log
-                fetch('http://127.0.0.1:7243/ingest/0c1b14f8-8590-4e1a-a5b8-7e9645e1d13e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'pre-run1',hypothesisId:'D',location:'apps/portal/middleware.ts:redirect',message:'Redirecting to setup',data:{userId:user.id,tenantId,reason:!finalHasCompany ? 'no_companies' : !finalIsSetupCompleted ? 'setup_not_completed' : 'unknown',pathname},timestamp:Date.now()})}).catch(()=>{});
-                // #endregion
                 return NextResponse.redirect(new URL('/dashboard/setup', request.url));
               }
             }
@@ -363,6 +412,8 @@ export async function middleware(request: NextRequest) {
       }
     }
 
+    // Ensure clears are present even if `response` was rebuilt later.
+    applyMismatchedSupabaseCookieClears(response);
     return response;
   } catch (error) {
     // Catch any unexpected errors and allow request to proceed

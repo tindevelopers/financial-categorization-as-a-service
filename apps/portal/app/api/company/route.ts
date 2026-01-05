@@ -15,12 +15,17 @@ export async function POST(request: NextRequest) {
 
     const body = await request.json()
 
-    // Get user's tenant_id if they have one
-    const { data: userData } = await supabase
+    // Get user's tenant_id if they have one (use maybeSingle to handle missing users record)
+    const { data: userData, error: userDataError } = await supabase
       .from('users')
       .select('tenant_id')
       .eq('id', user.id)
-      .single()
+      .maybeSingle()
+
+    if (userDataError) {
+      console.error('Error fetching user data:', userDataError)
+      // Continue with null tenant_id if user record doesn't exist yet
+    }
 
     // Transform bank accounts from camelCase to snake_case
     const bankAccounts = (body.bankAccounts || []).map((account: any) => ({
@@ -58,11 +63,7 @@ export async function POST(request: NextRequest) {
         accounting_basis: body.accountingBasis || 'cash',
         bank_accounts: bankAccounts,
         setup_completed: body.setupCompleted || false,
-        // Google Shared Drive settings
-        google_shared_drive_id: body.googleSharedDriveId || null,
-        google_shared_drive_name: body.googleSharedDriveName || null,
-        google_master_spreadsheet_id: body.googleMasterSpreadsheetId || null,
-        google_master_spreadsheet_name: body.googleMasterSpreadsheetName || null,
+        // Note: Google Shared Drive settings are stored in tenant_integration_settings, not company_profiles
       })
       .select()
       .single()
@@ -77,9 +78,49 @@ export async function POST(request: NextRequest) {
       })
     }
     if (insertError) {
+      const errorDetails = {
+        message: insertError.message,
+        details: insertError.details,
+        hint: insertError.hint,
+        code: insertError.code,
+        userId: user.id,
+        userEmail: user.email,
+        hasUserRecord: !!userData,
+        tenantId: userData?.tenant_id || null,
+        timestamp: new Date().toISOString(),
+      };
+
       console.error('Company creation error:', insertError)
+      console.error('Error details:', errorDetails)
+
+      // Also write to log file for debugging
+      try {
+        const fs = require('fs');
+        const path = require('path');
+        const logDir = path.join(process.cwd(), '.logs');
+        const logFile = path.join(logDir, 'server.log');
+        if (!fs.existsSync(logDir)) fs.mkdirSync(logDir, { recursive: true });
+        fs.appendFileSync(logFile, `[${new Date().toISOString()}] [COMPANY API ERROR] ${JSON.stringify(errorDetails, null, 2)}\n`);
+      } catch (logError) {
+        // Ignore log file errors
+      }
+
+      // Provide more helpful error messages
+      let errorMessage = 'Failed to create company profile';
+      if (insertError.code === '42501') {
+        errorMessage = 'Permission denied. Please ensure you are properly authenticated.';
+      } else if (insertError.code === '23503') {
+        errorMessage = 'Invalid reference. Please check your account setup.';
+      } else if (insertError.message) {
+        errorMessage = insertError.message;
+      }
+
       return NextResponse.json(
-        { error: 'Failed to create company' },
+        {
+          error: errorMessage,
+          details: insertError.details || insertError.message,
+          code: insertError.code,
+        },
         { status: 500 }
       )
     }
@@ -127,7 +168,7 @@ export async function GET(request: NextRequest) {
       .select('tenant_id')
       .eq('id', user.id)
       .single()
-    
+
     // Fetch dwdSubjectEmail from tenant_integration_settings if available
     let dwdSubjectEmail: string | null = null
     if (userData?.tenant_id) {
@@ -137,7 +178,7 @@ export async function GET(request: NextRequest) {
         .eq('tenant_id', userData.tenant_id)
         .eq('provider', 'google_sheets')
         .single()
-      
+
       if (integrationSettings?.settings) {
         dwdSubjectEmail = (integrationSettings.settings as any).dwdSubjectEmail || null
       }
@@ -236,12 +277,8 @@ export async function PUT(request: NextRequest) {  try {
     }
     if (updateData.setupCompleted !== undefined) updatePayload.setup_completed = updateData.setupCompleted
     if (updateData.setupStep !== undefined) updatePayload.setup_step = updateData.setupStep
-    // Google Shared Drive settings
-    if (updateData.googleSharedDriveId !== undefined) updatePayload.google_shared_drive_id = updateData.googleSharedDriveId || null
-    if (updateData.googleSharedDriveName !== undefined) updatePayload.google_shared_drive_name = updateData.googleSharedDriveName || null
-    if (updateData.googleMasterSpreadsheetId !== undefined) updatePayload.google_master_spreadsheet_id = updateData.googleMasterSpreadsheetId || null
-    if (updateData.googleMasterSpreadsheetName !== undefined) updatePayload.google_master_spreadsheet_name = updateData.googleMasterSpreadsheetName || null
-    
+    // Note: Google Shared Drive settings are stored in tenant_integration_settings, not company_profiles
+
     // Handle dwdSubjectEmail - save to tenant_integration_settings
     if (updateData.dwdSubjectEmail !== undefined) {
       // Get user's tenant_id
@@ -250,7 +287,7 @@ export async function PUT(request: NextRequest) {  try {
         .select('tenant_id')
         .eq('id', user.id)
         .single()
-      
+
       if (userData?.tenant_id) {
         // Upsert tenant_integration_settings with dwdSubjectEmail
         const { error: settingsError } = await supabase
@@ -267,19 +304,19 @@ export async function PUT(request: NextRequest) {  try {
             onConflict: 'tenant_id,provider',
             ignoreDuplicates: false,
           })
-        
+
         if (settingsError) {
           console.error('Error saving dwdSubjectEmail to tenant_integration_settings:', settingsError)
           // Don't fail the whole request, just log the error
         }
       }
     }
-    
+
     // Ensure updatePayload is not empty - if setupCompleted is being set, make sure it's included
     if (Object.keys(updatePayload).length === 0 && updateData.setupCompleted !== undefined) {
       updatePayload.setup_completed = updateData.setupCompleted
     }
-    
+
     if (process.env.DEBUG_ENTERPRISE === "1" && user.email?.endsWith("@velocitypartners.info")) {
       console.log("[api/company][enterprise] PUT about to update", {
         userId: user.id,
@@ -288,7 +325,7 @@ export async function PUT(request: NextRequest) {  try {
         setupCompleted: updatePayload.setup_completed,
       })
     }
-    
+
     // Update company profile
     const { data: company, error: updateError } = await supabase
       .from('company_profiles')
@@ -339,4 +376,3 @@ export async function PUT(request: NextRequest) {  try {
     )
   }
 }
-

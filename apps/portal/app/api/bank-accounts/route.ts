@@ -12,7 +12,6 @@ export async function GET(request: NextRequest) {
     const supabase = await createClient();
     const { data: { user }, error: authError } = await supabase.auth.getUser();
 
-
     if (authError || !user) {
       return NextResponse.json(
         { error: "Unauthorized" },
@@ -43,7 +42,6 @@ export async function GET(request: NextRequest) {
 
 
     const { data: bankAccounts, error } = await query;
-
 
     if (error) {
       console.error("Error fetching bank accounts:", error);

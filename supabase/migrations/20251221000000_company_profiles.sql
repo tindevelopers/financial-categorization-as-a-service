@@ -3,13 +3,16 @@
 -- Description: Multi-company support with VAT settings and tax configuration
 -- Created: 2025-12-21
 
+-- Ensure UUID generation function is available in Supabase
+CREATE EXTENSION IF NOT EXISTS "pgcrypto" WITH SCHEMA extensions;
+
 -- ============================================================================
 -- COMPANY_PROFILES TABLE (User's Business Profiles)
 -- Note: Using 'company_profiles' to avoid conflict with CRM 'companies' table
 -- ============================================================================
 
 CREATE TABLE IF NOT EXISTS company_profiles (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
   tenant_id UUID REFERENCES tenants(id) ON DELETE CASCADE,
   

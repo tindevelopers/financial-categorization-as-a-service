@@ -29,6 +29,7 @@ export async function GET(request: NextRequest) {
 
     // Validate OAuth configuration
     const configValidation = await validateOAuthConfig(tenantId);
+
     
     if (!configValidation.isValid) {
       console.error("OAuth configuration validation failed:", configValidation.errors);
@@ -65,6 +66,7 @@ export async function GET(request: NextRequest) {
     // Fall back to computing from request origin only if not set in credentials
     const redirectUriToUse = oauthCreds.redirectUri?.trim() || 
       new URL("/api/integrations/google-sheets/callback", request.nextUrl.origin.trim()).toString().trim();
+
 
     // Log OAuth configuration for debugging
     console.log("Google Sheets OAuth Configuration:", {
@@ -114,6 +116,7 @@ export async function GET(request: NextRequest) {
     authUrl.searchParams.set("access_type", "offline"); // Get refresh token
     authUrl.searchParams.set("prompt", "consent"); // Force consent to get refresh token
     authUrl.searchParams.set("state", state);
+
 
     // Log the OAuth URL (without sensitive data) for debugging
     console.log("OAuth URL generated:", {

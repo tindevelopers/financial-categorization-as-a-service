@@ -240,7 +240,7 @@ export default function SignupWizard() {
       // Map subscriptionType to plan
       const planMap: Record<SubscriptionType, string> = {
         individual: "starter",
-        company: "business_standard",
+        company: "professional",
         enterprise: "enterprise",
       };
 

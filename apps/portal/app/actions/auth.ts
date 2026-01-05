@@ -39,25 +39,25 @@ export async function signUp(data: SignUpData): Promise<SignUpResult> {
     // 1. Check if tenant already exists, if so use it
     let tenant: any = null;
     let isNewTenant = false;
-    
+
     // Use admin client to bypass RLS when checking for existing tenant
     let existingTenant = null;
     let checkError = null;
-    
+
     try {
       const result = await adminClient
         .from("tenants")
         .select("*")
         .eq("domain", data.tenantDomain)
         .maybeSingle();
-      
+
       existingTenant = result.data;
       checkError = result.error;
     } catch (err: any) {
       checkError = err;
       console.error("Error checking for existing tenant:", err);
     }
-    
+
     // If we get a function error, try to query without RLS by using a different approach
     if (checkError?.code === "42P17") {
       console.warn("Function error detected, trying alternative query method...");
@@ -66,10 +66,10 @@ export async function signUp(data: SignUpData): Promise<SignUpResult> {
         const result: { data: any[] | null; error: any } = await adminClient
           .from("tenants")
           .select("*");
-        
+
         const allTenants = result.data;
         const altError = result.error;
-        
+
         if (!altError && allTenants) {
           existingTenant = allTenants.find((t: any) => t.domain === data.tenantDomain) || null;
           checkError = null;
@@ -96,14 +96,28 @@ export async function signUp(data: SignUpData): Promise<SignUpResult> {
         subscription_type: data.subscriptionType || "individual",
       };
 
-      const result: { data: any | null; error: any } = await adminClient
+      let result: { data: any | null; error: any } = await adminClient
         .from("tenants")
         .insert(tenantData)
         .select()
         .single();
-      
-      const newTenant = result.data;
-      const tenantError = result.error;
+
+      let newTenant = result.data;
+      let tenantError = result.error;
+
+      // Handle PGRST204 error (column not found) - retry without subscription_type
+      if (tenantError && (tenantError.code === "PGRST204" || tenantError.message?.includes("subscription_type") || tenantError.message?.includes("Could not find the 'subscription_type'"))) {
+        // Retry without subscription_type column
+        const { subscription_type, ...tenantDataWithoutSubscriptionType } = tenantData;
+        result = await adminClient
+          .from("tenants")
+          .insert(tenantDataWithoutSubscriptionType)
+          .select()
+          .single();
+
+        newTenant = result.data;
+        tenantError = result.error;
+      }
 
       if (tenantError || !newTenant) {
         // Handle unique constraint violation (domain already exists)
@@ -114,7 +128,7 @@ export async function signUp(data: SignUpData): Promise<SignUpResult> {
             .select("*")
             .eq("domain", data.tenantDomain)
             .single();
-          
+
           const existing = existingResult.data;
           if (existing) {
             tenant = existing;
@@ -159,10 +173,10 @@ export async function signUp(data: SignUpData): Promise<SignUpResult> {
           console.error("Failed to cleanup tenant:", cleanupError);
         }
       }
-      
+
       // Handle unique constraint violation (email already exists)
       if (
-        authError?.message?.includes("already registered") || 
+        authError?.message?.includes("already registered") ||
         authError?.message?.includes("already exists") ||
         authError?.message?.includes("User already registered") ||
         authError?.status === 422
@@ -175,7 +189,7 @@ export async function signUp(data: SignUpData): Promise<SignUpResult> {
           },
         };
       }
-      
+
       throw authError || new Error("Failed to create user");
     }
 
@@ -186,7 +200,7 @@ export async function signUp(data: SignUpData): Promise<SignUpResult> {
       .select("id")
       .eq("name", "Organization Admin")
       .single();
-    
+
     const defaultRole = roleResult.data;
 
     // Regular users belong to their tenant
@@ -205,7 +219,7 @@ export async function signUp(data: SignUpData): Promise<SignUpResult> {
       .insert(userData)
       .select()
       .single();
-    
+
     const user = userResult.data;
     const userError = userResult.error;
 
@@ -219,7 +233,7 @@ export async function signUp(data: SignUpData): Promise<SignUpResult> {
           console.error("Failed to cleanup tenant:", cleanupError);
         }
       }
-      
+
       // Always try to clean up auth user if it was created
       if (authData.user) {
         try {
@@ -229,11 +243,11 @@ export async function signUp(data: SignUpData): Promise<SignUpResult> {
           console.error("Failed to delete auth user during cleanup:", deleteError);
         }
       }
-      
+
       // Handle unique constraint violation (email already exists)
       if (
-        userError?.code === "23505" || 
-        userError?.message?.includes("duplicate") || 
+        userError?.code === "23505" ||
+        userError?.message?.includes("duplicate") ||
         userError?.message?.includes("unique") ||
         userError?.message?.includes("already exists")
       ) {
@@ -245,20 +259,39 @@ export async function signUp(data: SignUpData): Promise<SignUpResult> {
           },
         };
       }
-      
+
       throw userError || new Error("Failed to create user record");
     }
 
     return { ok: true, data: { user, tenant, session: authData.session } };
   } catch (error) {
+    const errorDetails = {
+      message: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined,
+      error: error,
+      timestamp: new Date().toISOString(),
+    };
+
     console.error("Signup error:", error);
+    console.error("Signup error details:", errorDetails);
+
+    // Also write to log file for debugging
+    try {
+      const fs = require('fs');
+      const path = require('path');
+      const logDir = path.join(process.cwd(), '.logs');
+      const logFile = path.join(logDir, 'server.log');
+      if (!fs.existsSync(logDir)) fs.mkdirSync(logDir, { recursive: true });
+      fs.appendFileSync(logFile, `[${new Date().toISOString()}] [SIGNUP ERROR] ${JSON.stringify(errorDetails, null, 2)}\n`);
+    } catch (logError) {
+      // Ignore log file errors
+    }
     return {
       ok: false,
       error: {
         code: "UNKNOWN",
-        message: "We couldn't create your account. Please try again.",
+        message: error instanceof Error ? error.message : "We couldn't create your account. Please try again.",
       },
     };
   }
 }
-

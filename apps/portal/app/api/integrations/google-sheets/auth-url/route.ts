@@ -112,6 +112,7 @@ export async function GET() {
     // Get credentials (checks tenant settings first, then env vars)
     const credentials = await getGoogleCredentials(supabase, user.id)
 
+
     if (!credentials.clientId) {
       return NextResponse.json({
         error: 'Google Sheets integration not configured',
@@ -158,6 +159,7 @@ export async function GET() {
     authUrl.searchParams.set('access_type', 'offline')
     authUrl.searchParams.set('prompt', 'consent')
     authUrl.searchParams.set('state', state)
+
 
     // Log redirect URI for debugging (don't log full URL with state for security)
     console.log('[Google Sheets OAuth] Redirect URI:', credentials.redirectUri)

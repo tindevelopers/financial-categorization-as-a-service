@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { Heading, Text, Button } from '@/components/catalyst'
 import { 
   PlusIcon, 
@@ -29,6 +30,8 @@ interface BankAccount {
 }
 
 export default function BankAccountsPage() {
+  const router = useRouter()
+  const searchParams = useSearchParams()
   const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
@@ -48,6 +51,58 @@ export default function BankAccountsPage() {
   useEffect(() => {
     fetchBankAccounts()
   }, [])
+
+  // Restore form draft (if any) and/or accept spreadsheet selection from the spreadsheets picker.
+  useEffect(() => {
+    const openForm = searchParams.get('openForm') === '1'
+    const pickedSpreadsheetId = searchParams.get('spreadsheet_id')
+    const pickedSpreadsheetName = searchParams.get('spreadsheet_name')
+
+    // Restore any in-progress draft from the Browse flow
+    try {
+      const raw = typeof window !== 'undefined' ? window.sessionStorage.getItem('bankAccountDraft') : null
+      if (raw) {
+        const parsed = JSON.parse(raw)
+        if (parsed && typeof parsed === 'object') {
+          if (parsed.formData && typeof parsed.formData === 'object') {
+            setFormData((prev) => ({ ...prev, ...parsed.formData }))
+          }
+          if (typeof parsed.editingId === 'string' || parsed.editingId === null) {
+            setEditingId(parsed.editingId)
+          }
+          if (openForm || pickedSpreadsheetId) {
+            setShowForm(true)
+          }
+        }
+        window.sessionStorage.removeItem('bankAccountDraft')
+      }
+    } catch {
+      // ignore
+    }
+
+    if (pickedSpreadsheetId) {
+      setShowForm(true)
+      setFormData((prev) => ({
+        ...prev,
+        default_spreadsheet_id: pickedSpreadsheetId,
+        // If the user hasn't set a tab name yet, default it for convenience.
+        spreadsheet_tab_name: prev.spreadsheet_tab_name || 'Transactions',
+      }))
+
+      // Remove picker params from URL so refresh doesn't re-apply.
+      const next = new URL(window.location.href)
+      next.searchParams.delete('spreadsheet_id')
+      next.searchParams.delete('spreadsheet_name')
+      next.searchParams.delete('openForm')
+      router.replace(next.pathname + next.search)
+    } else if (openForm) {
+      setShowForm(true)
+      const next = new URL(window.location.href)
+      next.searchParams.delete('openForm')
+      router.replace(next.pathname + next.search)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams])
 
   const fetchBankAccounts = async () => {
     try {
@@ -88,7 +143,10 @@ export default function BankAccountsPage() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload),
         })
-        if (!response.ok) throw new Error('Failed to create bank account')
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}))
+          throw new Error(errorData.error || 'Failed to create bank account')
+        }
       }
 
       await fetchBankAccounts()
@@ -326,7 +384,20 @@ export default function BankAccountsPage() {
                   <Button
                     type="button"
                     color="zinc"
-                    onClick={() => window.location.href = '/dashboard/settings/spreadsheets'}
+                    onClick={() => {
+                      try {
+                        // Persist draft so the user doesn't lose form input when browsing.
+                        window.sessionStorage.setItem(
+                          'bankAccountDraft',
+                          JSON.stringify({ formData, editingId })
+                        )
+                      } catch {
+                        // ignore
+                      }
+                      const returnTo = '/dashboard/settings/bank-accounts?openForm=1'
+                      const url = `/dashboard/settings/spreadsheets?picker=bank_account&return_to=${encodeURIComponent(returnTo)}`
+                      window.location.href = url
+                    }}
                     className="gap-2"
                   >
                     <DocumentTextIcon className="h-4 w-4" />
@@ -334,7 +405,7 @@ export default function BankAccountsPage() {
                   </Button>
                 </div>
                 <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                  Click "Browse" to view all available spreadsheets and copy their IDs
+                  Click "Browse" to select a spreadsheet — it will auto-fill this field.
                 </p>
               </div>
             </div>

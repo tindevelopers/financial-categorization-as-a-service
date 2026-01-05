@@ -6,12 +6,14 @@
 -- 1. Enable pgvector extension
 -- ============================================
 CREATE EXTENSION IF NOT EXISTS vector;
+-- Ensure UUID generation function is available in Supabase
+CREATE EXTENSION IF NOT EXISTS "pgcrypto" WITH SCHEMA extensions;
 
 -- ============================================
 -- 2. Chat Sessions Table
 -- ============================================
 CREATE TABLE IF NOT EXISTS chat_sessions (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
   tenant_id UUID REFERENCES tenants(id) ON DELETE CASCADE,
   title TEXT DEFAULT 'New Chat',
@@ -24,7 +26,7 @@ CREATE TABLE IF NOT EXISTS chat_sessions (
 -- 3. Chat Messages Table
 -- ============================================
 CREATE TABLE IF NOT EXISTS chat_messages (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   session_id UUID NOT NULL REFERENCES chat_sessions(id) ON DELETE CASCADE,
   role TEXT NOT NULL CHECK (role IN ('user', 'assistant', 'system', 'tool')),
   content TEXT NOT NULL,
@@ -38,7 +40,7 @@ CREATE TABLE IF NOT EXISTS chat_messages (
 -- 4. Embeddings Table for RAG
 -- ============================================
 CREATE TABLE IF NOT EXISTS embeddings (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE, -- NULL for global knowledge
   tenant_id UUID REFERENCES tenants(id) ON DELETE CASCADE,
   content TEXT NOT NULL,
@@ -53,7 +55,7 @@ CREATE TABLE IF NOT EXISTS embeddings (
 -- 5. Knowledge Base Table (pre-seeded content)
 -- ============================================
 CREATE TABLE IF NOT EXISTS knowledge_base (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   category TEXT NOT NULL, -- 'hmrc', 'vat', 'accounting', 'app_help'
   title TEXT NOT NULL,
   content TEXT NOT NULL,

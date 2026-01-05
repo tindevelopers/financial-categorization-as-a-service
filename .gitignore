@@ -57,3 +57,7 @@ supabase/.temp
 .turbo/
 .cursor/
 .gcp/
+
+# Log files
+**/.logs/
+*.log
