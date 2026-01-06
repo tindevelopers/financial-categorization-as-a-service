@@ -62,9 +62,14 @@ export async function GET(request: NextRequest) {
     }
 
     // Aggressively trim function (defined here to use in multiple places)
+    // Removes newlines/carriage returns from anywhere, then trims leading/trailing whitespace
     const aggressiveTrim = (value: string | null | undefined): string => {
       if (!value) return '';
-      return value.replace(/^[\s\u00A0\u2000-\u200B\u2028\u2029\u3000]+|[\s\u00A0\u2000-\u200B\u2028\u2029\u3000]+$/g, '');
+      // First, remove all newlines and carriage returns from anywhere in the string
+      let cleaned = value.replace(/[\r\n]+/g, '');
+      // Then remove all types of whitespace from start and end
+      cleaned = cleaned.replace(/^[\s\u00A0\u2000-\u200B\u2028\u2029\u3000]+|[\s\u00A0\u2000-\u200B\u2028\u2029\u3000]+$/g, '');
+      return cleaned;
     };
     
     // Use the redirect URI from credentials (which comes from GOOGLE_SHEETS_REDIRECT_URI env var)

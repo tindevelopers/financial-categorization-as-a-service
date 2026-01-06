@@ -31,12 +31,17 @@ export interface GoogleOAuthCredentials {
 /**
  * Aggressively trim whitespace including Unicode whitespace characters
  * This handles trailing spaces, newlines, carriage returns, non-breaking spaces, etc.
+ * Also removes newlines and carriage returns from anywhere in the string (not just ends)
+ * since they can cause OAuth failures even if in the middle
  */
 function aggressiveTrim(value: string | null | undefined): string {
   if (!value) return '';
-  // Remove all types of whitespace from start and end
-  // This includes: spaces, tabs, newlines, carriage returns, non-breaking spaces, etc.
-  return value.replace(/^[\s\u00A0\u2000-\u200B\u2028\u2029\u3000]+|[\s\u00A0\u2000-\u200B\u2028\u2029\u3000]+$/g, '');
+  // First, remove all newlines and carriage returns from anywhere in the string
+  let cleaned = value.replace(/[\r\n]+/g, '');
+  // Then remove all types of whitespace from start and end
+  // This includes: spaces, tabs, non-breaking spaces, etc.
+  cleaned = cleaned.replace(/^[\s\u00A0\u2000-\u200B\u2028\u2029\u3000]+|[\s\u00A0\u2000-\u200B\u2028\u2029\u3000]+$/g, '');
+  return cleaned;
 }
 
 export interface GoogleServiceAccountCredentials {
@@ -83,6 +88,10 @@ export class VercelCredentialManager {
     const rawClientSecret = process.env.GOOGLE_CLIENT_SECRET;
     const rawRedirectUri = process.env.GOOGLE_SHEETS_REDIRECT_URI || process.env.GOOGLE_REDIRECT_URI;
     
+    // Check for newlines in the middle (not just trailing)
+    const clientSecretNewlineIndex = rawClientSecret?.indexOf('\n') ?? -1;
+    const redirectUriNewlineIndex = rawRedirectUri?.indexOf('\n') ?? -1;
+    
     console.log('[VercelCredentialManager] Raw env vars:', {
       rawClientIdLength: rawClientId?.length || 0,
       rawClientIdHasTrailingSpace: rawClientId ? rawClientId[rawClientId.length - 1] === ' ' : false,
@@ -90,9 +99,13 @@ export class VercelCredentialManager {
       rawClientSecretLength: rawClientSecret?.length || 0,
       rawClientSecretHasTrailingSpace: rawClientSecret ? rawClientSecret[rawClientSecret.length - 1] === ' ' : false,
       rawClientSecretHasNewline: rawClientSecret?.includes('\n') || false,
+      rawClientSecretNewlineIndex: clientSecretNewlineIndex >= 0 ? clientSecretNewlineIndex : 'none',
+      rawClientSecretIsTrailingNewline: clientSecretNewlineIndex >= 0 && clientSecretNewlineIndex === (rawClientSecret?.length ?? 0) - 1,
       rawRedirectUriLength: rawRedirectUri?.length || 0,
       rawRedirectUriHasTrailingSpace: rawRedirectUri ? rawRedirectUri[rawRedirectUri.length - 1] === ' ' : false,
       rawRedirectUriHasNewline: rawRedirectUri?.includes('\n') || false,
+      rawRedirectUriNewlineIndex: redirectUriNewlineIndex >= 0 ? redirectUriNewlineIndex : 'none',
+      rawRedirectUriIsTrailingNewline: redirectUriNewlineIndex >= 0 && redirectUriNewlineIndex === (rawRedirectUri?.length ?? 0) - 1,
     });
 
     // Use aggressive trimming to remove ALL types of whitespace

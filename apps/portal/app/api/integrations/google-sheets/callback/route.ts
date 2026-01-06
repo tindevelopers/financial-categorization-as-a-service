@@ -149,9 +149,14 @@ export async function GET(request: NextRequest) {
     });
 
     // Aggressively trim function (defined here to use in multiple places)
+    // Removes newlines/carriage returns from anywhere, then trims leading/trailing whitespace
     const aggressiveTrim = (value: string | null | undefined): string => {
       if (!value) return '';
-      return value.replace(/^[\s\u00A0\u2000-\u200B\u2028\u2029\u3000]+|[\s\u00A0\u2000-\u200B\u2028\u2029\u3000]+$/g, '');
+      // First, remove all newlines and carriage returns from anywhere in the string
+      let cleaned = value.replace(/[\r\n]+/g, '');
+      // Then remove all types of whitespace from start and end
+      cleaned = cleaned.replace(/^[\s\u00A0\u2000-\u200B\u2028\u2029\u3000]+|[\s\u00A0\u2000-\u200B\u2028\u2029\u3000]+$/g, '');
+      return cleaned;
     };
     
     // Use the redirect URI we actually used in the authorize request (stored in cookie),
@@ -194,6 +199,20 @@ export async function GET(request: NextRequest) {
       redirectUriHasTrailingSpace: redirectUriForTokenExchangeFinal[redirectUriForTokenExchangeFinal.length - 1] === ' ',
       redirectUriHasNewline: redirectUriForTokenExchangeFinal.includes('\n'),
       redirectUri: redirectUriForTokenExchangeFinal,
+    });
+
+    // Log the exact values that will be sent to Google (first 10 and last 10 chars for security)
+    console.log('[Google Sheets Callback] Exact values being sent to Google:', {
+      clientIdPreview: `${clientIdForTokenExchange.substring(0, 10)}...${clientIdForTokenExchange.substring(clientIdForTokenExchange.length - 10)}`,
+      clientIdLength: clientIdForTokenExchange.length,
+      clientSecretPreview: `${clientSecretForTokenExchange.substring(0, 5)}...${clientSecretForTokenExchange.substring(clientSecretForTokenExchange.length - 5)}`,
+      clientSecretLength: clientSecretForTokenExchange.length,
+      redirectUri: redirectUriForTokenExchangeFinal,
+      redirectUriLength: redirectUriForTokenExchangeFinal.length,
+      // Check for any non-printable characters
+      clientIdHasNonPrintable: /[^\x20-\x7E]/.test(clientIdForTokenExchange),
+      clientSecretHasNonPrintable: /[^\x20-\x7E]/.test(clientSecretForTokenExchange),
+      redirectUriHasNonPrintable: /[^\x20-\x7E]/.test(redirectUriForTokenExchangeFinal),
     });
 
     const oauth2Client = new google.auth.OAuth2(
