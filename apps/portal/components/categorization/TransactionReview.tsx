@@ -2,7 +2,7 @@
 
 import React, { useMemo, useState, useEffect } from "react";
 import { ArrowDownTrayIcon, ArrowPathIcon, DocumentTextIcon, LinkIcon } from "@heroicons/react/24/outline";
-import { createBrowserClient } from "@supabase/ssr";
+import { createClient } from "@/lib/database/client";
 import ViewSwitcher, {
   getStoredViewPreference,
   type ViewType,
@@ -115,20 +115,20 @@ export default function TransactionReview({ jobId }: TransactionReviewProps) {
 
   // Load access token for bearer fallback (helps when cookies are not sent in some environments)
   useEffect(() => {
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-    if (!supabaseUrl || !supabaseAnonKey) return;
-
-    const supabase = createBrowserClient(supabaseUrl, supabaseAnonKey);
-    supabase.auth
-      .getSession()
-      .then(({ data }) => {
-        const token = data.session?.access_token || null;
-        setAccessToken(token);
-      })
-      .catch(() => {
-        // ignore
-      });
+    try {
+      const supabase = createClient();
+      supabase.auth
+        .getSession()
+        .then(({ data }) => {
+          const token = data.session?.access_token || null;
+          setAccessToken(token);
+        })
+        .catch(() => {
+          // ignore
+        });
+    } catch (error) {
+      console.error('Failed to create Supabase client:', error);
+    }
   }, []);
 
   const authHeaders = useMemo(() => {
@@ -199,6 +199,64 @@ export default function TransactionReview({ jobId }: TransactionReviewProps) {
 
     loadDocumentUrls();
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [transactions]);
+
+  // ALL HOOKS MUST BE CALLED BEFORE ANY CONDITIONAL RETURNS
+  // Check if transactions are bank statement transactions (no documents) or invoice transactions (with documents)
+  const hasDocuments = useMemo(() => {
+    return transactions.some((tx) => tx.document_id && tx.document);
+  }, [transactions]);
+  
+  const isBankStatementJob = useMemo(() => {
+    return transactions.length > 0 && !hasDocuments;
+  }, [transactions, hasDocuments]);
+
+  const filteredTransactions = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return transactions;
+
+    return transactions.filter((tx) => {
+      const parts: Array<string> = [];
+      parts.push(tx.id);
+      parts.push(tx.original_description || "");
+      parts.push(tx.category || "");
+      parts.push(tx.subcategory || "");
+      parts.push(tx.invoice_number || "");
+      parts.push(tx.sync_status || "");
+      parts.push(tx.user_notes || "");
+      parts.push(String(tx.amount ?? ""));
+      parts.push(tx.date || "");
+
+      // Useful when users paste a displayed date (e.g. 31/12/2025)
+      try {
+        parts.push(new Date(tx.date).toLocaleDateString());
+      } catch {
+        // ignore
+      }
+
+      if (tx.document) {
+        parts.push(tx.document.vendor_name || "");
+        parts.push(tx.document.original_filename || "");
+        parts.push(tx.document.invoice_number || "");
+        parts.push(tx.document.order_number || "");
+        parts.push(tx.document.po_number || "");
+        parts.push(tx.document.notes || "");
+      }
+
+      return parts.join(" ").toLowerCase().includes(q);
+    });
+  }, [transactions, searchQuery]);
+
+  const confirmedCount = useMemo(() => {
+    return transactions.filter((t) => t.user_confirmed).length;
+  }, [transactions]);
+
+  const totalAmount = useMemo(() => {
+    return transactions.reduce((sum, t) => {
+      const docTotal = typeof t.document?.total_amount === "number" ? t.document.total_amount : null;
+      const amt = docTotal !== null ? docTotal : Math.abs(Number(t.amount) || 0);
+      return sum + amt;
+    }, 0);
   }, [transactions]);
 
   const loadSyncStatus = async (txs?: Transaction[]) => {
@@ -505,53 +563,6 @@ export default function TransactionReview({ jobId }: TransactionReviewProps) {
       </div>
     );
   }
-
-  const confirmedCount = transactions.filter((t) => t.user_confirmed).length;
-  const totalAmount = transactions.reduce((sum, t) => {
-    const docTotal = typeof t.document?.total_amount === "number" ? t.document.total_amount : null;
-    const amt = docTotal !== null ? docTotal : Math.abs(Number(t.amount) || 0);
-    return sum + amt;
-  }, 0);
-
-  // Check if transactions are bank statement transactions (no documents) or invoice transactions (with documents)
-  const hasDocuments = transactions.some((tx) => tx.document_id && tx.document);
-  const isBankStatementJob = transactions.length > 0 && !hasDocuments;
-
-  const filteredTransactions = useMemo(() => {
-    const q = searchQuery.trim().toLowerCase();
-    if (!q) return transactions;
-
-    return transactions.filter((tx) => {
-      const parts: Array<string> = [];
-      parts.push(tx.id);
-      parts.push(tx.original_description || "");
-      parts.push(tx.category || "");
-      parts.push(tx.subcategory || "");
-      parts.push(tx.invoice_number || "");
-      parts.push(tx.sync_status || "");
-      parts.push(tx.user_notes || "");
-      parts.push(String(tx.amount ?? ""));
-      parts.push(tx.date || "");
-
-      // Useful when users paste a displayed date (e.g. 31/12/2025)
-      try {
-        parts.push(new Date(tx.date).toLocaleDateString());
-      } catch {
-        // ignore
-      }
-
-      if (tx.document) {
-        parts.push(tx.document.vendor_name || "");
-        parts.push(tx.document.original_filename || "");
-        parts.push(tx.document.invoice_number || "");
-        parts.push(tx.document.order_number || "");
-        parts.push(tx.document.po_number || "");
-        parts.push(tx.document.notes || "");
-      }
-
-      return parts.join(" ").toLowerCase().includes(q);
-    });
-  }, [transactions, searchQuery]);
 
   const handleEditCategory = async (transactionId: string, category: string) => {
     try {
