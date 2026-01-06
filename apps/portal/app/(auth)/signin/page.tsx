@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { createBrowserClient } from "@supabase/ssr";
+import { createClient } from "@/lib/database/client";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 
@@ -10,19 +10,16 @@ export default function SignInPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const [supabase, setSupabase] = useState<ReturnType<typeof createBrowserClient> | null>(null);
+  const [supabase, setSupabase] = useState<ReturnType<typeof createClient> | null>(null);
   const [mounted, setMounted] = useState(false);
   const router = useRouter();
 
   useEffect(() => {
     setMounted(true);
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-
-    if (supabaseUrl && supabaseAnonKey) {
-      setSupabase(createBrowserClient(supabaseUrl, supabaseAnonKey));
-    } else {
-      setError('Missing Supabase configuration. Please check your environment variables.');
+    try {
+      setSupabase(createClient());
+    } catch (err: any) {
+      setError(err.message || 'Failed to initialize Supabase client');
     }
   }, []);
 
