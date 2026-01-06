@@ -166,21 +166,69 @@ export async function middleware(request: NextRequest) {
           }
         );
 
-        // Refresh session to ensure cookies are properly set
-        // This is important for maintaining authentication after OAuth redirects
-        const {
-          data: { session },
-        } = await supabase.auth.getSession();
+        // Get session and user with error handling for corrupted session data
+        // During PRERENDER or with corrupted cookies, these operations may fail
+        let session = null;
+        let user = null;
         
-        // Refresh the session if it exists
-        if (session) {
-          await supabase.auth.refreshSession();
+        try {
+          const sessionResult = await supabase.auth.getSession();
+          session = sessionResult.data?.session ?? null;
+        } catch (sessionError: any) {
+          // Handle corrupted session data gracefully
+          // This can happen if localStorage data was stored as a string instead of object
+          if (sessionError?.message?.includes('Cannot create property') || 
+              sessionError?.message?.includes('on string')) {
+            // Clear corrupted session cookies
+            try {
+              const cookieNames = request.cookies.getAll().map((c) => c.name);
+              cookieNames.filter((n) => n.startsWith('sb-')).forEach((name) => {
+                response.cookies.set({ name, value: '', maxAge: 0 });
+              });
+            } catch {
+              // Ignore cookie clearing errors
+            }
+          }
+          // Continue without session - user will be treated as unauthenticated
         }
         
-        // Get user from refreshed session
-        const {
-          data: { user },
-        } = await supabase.auth.getUser();
+        // Refresh the session if it exists (skip during PRERENDER to avoid token errors)
+        if (session) {
+          try {
+            await supabase.auth.refreshSession();
+          } catch (refreshError: any) {
+            // Handle "refresh_token_already_used" errors gracefully
+            // This can happen if multiple requests try to refresh simultaneously
+            if (refreshError?.code === 'refresh_token_already_used' || 
+                refreshError?.message?.includes('Already Used')) {
+              // Token was already refreshed by another request - continue
+            } else {
+              // Other refresh errors - log but don't crash
+              console.warn('[middleware] Session refresh failed:', refreshError?.message);
+            }
+          }
+        }
+        
+        // Get user from session
+        try {
+          const userResult = await supabase.auth.getUser();
+          user = userResult.data?.user ?? null;
+        } catch (userError: any) {
+          // Handle errors getting user - treat as unauthenticated
+          if (userError?.message?.includes('Cannot create property') || 
+              userError?.message?.includes('on string')) {
+            // Corrupted session data - clear cookies
+            try {
+              const cookieNames = request.cookies.getAll().map((c) => c.name);
+              cookieNames.filter((n) => n.startsWith('sb-')).forEach((name) => {
+                response.cookies.set({ name, value: '', maxAge: 0 });
+              });
+            } catch {
+              // Ignore cookie clearing errors
+            }
+          }
+          // Continue without user - user will be treated as unauthenticated
+        }
 
 
         const maybeLogEnterprise = (message: string, data?: Record<string, unknown>) => {
