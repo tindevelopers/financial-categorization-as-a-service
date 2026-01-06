@@ -61,11 +61,19 @@ export async function GET(request: NextRequest) {
       return NextResponse.redirect("/dashboard/integrations/google-sheets?error=no_credentials");
     }
 
+    // Aggressively trim function (defined here to use in multiple places)
+    const aggressiveTrim = (value: string | null | undefined): string => {
+      if (!value) return '';
+      return value.replace(/^[\s\u00A0\u2000-\u200B\u2028\u2029\u3000]+|[\s\u00A0\u2000-\u200B\u2028\u2029\u3000]+$/g, '');
+    };
+    
     // Use the redirect URI from credentials (which comes from GOOGLE_SHEETS_REDIRECT_URI env var)
     // This matches what's configured in Google Cloud Console and what works in Vercel
     // Fall back to computing from request origin only if not set in credentials
-    const redirectUriToUse = oauthCreds.redirectUri?.trim() || 
-      new URL("/api/integrations/google-sheets/callback", request.nextUrl.origin.trim()).toString().trim();
+    const redirectUriToUse = aggressiveTrim(
+      oauthCreds.redirectUri || 
+      new URL("/api/integrations/google-sheets/callback", aggressiveTrim(request.nextUrl.origin)).toString()
+    );
 
 
     // Log OAuth configuration for debugging
@@ -85,8 +93,27 @@ export async function GET(request: NextRequest) {
     const state = crypto.randomBytes(32).toString("hex");
     
     const authUrl = new URL("https://accounts.google.com/o/oauth2/v2/auth");
-    const clientIdForAuth = oauthCreds.clientId?.trim();
-    const redirectUriForAuth = redirectUriToUse.trim();
+    
+    // Aggressively trim all values to remove any whitespace (including Unicode whitespace)
+    const aggressiveTrim = (value: string | null | undefined): string => {
+      if (!value) return '';
+      return value.replace(/^[\s\u00A0\u2000-\u200B\u2028\u2029\u3000]+|[\s\u00A0\u2000-\u200B\u2028\u2029\u3000]+$/g, '');
+    };
+    
+    const clientIdForAuth = aggressiveTrim(oauthCreds.clientId);
+    const redirectUriForAuth = aggressiveTrim(redirectUriToUse);
+    
+    // Log values before building auth URL (visible in Vercel logs)
+    console.log('[Google Sheets Connect] Values BEFORE building auth URL:', {
+      clientIdLength: clientIdForAuth.length,
+      clientIdHasTrailingSpace: clientIdForAuth[clientIdForAuth.length - 1] === ' ',
+      clientIdHasNewline: clientIdForAuth.includes('\n'),
+      redirectUriLength: redirectUriForAuth.length,
+      redirectUriHasTrailingSpace: redirectUriForAuth[redirectUriForAuth.length - 1] === ' ',
+      redirectUriHasNewline: redirectUriForAuth.includes('\n'),
+      redirectUri: redirectUriForAuth,
+    });
+    
     if (process.env.DEBUG_ENTERPRISE === "1" && user.email?.endsWith("@velocitypartners.info")) {
       console.log("[google-sheets/connect][enterprise] auth request params", {
         clientIdLength: clientIdForAuth?.length,

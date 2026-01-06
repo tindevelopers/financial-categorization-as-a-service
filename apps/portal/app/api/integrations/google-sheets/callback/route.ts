@@ -148,14 +148,20 @@ export async function GET(request: NextRequest) {
       requestUrl: request.url,
     });
 
+    // Aggressively trim function (defined here to use in multiple places)
+    const aggressiveTrim = (value: string | null | undefined): string => {
+      if (!value) return '';
+      return value.replace(/^[\s\u00A0\u2000-\u200B\u2028\u2029\u3000]+|[\s\u00A0\u2000-\u200B\u2028\u2029\u3000]+$/g, '');
+    };
+    
     // Use the redirect URI we actually used in the authorize request (stored in cookie),
     // otherwise derive from this request origin (avoids env drift), and only then fall back.
-    // Trim any whitespace/newlines that might have been introduced from env vars
-    const redirectUriForTokenExchange = (
+    // Aggressively trim any whitespace/newlines that might have been introduced from env vars
+    const redirectUriForTokenExchange = aggressiveTrim(
       redirectUriCookie ||
-      new URL("/api/integrations/google-sheets/callback", request.nextUrl.origin.trim()).toString() ||
+      new URL("/api/integrations/google-sheets/callback", aggressiveTrim(request.nextUrl.origin)).toString() ||
       oauthCreds.redirectUri
-    ).trim();
+    );
     // Log detailed OAuth configuration for debugging invalid_client errors
     console.log("OAuth token exchange configuration:", {
       clientId: oauthCreds.clientId ? `${oauthCreds.clientId.substring(0, 20)}...` : "missing",
@@ -171,10 +177,24 @@ export async function GET(request: NextRequest) {
     });
 
     // Exchange code for tokens using googleapis
-    const clientIdForTokenExchange = oauthCreds.clientId?.trim();
-    const clientSecretForTokenExchange = oauthCreds.clientSecret?.trim();
-    const redirectUriForTokenExchangeFinal = redirectUriForTokenExchange.trim();
+    // Aggressively trim all values to remove any whitespace (including Unicode whitespace)
+    const clientIdForTokenExchange = aggressiveTrim(oauthCreds.clientId);
+    const clientSecretForTokenExchange = aggressiveTrim(oauthCreds.clientSecret);
+    const redirectUriForTokenExchangeFinal = aggressiveTrim(redirectUriForTokenExchange);
 
+    // Log values before token exchange (visible in Vercel logs)
+    console.log('[Google Sheets Callback] Values BEFORE token exchange:', {
+      clientIdLength: clientIdForTokenExchange.length,
+      clientIdHasTrailingSpace: clientIdForTokenExchange[clientIdForTokenExchange.length - 1] === ' ',
+      clientIdHasNewline: clientIdForTokenExchange.includes('\n'),
+      clientSecretLength: clientSecretForTokenExchange.length,
+      clientSecretHasTrailingSpace: clientSecretForTokenExchange[clientSecretForTokenExchange.length - 1] === ' ',
+      clientSecretHasNewline: clientSecretForTokenExchange.includes('\n'),
+      redirectUriLength: redirectUriForTokenExchangeFinal.length,
+      redirectUriHasTrailingSpace: redirectUriForTokenExchangeFinal[redirectUriForTokenExchangeFinal.length - 1] === ' ',
+      redirectUriHasNewline: redirectUriForTokenExchangeFinal.includes('\n'),
+      redirectUri: redirectUriForTokenExchangeFinal,
+    });
 
     const oauth2Client = new google.auth.OAuth2(
       clientIdForTokenExchange,
@@ -184,9 +204,26 @@ export async function GET(request: NextRequest) {
 
     let tokens;
     try {
+      console.log('[Google Sheets Callback] About to call getToken:', {
+        hasCode: !!code,
+        codeLength: code?.length || 0,
+      });
       const tokenResponse = await oauth2Client.getToken(code);
       tokens = tokenResponse.tokens;
+      console.log('[Google Sheets Callback] Token exchange SUCCESS:', {
+        hasAccessToken: !!tokens.access_token,
+        hasRefreshToken: !!tokens.refresh_token,
+      });
     } catch (tokenError: any) {
+      console.error('[Google Sheets Callback] Token exchange FAILED:', {
+        errorMessage: tokenError?.message || 'unknown',
+        errorCode: tokenError?.code || 'unknown',
+        errorStatus: tokenError?.status || 'unknown',
+        clientIdLength: clientIdForTokenExchange.length,
+        clientSecretLength: clientSecretForTokenExchange.length,
+        redirectUriLength: redirectUriForTokenExchangeFinal.length,
+        redirectUri: redirectUriForTokenExchangeFinal,
+      });
       console.error("Failed to exchange authorization code for tokens:", tokenError);
 
 

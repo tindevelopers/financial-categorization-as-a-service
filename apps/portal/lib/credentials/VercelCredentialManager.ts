@@ -28,6 +28,17 @@ export interface GoogleOAuthCredentials {
   redirectUri: string;
 }
 
+/**
+ * Aggressively trim whitespace including Unicode whitespace characters
+ * This handles trailing spaces, newlines, carriage returns, non-breaking spaces, etc.
+ */
+function aggressiveTrim(value: string | null | undefined): string {
+  if (!value) return '';
+  // Remove all types of whitespace from start and end
+  // This includes: spaces, tabs, newlines, carriage returns, non-breaking spaces, etc.
+  return value.replace(/^[\s\u00A0\u2000-\u200B\u2028\u2029\u3000]+|[\s\u00A0\u2000-\u200B\u2028\u2029\u3000]+$/g, '');
+}
+
 export interface GoogleServiceAccountCredentials {
   email: string;
   privateKey: string;
@@ -67,19 +78,50 @@ export class VercelCredentialManager {
       return this.cache.get(cacheKey);
     }
 
-    const clientId = process.env.GOOGLE_CLIENT_ID?.trim();
-    const clientSecret = process.env.GOOGLE_CLIENT_SECRET?.trim();
+    // Log raw values for debugging (visible in Vercel logs)
+    const rawClientId = process.env.GOOGLE_CLIENT_ID;
+    const rawClientSecret = process.env.GOOGLE_CLIENT_SECRET;
+    const rawRedirectUri = process.env.GOOGLE_SHEETS_REDIRECT_URI || process.env.GOOGLE_REDIRECT_URI;
+    
+    console.log('[VercelCredentialManager] Raw env vars:', {
+      rawClientIdLength: rawClientId?.length || 0,
+      rawClientIdHasTrailingSpace: rawClientId ? rawClientId[rawClientId.length - 1] === ' ' : false,
+      rawClientIdHasNewline: rawClientId?.includes('\n') || false,
+      rawClientSecretLength: rawClientSecret?.length || 0,
+      rawClientSecretHasTrailingSpace: rawClientSecret ? rawClientSecret[rawClientSecret.length - 1] === ' ' : false,
+      rawClientSecretHasNewline: rawClientSecret?.includes('\n') || false,
+      rawRedirectUriLength: rawRedirectUri?.length || 0,
+      rawRedirectUriHasTrailingSpace: rawRedirectUri ? rawRedirectUri[rawRedirectUri.length - 1] === ' ' : false,
+      rawRedirectUriHasNewline: rawRedirectUri?.includes('\n') || false,
+    });
+
+    // Use aggressive trimming to remove ALL types of whitespace
+    const clientId = aggressiveTrim(rawClientId);
+    const clientSecret = aggressiveTrim(rawClientSecret);
     
     // Prefer env vars if present
     if (clientId && clientSecret) {
       // Construct redirect URI
       // Portal app runs on port 3002 by default
       const defaultPort = process.env.PORT || '3002';
-      const baseUrl = process.env.NEXT_PUBLIC_APP_URL?.trim() || 
-        (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL.trim()}` : `http://localhost:${defaultPort}`);
-      const redirectUri = (process.env.GOOGLE_SHEETS_REDIRECT_URI?.trim() || 
-        process.env.GOOGLE_REDIRECT_URI?.trim() || 
-        `${baseUrl}/api/integrations/google-sheets/callback`).trim();
+      const baseUrl = aggressiveTrim(process.env.NEXT_PUBLIC_APP_URL) || 
+        (process.env.VERCEL_URL ? `https://${aggressiveTrim(process.env.VERCEL_URL)}` : `http://localhost:${defaultPort}`);
+      const redirectUri = aggressiveTrim(
+        process.env.GOOGLE_SHEETS_REDIRECT_URI || 
+        process.env.GOOGLE_REDIRECT_URI || 
+        `${baseUrl}/api/integrations/google-sheets/callback`
+      );
+
+      // Log trimmed values for debugging (visible in Vercel logs)
+      console.log('[VercelCredentialManager] Credentials after aggressive trim:', {
+        clientIdLength: clientId.length,
+        clientIdHasTrailingSpace: clientId[clientId.length - 1] === ' ',
+        clientSecretLength: clientSecret.length,
+        clientSecretHasTrailingSpace: clientSecret[clientSecret.length - 1] === ' ',
+        redirectUriLength: redirectUri.length,
+        redirectUriHasTrailingSpace: redirectUri[redirectUri.length - 1] === ' ',
+        redirectUri: redirectUri.substring(0, 80) + (redirectUri.length > 80 ? '...' : ''),
+      });
 
       const credentials: GoogleOAuthCredentials = {
         clientId,
@@ -101,19 +143,21 @@ export class VercelCredentialManager {
         .maybeSingle();
 
       const sv = (data as any)?.setting_value || {};
-      const psClientId = typeof sv.clientId === "string" ? sv.clientId.trim() : "";
-      const psRedirectUri = typeof sv.redirectUri === "string" ? sv.redirectUri.trim() : "";
+      const psClientId = typeof sv.clientId === "string" ? aggressiveTrim(sv.clientId) : "";
+      const psRedirectUri = typeof sv.redirectUri === "string" ? aggressiveTrim(sv.redirectUri) : "";
       const secretEnc = typeof sv.clientSecretEncrypted === "string" ? sv.clientSecretEncrypted : "";
-      const psClientSecret = secretEnc ? safeDecrypt(secretEnc).trim() : "";
+      const psClientSecret = secretEnc ? aggressiveTrim(safeDecrypt(secretEnc)) : "";
 
       if (psClientId && psClientSecret) {
         // If redirect not set in platform settings, fall back to computed default
         const defaultPort = process.env.PORT || '3002';
-        const baseUrl = process.env.NEXT_PUBLIC_APP_URL?.trim() || 
-          (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL.trim()}` : `http://localhost:${defaultPort}`);
-        const defaultRedirectUri = (process.env.GOOGLE_SHEETS_REDIRECT_URI?.trim() || 
-          process.env.GOOGLE_REDIRECT_URI?.trim() || 
-          `${baseUrl}/api/integrations/google-sheets/callback`).trim();
+        const baseUrl = aggressiveTrim(process.env.NEXT_PUBLIC_APP_URL) || 
+          (process.env.VERCEL_URL ? `https://${aggressiveTrim(process.env.VERCEL_URL)}` : `http://localhost:${defaultPort}`);
+        const defaultRedirectUri = aggressiveTrim(
+          process.env.GOOGLE_SHEETS_REDIRECT_URI || 
+          process.env.GOOGLE_REDIRECT_URI || 
+          `${baseUrl}/api/integrations/google-sheets/callback`
+        );
 
         const credentials: GoogleOAuthCredentials = {
           clientId: psClientId,
@@ -308,11 +352,15 @@ export class VercelCredentialManager {
   ): Promise<GoogleOAuthCredentials | null> {
     // Construct default redirect URI (used if tenant doesn't have custom_redirect_uri)
     const defaultPort = process.env.PORT || '3002';
-    const baseUrl = (process.env.NEXT_PUBLIC_APP_URL?.trim() || 
-      (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL.trim()}` : `http://localhost:${defaultPort}`)).trim();
-    const defaultRedirectUri = (process.env.GOOGLE_SHEETS_REDIRECT_URI?.trim() || 
-      process.env.GOOGLE_REDIRECT_URI?.trim() || 
-      `${baseUrl}/api/integrations/google-sheets/callback`).trim();
+    const baseUrl = aggressiveTrim(
+      process.env.NEXT_PUBLIC_APP_URL || 
+      (process.env.VERCEL_URL ? `https://${aggressiveTrim(process.env.VERCEL_URL)}` : `http://localhost:${defaultPort}`)
+    );
+    const defaultRedirectUri = aggressiveTrim(
+      process.env.GOOGLE_SHEETS_REDIRECT_URI || 
+      process.env.GOOGLE_REDIRECT_URI || 
+      `${baseUrl}/api/integrations/google-sheets/callback`
+    );
 
     // Try tenant-specific credentials first if tenantId is provided
     if (tenantId) {
@@ -334,15 +382,15 @@ export class VercelCredentialManager {
               .single();
             
             if (tenantSettings?.custom_redirect_uri) {
-              customRedirectUri = tenantSettings.custom_redirect_uri.trim();
+              customRedirectUri = aggressiveTrim(tenantSettings.custom_redirect_uri);
             }
           } catch (error) {
             console.warn('Failed to get custom_redirect_uri from database, using default:', error);
           }
 
           return {
-            clientId: corporateCreds.clientId?.trim(),
-            clientSecret: corporateCreds.clientSecret?.trim(),
+            clientId: aggressiveTrim(corporateCreds.clientId),
+            clientSecret: aggressiveTrim(corporateCreds.clientSecret),
             redirectUri: customRedirectUri || defaultRedirectUri,
           };
         }
@@ -365,15 +413,15 @@ export class VercelCredentialManager {
             .single();
           
           if (tenantSettings?.custom_redirect_uri) {
-            customRedirectUri = tenantSettings.custom_redirect_uri.trim();
+            customRedirectUri = aggressiveTrim(tenantSettings.custom_redirect_uri);
           }
         } catch (error) {
           console.warn('Failed to get custom_redirect_uri from database, using default:', error);
         }
 
         return {
-          clientId: tenantCreds.clientId?.trim(),
-          clientSecret: tenantCreds.clientSecret?.trim(),
+          clientId: aggressiveTrim(tenantCreds.clientId),
+          clientSecret: aggressiveTrim(tenantCreds.clientSecret),
           redirectUri: customRedirectUri || defaultRedirectUri,
         };
       }
