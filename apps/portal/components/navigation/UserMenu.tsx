@@ -16,43 +16,51 @@ import {
   Cog6ToothIcon,
   ArrowRightOnRectangleIcon,
 } from '@heroicons/react/24/outline'
-import { createBrowserClient } from '@supabase/ssr'
+import { createClient } from '@/lib/database/client'
 
 export function UserMenu() {
   const router = useRouter()
   const [user, setUser] = useState<any>(null)
   const [loading, setLoading] = useState(true)
-  const [supabase, setSupabase] = useState<ReturnType<typeof createBrowserClient> | null>(null)
+  const [supabase, setSupabase] = useState<ReturnType<typeof createClient> | null>(null)
 
   useEffect(() => {
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-    const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-
-    if (supabaseUrl && supabaseAnonKey) {
-      setSupabase(createBrowserClient(supabaseUrl, supabaseAnonKey))
+    try {
+      setSupabase(createClient())
+    } catch (error) {
+      console.error('Failed to create Supabase client:', error)
+      setLoading(false)
     }
   }, [])
 
   useEffect(() => {
-    if (supabase) {
-      loadUser()
-    }
-  }, [supabase])
-
-  const loadUser = async () => {
     if (!supabase) return
     
-    try {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser()
-      setUser(user)
-    } catch (error) {
-      console.error('Failed to load user:', error)
-    } finally {
-      setLoading(false)
+    let cancelled = false
+    
+    const loadUser = async () => {
+      try {
+        const {
+          data: { user },
+        } = await supabase.auth.getUser()
+        if (!cancelled) {
+          setUser(user)
+        }
+      } catch (error) {
+        console.error('Failed to load user:', error)
+      } finally {
+        if (!cancelled) {
+          setLoading(false)
+        }
+      }
     }
-  }
+    
+    loadUser()
+    
+    return () => {
+      cancelled = true
+    }
+  }, [supabase])
 
   const handleSignOut = async () => {
     if (!supabase) return

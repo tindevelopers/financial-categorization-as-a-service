@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
-import { createBrowserClient } from '@supabase/ssr'
+import { createClient } from '@/lib/database/client'
 import {
   ArrowRightStartOnRectangleIcon,
   UserCircleIcon,
@@ -20,11 +20,10 @@ export function SidebarUserMenu() {
   // Create Supabase client lazily
   const getSupabase = () => {
     if (!supabaseRef.current && typeof window !== 'undefined') {
-      const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-      const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-      
-      if (supabaseUrl && supabaseAnonKey) {
-        supabaseRef.current = createBrowserClient(supabaseUrl, supabaseAnonKey)
+      try {
+        supabaseRef.current = createClient()
+      } catch (error) {
+        console.error('Failed to create Supabase client:', error)
       }
     }
     return supabaseRef.current
