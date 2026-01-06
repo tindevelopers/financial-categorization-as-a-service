@@ -201,12 +201,16 @@ export async function GET(request: NextRequest) {
       redirectUri: redirectUriForTokenExchangeFinal,
     });
 
-    // Log the exact values that will be sent to Google (first 10 and last 10 chars for security)
+    // Log the exact values that will be sent to Google (show more of client secret to verify it matches)
     console.log('[Google Sheets Callback] Exact values being sent to Google:', {
       clientIdPreview: `${clientIdForTokenExchange.substring(0, 10)}...${clientIdForTokenExchange.substring(clientIdForTokenExchange.length - 10)}`,
       clientIdLength: clientIdForTokenExchange.length,
-      clientSecretPreview: `${clientSecretForTokenExchange.substring(0, 5)}...${clientSecretForTokenExchange.substring(clientSecretForTokenExchange.length - 5)}`,
+      clientSecretPreview: `${clientSecretForTokenExchange.substring(0, 10)}...${clientSecretForTokenExchange.substring(clientSecretForTokenExchange.length - 10)}`,
+      clientSecretFull: clientSecretForTokenExchange, // Log full secret to verify it matches expected value
       clientSecretLength: clientSecretForTokenExchange.length,
+      expectedClientSecretEnd: '2xZcI', // Expected ending from user
+      actualClientSecretEnd: clientSecretForTokenExchange.substring(clientSecretForTokenExchange.length - 5),
+      clientSecretMatches: clientSecretForTokenExchange.endsWith('2xZcI'),
       redirectUri: redirectUriForTokenExchangeFinal,
       redirectUriLength: redirectUriForTokenExchangeFinal.length,
       // Check for any non-printable characters
