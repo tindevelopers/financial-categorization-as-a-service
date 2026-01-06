@@ -79,8 +79,25 @@ export class VercelCredentialManager {
   async getGoogleOAuth(): Promise<GoogleOAuthCredentials | null> {
     const cacheKey = 'google_oauth';
     
+    // Check if cached credentials match current environment variables
+    // This ensures cache is invalidated when env vars change
     if (this.cache.has(cacheKey)) {
-      return this.cache.get(cacheKey);
+      const cached = this.cache.get(cacheKey);
+      const rawClientId = process.env.GOOGLE_CLIENT_ID;
+      const rawClientSecret = process.env.GOOGLE_CLIENT_SECRET;
+      
+      // Compare trimmed values to detect changes
+      const currentClientId = aggressiveTrim(rawClientId);
+      const currentClientSecret = aggressiveTrim(rawClientSecret);
+      
+      // If env vars changed, clear cache
+      if (cached.clientId !== currentClientId || cached.clientSecret !== currentClientSecret) {
+        console.log('[VercelCredentialManager] Environment variables changed, clearing cache');
+        this.cache.delete(cacheKey);
+      } else {
+        // Cache is still valid
+        return cached;
+      }
     }
 
     // Log raw values for debugging (visible in Vercel logs)
