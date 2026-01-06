@@ -94,12 +94,7 @@ export async function GET(request: NextRequest) {
     
     const authUrl = new URL("https://accounts.google.com/o/oauth2/v2/auth");
     
-    // Aggressively trim all values to remove any whitespace (including Unicode whitespace)
-    const aggressiveTrim = (value: string | null | undefined): string => {
-      if (!value) return '';
-      return value.replace(/^[\s\u00A0\u2000-\u200B\u2028\u2029\u3000]+|[\s\u00A0\u2000-\u200B\u2028\u2029\u3000]+$/g, '');
-    };
-    
+    // Use the aggressiveTrim function already defined above
     const clientIdForAuth = aggressiveTrim(oauthCreds.clientId);
     const redirectUriForAuth = aggressiveTrim(redirectUriToUse);
     
