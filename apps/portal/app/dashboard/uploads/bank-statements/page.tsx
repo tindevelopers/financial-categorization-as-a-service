@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
-import { createBrowserClient } from '@supabase/ssr'
+import { createClient } from '@/lib/database/client'
 import SpreadsheetUpload from '@/components/categorization/SpreadsheetUpload'
 import { Heading, Text, Button } from '@/components/catalyst'
 import Link from 'next/link'
@@ -134,10 +134,7 @@ export default function BankStatementsPage() {
   useEffect(() => {
     async function checkAuth() {
       try {
-        const supabase = createBrowserClient(
-          process.env.NEXT_PUBLIC_SUPABASE_URL!,
-          process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-        )
+        const supabase = createClient()
         const { data: { user } } = await supabase.auth.getUser()
 
         if (!user) {
@@ -179,19 +176,15 @@ export default function BankStatementsPage() {
   useEffect(() => {
     fetchStatements()
     
-    // Poll for updates every 3 seconds if there are processing jobs
+    // Poll for updates every 3 seconds
     pollingIntervalRef.current = setInterval(() => {
-      const hasProcessingJobs = statements.some(s => 
-        ['processing', 'queued', 'received'].includes(s.status)
-      )
-      if (hasProcessingJobs) {
-        fetchStatements()
-      }
+      fetchStatements()
     }, 3000)
 
     return () => {
       if (pollingIntervalRef.current) {
         clearInterval(pollingIntervalRef.current)
+        pollingIntervalRef.current = null
       }
     }
   }, [])
