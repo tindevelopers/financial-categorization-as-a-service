@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { Heading, Text, Button } from '@/components/catalyst'
 import { 
@@ -29,7 +29,7 @@ interface BankAccount {
   created_at: string
 }
 
-export default function BankAccountsPage() {
+function BankAccountsContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([])
@@ -499,6 +499,28 @@ export default function BankAccountsPage() {
         </>
       )}
     </div>
+  )
+}
+
+export default function BankAccountsPage() {
+  return (
+    <Suspense fallback={
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <Heading>Bank Accounts</Heading>
+            <Text className="mt-2">
+              Manage your bank accounts and link them to spreadsheets
+            </Text>
+          </div>
+        </div>
+        <div className="text-center py-12">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto"></div>
+        </div>
+      </div>
+    }>
+      <BankAccountsContent />
+    </Suspense>
   )
 }
 
