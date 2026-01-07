@@ -125,7 +125,7 @@ export default function TransactionReview({ jobId }: TransactionReviewProps) {
             // User is authenticated, get session for access token
             return supabase.auth.getSession();
           }
-          return { data: { session: null } };
+          return { data: { session: null }, error: null };
         })
         .then(({ data }) => {
           const token = data.session?.access_token || null;
