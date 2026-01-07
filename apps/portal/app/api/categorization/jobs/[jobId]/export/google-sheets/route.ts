@@ -921,7 +921,7 @@ export async function POST(
       await sheets.spreadsheets.values.update({
         spreadsheetId,
         range,
-        valueInputOption: "RAW",
+        valueInputOption: "USER_ENTERED", // Use USER_ENTERED so formulas are interpreted, not treated as text
         requestBody: {
           values,
         },
