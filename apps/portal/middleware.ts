@@ -166,91 +166,20 @@ export async function middleware(request: NextRequest) {
           }
         );
 
-        // Get session and user with error handling for corrupted session data
+        // Get user with error handling for corrupted session data
+        // Use getUser() instead of getSession() for security - it authenticates with the server
+        // getUser() automatically refreshes tokens if needed, so we don't need to call refreshSession()
         // During PRERENDER or with corrupted cookies, these operations may fail
-        let session = null;
         let user = null;
         
         // #region agent log
         const sbCookieNames = request.cookies.getAll().filter((c) => c.name.startsWith('sb-')).map((c) => ({ name: c.name, valueLength: c.value?.length || 0, valuePreview: c.value?.substring(0, 50) || '' }));
-        fetch('http://127.0.0.1:7243/ingest/0c1b14f8-8590-4e1a-a5b8-7e9645e1d13e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'upload-flow',hypothesisId:'H1',location:'apps/portal/middleware.ts:getSession',message:'middleware session check start',data:{pathname,hasCookies:sbCookieNames.length>0,cookieCount:sbCookieNames.length,cookieNames:sbCookieNames.map(c=>c.name)},timestamp:Date.now()})}).catch(()=>{});
+        fetch('http://127.0.0.1:7243/ingest/0c1b14f8-8590-4e1a-a5b8-7e9645e1d13e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'upload-flow',hypothesisId:'H1',location:'apps/portal/middleware.ts:getUser',message:'middleware user check start',data:{pathname,hasCookies:sbCookieNames.length>0,cookieCount:sbCookieNames.length,cookieNames:sbCookieNames.map(c=>c.name)},timestamp:Date.now()})}).catch(()=>{});
         // #endregion
         
         try {
-          const sessionResult = await supabase.auth.getSession();
-          session = sessionResult.data?.session ?? null;
-          // #region agent log
-          fetch('http://127.0.0.1:7243/ingest/0c1b14f8-8590-4e1a-a5b8-7e9645e1d13e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'upload-flow',hypothesisId:'H1',location:'apps/portal/middleware.ts:getSession',message:'session retrieved successfully',data:{hasSession:!!session,userId:session?.user?.id?.substring(0,8)||null},timestamp:Date.now()})}).catch(()=>{});
-          // #endregion
-        } catch (sessionError: any) {
-          // #region agent log
-          fetch('http://127.0.0.1:7243/ingest/0c1b14f8-8590-4e1a-a5b8-7e9645e1d13e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'upload-flow',hypothesisId:'H1',location:'apps/portal/middleware.ts:getSession',message:'session error caught',data:{errorMessage:sessionError?.message||null,errorType:sessionError?.constructor?.name||null,isCorruptionError:sessionError?.message?.includes('Cannot create property')||sessionError?.message?.includes('on string')||false,pathname},timestamp:Date.now()})}).catch(()=>{});
-          // #endregion
-          // Handle corrupted session data gracefully
-          // This can happen if localStorage data was stored as a string instead of object
-          if (sessionError?.message?.includes('Cannot create property') || 
-              sessionError?.message?.includes('on string')) {
-            // Try to recover by calling getUser() directly (authenticates with server)
-            // This bypasses the corrupted cookie data
-            try {
-              const userResult = await supabase.auth.getUser();
-              if (userResult.data?.user) {
-                user = userResult.data.user;
-                // #region agent log
-                fetch('http://127.0.0.1:7243/ingest/0c1b14f8-8590-4e1a-a5b8-7e9645e1d13e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'upload-flow',hypothesisId:'H1',location:'apps/portal/middleware.ts:getSession',message:'recovered user from corrupted session via getUser',data:{userId:user?.id?.substring(0,8)||null},timestamp:Date.now()})}).catch(()=>{});
-                // #endregion
-                // Skip refresh since we recovered the user
-                // Continue with user authenticated
-              } else {
-                // If getUser also fails, clear corrupted cookies
-                const cookieNames = request.cookies.getAll().map((c) => c.name);
-                cookieNames.filter((n) => n.startsWith('sb-')).forEach((name) => {
-                  response.cookies.set({ name, value: '', maxAge: 0 });
-                });
-                // #region agent log
-                fetch('http://127.0.0.1:7243/ingest/0c1b14f8-8590-4e1a-a5b8-7e9645e1d13e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'upload-flow',hypothesisId:'H1',location:'apps/portal/middleware.ts:getSession',message:'cleared corrupted cookies after getUser failed',data:{clearedCount:cookieNames.filter((n) => n.startsWith('sb-')).length},timestamp:Date.now()})}).catch(()=>{});
-                // #endregion
-              }
-            } catch (recoveryError) {
-              // If recovery fails, clear cookies and continue unauthenticated
-              try {
-                const cookieNames = request.cookies.getAll().map((c) => c.name);
-                cookieNames.filter((n) => n.startsWith('sb-')).forEach((name) => {
-                  response.cookies.set({ name, value: '', maxAge: 0 });
-                });
-              } catch {
-                // Ignore cookie clearing errors
-              }
-            }
-          }
-          // Continue - user may be recovered or will be treated as unauthenticated
-        }
-        
-        // Refresh the session if it exists (skip during PRERENDER to avoid token errors)
-        if (session) {
-          try {
-            await supabase.auth.refreshSession();
-            // #region agent log
-            fetch('http://127.0.0.1:7243/ingest/0c1b14f8-8590-4e1a-a5b8-7e9645e1d13e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'upload-flow',hypothesisId:'H3',location:'apps/portal/middleware.ts:refreshSession',message:'session refreshed successfully',data:{pathname},timestamp:Date.now()})}).catch(()=>{});
-            // #endregion
-          } catch (refreshError: any) {
-            // #region agent log
-            fetch('http://127.0.0.1:7243/ingest/0c1b14f8-8590-4e1a-a5b8-7e9645e1d13e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'upload-flow',hypothesisId:'H3',location:'apps/portal/middleware.ts:refreshSession',message:'session refresh error',data:{errorMessage:refreshError?.message||null,errorCode:refreshError?.code||null,isAlreadyUsed:refreshError?.code==='refresh_token_already_used'||false,pathname},timestamp:Date.now()})}).catch(()=>{});
-            // #endregion
-            // Handle "refresh_token_already_used" errors gracefully
-            // This can happen if multiple requests try to refresh simultaneously
-            if (refreshError?.code === 'refresh_token_already_used' || 
-                refreshError?.message?.includes('Already Used')) {
-              // Token was already refreshed by another request - continue
-            } else {
-              // Other refresh errors - log but don't crash
-              console.warn('[middleware] Session refresh failed:', refreshError?.message);
-            }
-          }
-        }
-        
-        // Get user from session
-        try {
+          // Use getUser() which authenticates with the server and automatically refreshes tokens
+          // This is more secure than getSession() which reads from cookies without verification
           const userResult = await supabase.auth.getUser();
           user = userResult.data?.user ?? null;
           // #region agent log
@@ -258,10 +187,16 @@ export async function middleware(request: NextRequest) {
           // #endregion
         } catch (userError: any) {
           // #region agent log
-          fetch('http://127.0.0.1:7243/ingest/0c1b14f8-8590-4e1a-a5b8-7e9645e1d13e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'upload-flow',hypothesisId:'H1',location:'apps/portal/middleware.ts:getUser',message:'user error caught',data:{errorMessage:userError?.message||null,errorType:userError?.constructor?.name||null,isCorruptionError:userError?.message?.includes('Cannot create property')||userError?.message?.includes('on string')||false,pathname},timestamp:Date.now()})}).catch(()=>{});
+          fetch('http://127.0.0.1:7243/ingest/0c1b14f8-8590-4e1a-a5b8-7e9645e1d13e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'upload-flow',hypothesisId:'H1',location:'apps/portal/middleware.ts:getUser',message:'user error caught',data:{errorMessage:userError?.message||null,errorType:userError?.constructor?.name||null,isCorruptionError:userError?.message?.includes('Cannot create property')||userError?.message?.includes('on string')||false,isRefreshTokenError:userError?.code==='refresh_token_already_used'||userError?.message?.includes('Already Used')||false,pathname},timestamp:Date.now()})}).catch(()=>{});
           // #endregion
           // Handle errors getting user - treat as unauthenticated
-          if (userError?.message?.includes('Cannot create property') || 
+          // Handle "refresh_token_already_used" errors gracefully
+          // This can happen if multiple requests try to refresh simultaneously
+          if (userError?.code === 'refresh_token_already_used' || 
+              userError?.message?.includes('Already Used')) {
+            // Token was already refreshed by another request - continue without user
+            // The next request will succeed
+          } else if (userError?.message?.includes('Cannot create property') || 
               userError?.message?.includes('on string')) {
             // Corrupted session data - clear cookies
             try {

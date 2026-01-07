@@ -178,12 +178,19 @@ export async function getCurrentUser() {
 
 /**
  * Get current session
+ * Note: Uses getUser() instead of getSession() for security
+ * getUser() authenticates with the server, while getSession() reads from cookies without verification
  */
 export async function getCurrentSession() {
   const supabase = createBrowserClient();
-  const { data: { session }, error } = await supabase.auth.getSession();
+  const { data: { user }, error } = await supabase.auth.getUser();
   
   if (error) throw error;
+  if (!user) return null;
+  
+  // Get session after verifying user
+  const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+  if (sessionError) throw sessionError;
   return session;
 }
 

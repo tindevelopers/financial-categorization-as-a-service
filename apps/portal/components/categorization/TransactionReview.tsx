@@ -117,8 +117,16 @@ export default function TransactionReview({ jobId }: TransactionReviewProps) {
   useEffect(() => {
     try {
       const supabase = createClient();
+      // Use getUser() first to verify authentication, then get session
       supabase.auth
-        .getSession()
+        .getUser()
+        .then(({ data: { user } }) => {
+          if (user) {
+            // User is authenticated, get session for access token
+            return supabase.auth.getSession();
+          }
+          return { data: { session: null } };
+        })
         .then(({ data }) => {
           const token = data.session?.access_token || null;
           setAccessToken(token);
@@ -338,7 +346,16 @@ export default function TransactionReview({ jobId }: TransactionReviewProps) {
         },
       });
       if (!response.ok) {
-        throw new Error("Failed to load transactions");
+        // Try to extract error message from response
+        let errorMessage = "Failed to load transactions";
+        try {
+          const errorData = await response.json();
+          errorMessage = errorData.error || errorMessage;
+        } catch {
+          // If JSON parsing fails, use status text
+          errorMessage = response.statusText || errorMessage;
+        }
+        throw new Error(errorMessage);
       }
       const data = await response.json();
       const rawTransactions: Transaction[] = data.transactions || [];
@@ -538,15 +555,30 @@ export default function TransactionReview({ jobId }: TransactionReviewProps) {
     return (
       <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4">
         <p className="text-red-800 dark:text-red-200">{error}</p>
-        <button
-          onClick={() => {
-            setError(null);
-            loadTransactions();
-          }}
-          className="mt-2 text-sm text-red-600 hover:text-red-800 underline"
-        >
-          Try again
-        </button>
+        {error.includes('No tenant associated') && (
+          <p className="mt-2 text-sm text-red-700 dark:text-red-300">
+            Please complete your company setup to continue. You may need to refresh the page after completing setup.
+          </p>
+        )}
+        <div className="mt-3 flex gap-2">
+          <button
+            onClick={() => {
+              setError(null);
+              loadTransactions();
+            }}
+            className="text-sm text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300 underline"
+          >
+            Try again
+          </button>
+          {error.includes('No tenant associated') && (
+            <a
+              href="/dashboard/setup"
+              className="text-sm text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300 underline"
+            >
+              Go to Setup
+            </a>
+          )}
+        </div>
       </div>
     );
   }

@@ -48,11 +48,63 @@ export async function getEntityInfo(): Promise<EntityInfo> {
   // Get user's tenant_id
   const { data: userData } = await supabase
     .from('users')
-    .select('tenant_id')
+    .select('tenant_id, email, full_name')
     .eq('id', user.id)
-    .single() as { data: { tenant_id: string | null } | null };
+    .single() as { data: { tenant_id: string | null; email: string | null; full_name: string | null } | null };
   
-  const tenantId = userData?.tenant_id || null;
+  let tenantId = userData?.tenant_id || null;
+  
+  // If user doesn't have a tenant_id, create one automatically
+  // This handles cases where users were created before the tenant system or signup failed partway
+  if (!tenantId && userData) {
+    try {
+      const { createAdminClient } = await import('@/lib/database/admin-client');
+      const adminClient = createAdminClient();
+      
+      // Generate tenant domain from email or use a default
+      const tenantDomain = userData.email 
+        ? `${userData.email.split('@')[0]}-${Date.now().toString().slice(-6)}`
+        : `user-${user.id.slice(0, 8)}`;
+      
+      const tenantName = userData.full_name 
+        ? `${userData.full_name}'s Organization`
+        : 'My Organization';
+      
+      // Create tenant
+      const { data: newTenant, error: tenantError } = await adminClient
+        .from('tenants')
+        .insert({
+          name: tenantName,
+          domain: tenantDomain,
+          plan: 'starter',
+          region: 'us-east-1',
+          status: 'active',
+          subscription_type: 'individual',
+        })
+        .select()
+        .single();
+      
+      if (!tenantError && newTenant) {
+        // Update user with tenant_id
+        const { error: updateError } = await adminClient
+          .from('users')
+          .update({ tenant_id: newTenant.id })
+          .eq('id', user.id);
+        
+        if (!updateError) {
+          tenantId = newTenant.id;
+          console.log(`[getEntityInfo] Created tenant ${tenantId} for user ${user.id}`);
+        } else {
+          console.error('[getEntityInfo] Failed to update user with tenant_id:', updateError);
+        }
+      } else {
+        console.error('[getEntityInfo] Failed to create tenant:', tenantError);
+      }
+    } catch (error) {
+      console.error('[getEntityInfo] Error creating tenant:', error);
+      // Continue without tenant - will show error to user
+    }
+  }
   
   // Check for company profile
   type CompanyProfileRow = {

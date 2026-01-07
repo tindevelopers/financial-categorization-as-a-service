@@ -12,15 +12,8 @@ type TenantUpdate = Database["public"]["Tables"]["tenants"]["Update"];
 export async function getTenants() {
   const supabase = createClient();
   
-  // Check session first
-  const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-  console.log("[getTenants] Session check:", {
-    hasSession: !!session,
-    userId: session?.user?.id,
-    sessionError: sessionError?.message,
-  });
-
   // Get current user to check role
+  // Use getUser() instead of getSession() for security - it authenticates with the server
   const { data: { user }, error: userError } = await supabase.auth.getUser();
   console.log("[getTenants] User check:", {
     hasUser: !!user,
