@@ -16,8 +16,18 @@ import { createJobErrorResponse, mapErrorToCode } from "@/lib/errors/job-errors"
  * Process a spreadsheet file asynchronously using Vercel Background Functions
  */
 export async function POST(request: NextRequest) {  try {
+    // #region agent log
+    const cookieHeader = request.headers.get("cookie") || "";
+    const cookieCount = cookieHeader.split(';').filter(c => c.trim().startsWith('sb-')).length;
+    fetch('http://127.0.0.1:7243/ingest/0c1b14f8-8590-4e1a-a5b8-7e9645e1d13e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'upload-flow',hypothesisId:'H2',location:'apps/portal/app/api/background/process-spreadsheet/route.ts:POST',message:'background processing entry',data:{hasCookies:cookieHeader.length>0,cookieCount,cookieHeaderLength:cookieHeader.length},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
+    
     const supabase = await createClient();
     const { data: { user }, error: authError } = await supabase.auth.getUser();
+    
+    // #region agent log
+    fetch('http://127.0.0.1:7243/ingest/0c1b14f8-8590-4e1a-a5b8-7e9645e1d13e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'upload-flow',hypothesisId:'H2',location:'apps/portal/app/api/background/process-spreadsheet/route.ts:POST',message:'background processing auth check',data:{hasUser:!!user,hasAuthError:!!authError,userId:user?.id?.substring(0,8)||null,authErrorMessage:authError?.message||null},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
 
     if (authError || !user) {
       return NextResponse.json(

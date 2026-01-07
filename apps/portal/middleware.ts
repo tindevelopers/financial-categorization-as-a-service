@@ -171,10 +171,21 @@ export async function middleware(request: NextRequest) {
         let session = null;
         let user = null;
         
+        // #region agent log
+        const sbCookieNames = request.cookies.getAll().filter((c) => c.name.startsWith('sb-')).map((c) => ({ name: c.name, valueLength: c.value?.length || 0, valuePreview: c.value?.substring(0, 50) || '' }));
+        fetch('http://127.0.0.1:7243/ingest/0c1b14f8-8590-4e1a-a5b8-7e9645e1d13e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'upload-flow',hypothesisId:'H1',location:'apps/portal/middleware.ts:getSession',message:'middleware session check start',data:{pathname,hasCookies:sbCookieNames.length>0,cookieCount:sbCookieNames.length,cookieNames:sbCookieNames.map(c=>c.name)},timestamp:Date.now()})}).catch(()=>{});
+        // #endregion
+        
         try {
           const sessionResult = await supabase.auth.getSession();
           session = sessionResult.data?.session ?? null;
+          // #region agent log
+          fetch('http://127.0.0.1:7243/ingest/0c1b14f8-8590-4e1a-a5b8-7e9645e1d13e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'upload-flow',hypothesisId:'H1',location:'apps/portal/middleware.ts:getSession',message:'session retrieved successfully',data:{hasSession:!!session,userId:session?.user?.id?.substring(0,8)||null},timestamp:Date.now()})}).catch(()=>{});
+          // #endregion
         } catch (sessionError: any) {
+          // #region agent log
+          fetch('http://127.0.0.1:7243/ingest/0c1b14f8-8590-4e1a-a5b8-7e9645e1d13e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'upload-flow',hypothesisId:'H1',location:'apps/portal/middleware.ts:getSession',message:'session error caught',data:{errorMessage:sessionError?.message||null,errorType:sessionError?.constructor?.name||null,isCorruptionError:sessionError?.message?.includes('Cannot create property')||sessionError?.message?.includes('on string')||false,pathname},timestamp:Date.now()})}).catch(()=>{});
+          // #endregion
           // Handle corrupted session data gracefully
           // This can happen if localStorage data was stored as a string instead of object
           if (sessionError?.message?.includes('Cannot create property') || 
@@ -185,6 +196,9 @@ export async function middleware(request: NextRequest) {
               cookieNames.filter((n) => n.startsWith('sb-')).forEach((name) => {
                 response.cookies.set({ name, value: '', maxAge: 0 });
               });
+              // #region agent log
+              fetch('http://127.0.0.1:7243/ingest/0c1b14f8-8590-4e1a-a5b8-7e9645e1d13e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'upload-flow',hypothesisId:'H1',location:'apps/portal/middleware.ts:getSession',message:'cleared corrupted cookies',data:{clearedCount:cookieNames.filter((n) => n.startsWith('sb-')).length},timestamp:Date.now()})}).catch(()=>{});
+              // #endregion
             } catch {
               // Ignore cookie clearing errors
             }
@@ -196,7 +210,13 @@ export async function middleware(request: NextRequest) {
         if (session) {
           try {
             await supabase.auth.refreshSession();
+            // #region agent log
+            fetch('http://127.0.0.1:7243/ingest/0c1b14f8-8590-4e1a-a5b8-7e9645e1d13e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'upload-flow',hypothesisId:'H3',location:'apps/portal/middleware.ts:refreshSession',message:'session refreshed successfully',data:{pathname},timestamp:Date.now()})}).catch(()=>{});
+            // #endregion
           } catch (refreshError: any) {
+            // #region agent log
+            fetch('http://127.0.0.1:7243/ingest/0c1b14f8-8590-4e1a-a5b8-7e9645e1d13e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'upload-flow',hypothesisId:'H3',location:'apps/portal/middleware.ts:refreshSession',message:'session refresh error',data:{errorMessage:refreshError?.message||null,errorCode:refreshError?.code||null,isAlreadyUsed:refreshError?.code==='refresh_token_already_used'||false,pathname},timestamp:Date.now()})}).catch(()=>{});
+            // #endregion
             // Handle "refresh_token_already_used" errors gracefully
             // This can happen if multiple requests try to refresh simultaneously
             if (refreshError?.code === 'refresh_token_already_used' || 
@@ -213,7 +233,13 @@ export async function middleware(request: NextRequest) {
         try {
           const userResult = await supabase.auth.getUser();
           user = userResult.data?.user ?? null;
+          // #region agent log
+          fetch('http://127.0.0.1:7243/ingest/0c1b14f8-8590-4e1a-a5b8-7e9645e1d13e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'upload-flow',hypothesisId:'H1',location:'apps/portal/middleware.ts:getUser',message:'user retrieved successfully',data:{hasUser:!!user,userId:user?.id?.substring(0,8)||null,pathname},timestamp:Date.now()})}).catch(()=>{});
+          // #endregion
         } catch (userError: any) {
+          // #region agent log
+          fetch('http://127.0.0.1:7243/ingest/0c1b14f8-8590-4e1a-a5b8-7e9645e1d13e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'upload-flow',hypothesisId:'H1',location:'apps/portal/middleware.ts:getUser',message:'user error caught',data:{errorMessage:userError?.message||null,errorType:userError?.constructor?.name||null,isCorruptionError:userError?.message?.includes('Cannot create property')||userError?.message?.includes('on string')||false,pathname},timestamp:Date.now()})}).catch(()=>{});
+          // #endregion
           // Handle errors getting user - treat as unauthenticated
           if (userError?.message?.includes('Cannot create property') || 
               userError?.message?.includes('on string')) {
@@ -223,6 +249,9 @@ export async function middleware(request: NextRequest) {
               cookieNames.filter((n) => n.startsWith('sb-')).forEach((name) => {
                 response.cookies.set({ name, value: '', maxAge: 0 });
               });
+              // #region agent log
+              fetch('http://127.0.0.1:7243/ingest/0c1b14f8-8590-4e1a-a5b8-7e9645e1d13e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'upload-flow',hypothesisId:'H1',location:'apps/portal/middleware.ts:getUser',message:'cleared corrupted cookies from getUser error',data:{clearedCount:cookieNames.filter((n) => n.startsWith('sb-')).length},timestamp:Date.now()})}).catch(()=>{});
+              // #endregion
             } catch {
               // Ignore cookie clearing errors
             }

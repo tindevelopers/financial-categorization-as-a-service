@@ -26,9 +26,19 @@ export async function OPTIONS() {
 
 export async function POST(request: NextRequest) {
   try {
+    // #region agent log
+    const cookieHeader = request.headers.get("cookie") || "";
+    const cookieCount = cookieHeader.split(';').filter(c => c.trim().startsWith('sb-')).length;
+    fetch('http://127.0.0.1:7243/ingest/0c1b14f8-8590-4e1a-a5b8-7e9645e1d13e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'upload-flow',hypothesisId:'H2',location:'apps/portal/app/api/categorization/upload/route.ts:POST',message:'upload route entry',data:{hasCookies:cookieHeader.length>0,cookieCount,cookieHeaderLength:cookieHeader.length},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
+    
     const supabase = await createClient();
     
     const { data: { user }, error: authError } = await supabase.auth.getUser();
+    
+    // #region agent log
+    fetch('http://127.0.0.1:7243/ingest/0c1b14f8-8590-4e1a-a5b8-7e9645e1d13e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'upload-flow',hypothesisId:'H2',location:'apps/portal/app/api/categorization/upload/route.ts:POST',message:'user auth check',data:{hasUser:!!user,hasAuthError:!!authError,userId:user?.id?.substring(0,8)||null,authErrorMessage:authError?.message||null},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
 
     if (authError || !user) {
       const errorResponse = createJobErrorResponse("AUTHENTICATION_ERROR");
@@ -491,6 +501,13 @@ export async function POST(request: NextRequest) {
 
     // Queue for async processing using Vercel Background Functions
     try {
+      // #region agent log
+      const cookieHeader = request.headers.get("cookie") || "";
+      const hasCookies = cookieHeader.length > 0;
+      const cookieCount = cookieHeader.split(';').filter(c => c.trim().startsWith('sb-')).length;
+      fetch('http://127.0.0.1:7243/ingest/0c1b14f8-8590-4e1a-a5b8-7e9645e1d13e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'upload-flow',hypothesisId:'H5',location:'apps/portal/app/api/categorization/upload/route.ts:triggerBackground',message:'triggering background processing',data:{hasCookies,cookieCount,cookieHeaderLength:cookieHeader.length,jobIdSuffix:jobData.id?.substring(jobData.id.length-6)||null},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
+      
       // Update status to queued before triggering background processing
       try {
         const adminClient = createAdminClient();
@@ -522,12 +539,22 @@ export async function POST(request: NextRequest) {
         },
         body: JSON.stringify({ jobId: jobData.id }),
       })
-        .then(() => {})
+        .then(() => {
+          // #region agent log
+          fetch('http://127.0.0.1:7243/ingest/0c1b14f8-8590-4e1a-a5b8-7e9645e1d13e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'upload-flow',hypothesisId:'H5',location:'apps/portal/app/api/categorization/upload/route.ts:triggerBackground',message:'background processing triggered successfully',data:{jobIdSuffix:jobData.id?.substring(jobData.id.length-6)||null},timestamp:Date.now()})}).catch(()=>{});
+          // #endregion
+        })
         .catch((err) => {
+          // #region agent log
+          fetch('http://127.0.0.1:7243/ingest/0c1b14f8-8590-4e1a-a5b8-7e9645e1d13e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'upload-flow',hypothesisId:'H5',location:'apps/portal/app/api/categorization/upload/route.ts:triggerBackground',message:'background processing trigger failed',data:{errorMessage:err?.message||null},timestamp:Date.now()})}).catch(()=>{});
+          // #endregion
           console.error("Failed to queue background processing:", err);
           // Don't fail the upload - cron job will pick it up if needed
         });
     } catch (processError) {
+      // #region agent log
+      fetch('http://127.0.0.1:7243/ingest/0c1b14f8-8590-4e1a-a5b8-7e9645e1d13e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'upload-flow',hypothesisId:'H5',location:'apps/portal/app/api/categorization/upload/route.ts:triggerBackground',message:'background processing setup failed',data:{errorMessage:processError?.message||null},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
       console.error("Failed to queue background processing:", processError);
       // Don't fail the upload - cron job will pick it up if needed
     }
