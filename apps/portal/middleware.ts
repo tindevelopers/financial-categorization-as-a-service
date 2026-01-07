@@ -190,20 +190,40 @@ export async function middleware(request: NextRequest) {
           // This can happen if localStorage data was stored as a string instead of object
           if (sessionError?.message?.includes('Cannot create property') || 
               sessionError?.message?.includes('on string')) {
-            // Clear corrupted session cookies
+            // Try to recover by calling getUser() directly (authenticates with server)
+            // This bypasses the corrupted cookie data
             try {
-              const cookieNames = request.cookies.getAll().map((c) => c.name);
-              cookieNames.filter((n) => n.startsWith('sb-')).forEach((name) => {
-                response.cookies.set({ name, value: '', maxAge: 0 });
-              });
-              // #region agent log
-              fetch('http://127.0.0.1:7243/ingest/0c1b14f8-8590-4e1a-a5b8-7e9645e1d13e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'upload-flow',hypothesisId:'H1',location:'apps/portal/middleware.ts:getSession',message:'cleared corrupted cookies',data:{clearedCount:cookieNames.filter((n) => n.startsWith('sb-')).length},timestamp:Date.now()})}).catch(()=>{});
-              // #endregion
-            } catch {
-              // Ignore cookie clearing errors
+              const userResult = await supabase.auth.getUser();
+              if (userResult.data?.user) {
+                user = userResult.data.user;
+                // #region agent log
+                fetch('http://127.0.0.1:7243/ingest/0c1b14f8-8590-4e1a-a5b8-7e9645e1d13e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'upload-flow',hypothesisId:'H1',location:'apps/portal/middleware.ts:getSession',message:'recovered user from corrupted session via getUser',data:{userId:user?.id?.substring(0,8)||null},timestamp:Date.now()})}).catch(()=>{});
+                // #endregion
+                // Skip refresh since we recovered the user
+                // Continue with user authenticated
+              } else {
+                // If getUser also fails, clear corrupted cookies
+                const cookieNames = request.cookies.getAll().map((c) => c.name);
+                cookieNames.filter((n) => n.startsWith('sb-')).forEach((name) => {
+                  response.cookies.set({ name, value: '', maxAge: 0 });
+                });
+                // #region agent log
+                fetch('http://127.0.0.1:7243/ingest/0c1b14f8-8590-4e1a-a5b8-7e9645e1d13e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'upload-flow',hypothesisId:'H1',location:'apps/portal/middleware.ts:getSession',message:'cleared corrupted cookies after getUser failed',data:{clearedCount:cookieNames.filter((n) => n.startsWith('sb-')).length},timestamp:Date.now()})}).catch(()=>{});
+                // #endregion
+              }
+            } catch (recoveryError) {
+              // If recovery fails, clear cookies and continue unauthenticated
+              try {
+                const cookieNames = request.cookies.getAll().map((c) => c.name);
+                cookieNames.filter((n) => n.startsWith('sb-')).forEach((name) => {
+                  response.cookies.set({ name, value: '', maxAge: 0 });
+                });
+              } catch {
+                // Ignore cookie clearing errors
+              }
             }
           }
-          // Continue without session - user will be treated as unauthenticated
+          // Continue - user may be recovered or will be treated as unauthenticated
         }
         
         // Refresh the session if it exists (skip during PRERENDER to avoid token errors)

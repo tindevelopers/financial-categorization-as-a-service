@@ -997,19 +997,22 @@ export async function processSpreadsheetFile(
       syncTransactionCount: uniqueCategorizedSyncTransactions.length,
       jobId,
       bankAccountId,
-      categorizedCount: uniqueCategorizedSyncTransactions.filter(tx => tx.category).length
+      categorizedCount: uniqueCategorizedSyncTransactions.filter(tx => tx.category).length,
+      periodReplace: !!(bankAccountId && periodStart && periodEnd)
     });
     await debugLog('process-spreadsheet.ts:365', 'Starting merge service', {
       syncTransactionCount: categorizedSyncTransactions.length
     });
     
-    // For period-replace uploads, we intentionally skip global duplicate detection (we already deleted by period).
+    // Always run duplicate detection to prevent duplicate transactions across all uploads
+    // Even with period-replace (which deletes transactions in the period), we should still
+    // check for duplicates to avoid inserting transactions that already exist from other periods/jobs
     const mergeResult = await mergeService.processUploadWithMerge(uniqueCategorizedSyncTransactions, {
       sourceType: "upload",
       sourceIdentifier: `job_${jobId}`,
       jobId: jobId,
       createJob: false,
-      skipDuplicateCheck: true,
+      skipDuplicateCheck: false, // Always check for duplicates to prevent duplicate transactions
       bankAccountId: bankAccountId,
     });
 
