@@ -331,7 +331,7 @@ export async function middleware(request: NextRequest) {
               // Also filter by tenant_id if user has one to ensure we get the right company profile
               let companyQuery = supabase
                 .from('company_profiles')
-                .select('id, setup_completed, tenant_id, setup_step')
+                .select('id, setup_completed, tenant_id, setup_step, company_name')
                 .eq('user_id', user.id)
                 .order('created_at', { ascending: false })
                 .limit(1);
@@ -339,6 +339,11 @@ export async function middleware(request: NextRequest) {
               if (tenantId) {
                 companyQuery = companyQuery.eq('tenant_id', tenantId);
               }
+
+              // #region agent log
+              fetch('http://127.0.0.1:7243/ingest/0c1b14f8-8590-4e1a-a5b8-7e9645e1d13e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'setup-loop',hypothesisId:'H1',location:'apps/portal/middleware.ts:companyQuery',message:'before company query',data:{userId:user.id?.substring(0,8)||null,tenantId,pathname,isEnterpriseTenant},timestamp:Date.now()})}).catch(()=>{});
+              // #endregion
+              console.log('[setup-loop] companyQuery.start', JSON.stringify({ userId: user.id?.substring(0,8) || null, tenantId, pathname, isEnterpriseTenant }));
 
               const { data: companies, error } = await companyQuery;
               maybeLogEnterprise("companySetup.check", {
@@ -348,7 +353,18 @@ export async function middleware(request: NextRequest) {
                 companiesCount: companies?.length ?? 0,
                 setupCompleted: (companies as any)?.[0]?.setup_completed,
                 companyTenantId: (companies as any)?.[0]?.tenant_id,
+                firstCompanyId: (companies as any)?.[0]?.id,
+                firstCompanyName: (companies as any)?.[0]?.company_name,
               });
+              console.log('[setup-loop] companyQuery.result', JSON.stringify({
+                userId: user.id?.substring(0,8) || null,
+                tenantId,
+                companiesCount: companies?.length ?? 0,
+                firstCompanyId: (companies as any)?.[0]?.id,
+                firstCompanyTenant: (companies as any)?.[0]?.tenant_id,
+                firstCompanySetup: (companies as any)?.[0]?.setup_completed,
+                error: (error as any)?.message || null,
+              }));
               
               // If query fails, log error but allow access (fail open)
               if (error) {
@@ -365,6 +381,9 @@ export async function middleware(request: NextRequest) {
                 isSetupCompleted,
                 setupCompletedValue: (companies as any)?.[0]?.setup_completed,
                 willRedirect: !hasCompany || !isSetupCompleted,
+                companyTenantId: (companies as any)?.[0]?.tenant_id,
+                userTenantId: tenantId,
+                companyId: (companies as any)?.[0]?.id,
               });
               
               let finalHasCompany = hasCompany;
@@ -427,6 +446,18 @@ export async function middleware(request: NextRequest) {
               }
 
               if (!finalHasCompany || !finalIsSetupCompleted) {
+                // #region agent log
+                fetch('http://127.0.0.1:7243/ingest/0c1b14f8-8590-4e1a-a5b8-7e9645e1d13e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'setup-loop',hypothesisId:'H2',location:'apps/portal/middleware.ts:redirectSetup',message:'redirecting to setup',data:{pathname,tenantId,hasCompany:finalHasCompany,isSetupCompleted:finalIsSetupCompleted,companyId:(companies as any)?.[0]?.id,companyTenantId:(companies as any)?.[0]?.tenant_id,isEnterpriseTenant},timestamp:Date.now()})}).catch(()=>{});
+                // #endregion
+                console.log('[setup-loop] redirect.toSetup', JSON.stringify({
+                  pathname,
+                  tenantId,
+                  hasCompany: finalHasCompany,
+                  isSetupCompleted: finalIsSetupCompleted,
+                  companyId: (companies as any)?.[0]?.id,
+                  companyTenantId: (companies as any)?.[0]?.tenant_id,
+                  isEnterpriseTenant,
+                }));
                 maybeLogEnterprise("redirect.toDashboardSetup", {
                   reason: !finalHasCompany ? "no_companies" : !finalIsSetupCompleted ? "setup_not_completed" : "unknown",
                 });

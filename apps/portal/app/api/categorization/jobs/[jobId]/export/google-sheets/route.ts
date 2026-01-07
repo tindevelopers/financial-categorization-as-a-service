@@ -21,6 +21,29 @@ import {
   TransactionRow,
 } from "@/lib/google-sheets/master-spreadsheet";
 
+function getCurrencySymbol(currencyCode: string): string {
+  const map: Record<string, string> = {
+    GBP: "£",
+    USD: "$",
+    EUR: "€",
+    JPY: "¥",
+    CAD: "C$",
+    AUD: "A$",
+  };
+  return map[currencyCode?.toUpperCase()] || currencyCode || "£";
+}
+
+function columnToLetter(columnIndexZeroBased: number): string {
+  let temp = columnIndexZeroBased + 1;
+  let letter = "";
+  while (temp > 0) {
+    const rem = (temp - 1) % 26;
+    letter = String.fromCharCode(65 + rem) + letter;
+    temp = Math.floor((temp - 1) / 26);
+  }
+  return letter;
+}
+
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ jobId: string }> }
@@ -123,6 +146,33 @@ export async function POST(
         }, {});
       }
     }
+
+    // Extract unique categories (alphabetical) for dynamic columns
+    const categories = Array.from(
+      new Set(
+        transactions
+          .map((tx: any) => tx.category || null)
+          .filter((c: string | null) => !!c)
+      )
+    ).sort((a, b) => a.localeCompare(b));
+
+    // Fetch company profile currency (default to GBP)
+    let currencyCode = "GBP";
+    try {
+      const { data: currencyProfile } = await supabase
+        .from("company_profiles")
+        .select("default_currency")
+        .eq("user_id", user.id)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (currencyProfile?.default_currency) {
+        currencyCode = currencyProfile.default_currency;
+      }
+    } catch (currencyErr) {
+      console.warn("Google Sheets export: Could not fetch company currency, defaulting to GBP", currencyErr);
+    }
+    const currencySymbol = getCurrencySymbol(currencyCode);
 
     // Get tenant ID for tenant-specific credentials
     const { data: userData } = await supabase
@@ -706,8 +756,8 @@ export async function POST(
       console.log(`Google Sheets export: Created new spreadsheet ${spreadsheetId}`);
     }
 
-    // Define expected headers
-    const expectedHeaders = [
+    // Define expected headers (dynamic category columns + grand total)
+    const baseHeaders = [
       "Date",
       "Description",
       "Amount",
@@ -720,6 +770,7 @@ export async function POST(
       "Source Type",
       "Notes",
     ];
+    const expectedHeaders = [...baseHeaders, ...categories, "Grand Total"];
 
     // For existing sheets, we'll SYNC (replace all data) instead of appending
     // This ensures the spreadsheet always reflects the current state of the job
@@ -741,18 +792,10 @@ export async function POST(
         isSyncUpdate = true;
         console.log(`Google Sheets export: Headers match, syncing data (replacing existing)`);
       } else {
-        // Headers don't match - this is a problem
-        console.warn("Google Sheets export: Existing sheet headers don't match expected format");
-        return NextResponse.json(
-          { 
-            error: "Existing spreadsheet has different column structure. Please use a new spreadsheet or manually fix the headers.",
-            details: {
-              expected: expectedHeaders,
-              found: existingHeaders
-            }
-          },
-          { status: 400 }
-        );
+        // Headers don't match - rebuild headers and sync
+        console.warn("Google Sheets export: Existing sheet headers don't match expected format, rewriting headers");
+        shouldWriteHeaders = true;
+        isSyncUpdate = true;
       }
     } else if (!isNewSheet && existingSheetData.length === 0) {
       // Sheet exists but is empty, write headers + data
@@ -775,7 +818,7 @@ export async function POST(
       }
     }
 
-    // Prepare transaction data rows
+    // Prepare transaction data rows (with category columns)
     const transactionRows = transactions.map((tx: any) => {
       const matchedDoc = tx.matched_document_id ? matchedDocumentsMap[tx.matched_document_id] : null;
       const reconciliationStatus = tx.reconciliation_status || "unreconciled";
@@ -796,10 +839,11 @@ export async function POST(
         ? (typeof tx.confidence_score === 'number' ? tx.confidence_score : parseFloat(tx.confidence_score) || 0)
         : 0;
 
-      return [
+      const amount = tx.amount != null ? Number(tx.amount) : 0;
+      const rowBase = [
         dateStr,
         tx.original_description || "",
-        tx.amount != null ? tx.amount.toString() : "0",
+        amount,
         tx.category || "Uncategorized",
         tx.subcategory || "",
         (confidenceScore * 100).toFixed(0) + "%",
@@ -809,14 +853,56 @@ export async function POST(
         tx.source_type || "upload",
         tx.user_notes || "",
       ];
+
+      const categoryColumns = categories.map((cat) => (tx.category === cat ? amount : ""));
+
+      // Grand total column is empty for data rows; totals row will calculate
+      return [...rowBase, ...categoryColumns, ""];
     });
+
+    // Add totals row with SUM formulas
+    const startRow = shouldWriteHeaders ? 1 : 2;
+    const firstDataRow = transactionRows.length > 0 ? (shouldWriteHeaders ? startRow + 1 : startRow) : 0;
+    const lastDataRow = transactionRows.length > 0 ? firstDataRow + transactionRows.length - 1 : 0;
+    const totalsRowIndex = transactionRows.length > 0 ? lastDataRow + 1 : 0;
+
+    let totalsRow: (string | number)[] = [];
+    if (transactionRows.length > 0) {
+      const emptyBase = Array(baseHeaders.length - 1).fill("");
+      const categoryTotals = categories.map((_, idx) => {
+        const colLetter = columnToLetter(baseHeaders.length + idx);
+        return `=SUM(${colLetter}${firstDataRow}:${colLetter}${lastDataRow})`;
+      });
+
+      let grandTotal = "";
+      if (categories.length > 0) {
+        const firstCatLetter = columnToLetter(baseHeaders.length);
+        const lastCatLetter = columnToLetter(baseHeaders.length + categories.length - 1);
+        grandTotal = `=SUM(${firstCatLetter}${totalsRowIndex}:${lastCatLetter}${totalsRowIndex})`;
+      }
+
+      totalsRow = [
+        "Totals",
+        ...emptyBase,
+        ...categoryTotals,
+        grandTotal,
+      ];
+    }
 
     // Prepare values to write
     // For sync updates, we cleared the data but keep headers, so write from row 2
     // For new sheets, write headers + data from row 1
-    const values = shouldWriteHeaders 
-      ? [expectedHeaders, ...transactionRows]
-      : transactionRows;
+    const values = (() => {
+      const rows: (string | number)[][] = [];
+      if (shouldWriteHeaders) {
+        rows.push(expectedHeaders);
+      }
+      rows.push(...transactionRows);
+      if (totalsRow.length > 0) {
+        rows.push(totalsRow);
+      }
+      return rows;
+    })();
 
     // Ensure spreadsheetId is set (should never be null at this point, but TypeScript check)
     if (!spreadsheetId) {
@@ -827,8 +913,8 @@ export async function POST(
     }
 
     // Determine range: new sheet starts at row 1, sync updates start at row 2
-    const startRow = shouldWriteHeaders ? 1 : 2;
-    const range = `Sheet1!A${startRow}`;
+    const startRowForWrite = shouldWriteHeaders ? 1 : 2;
+    const range = `Sheet1!A${startRowForWrite}`;
 
     // Write data to sheet
     try {
@@ -890,8 +976,29 @@ export async function POST(
                     sheetId: 0,
                     dimension: "COLUMNS",
                     startIndex: 0,
-                    endIndex: 11, // Updated for new columns
+                    endIndex: expectedHeaders.length,
                   },
+                },
+              },
+              {
+                repeatCell: {
+                  range: {
+                    sheetId: 0,
+                    startRowIndex: shouldWriteHeaders ? 1 : startRowForWrite - 1,
+                    endRowIndex: (startRowForWrite - 1) + values.length,
+                    startColumnIndex: 2, // Amount column
+                    endColumnIndex: expectedHeaders.length, // Through grand total
+                  },
+                  cell: {
+                    userEnteredFormat: {
+                      numberFormat: {
+                        type: "NUMBER",
+                        pattern: `${currencySymbol}#,##0.00`,
+                      },
+                      horizontalAlignment: "RIGHT",
+                    },
+                  },
+                  fields: "userEnteredFormat(numberFormat,horizontalAlignment)",
                 },
               },
             ],
@@ -915,8 +1022,29 @@ export async function POST(
                     sheetId: 0,
                     dimension: "COLUMNS",
                     startIndex: 0,
-                    endIndex: 11,
+                    endIndex: expectedHeaders.length,
                   },
+                },
+              },
+              {
+                repeatCell: {
+                  range: {
+                    sheetId: 0,
+                    startRowIndex: shouldWriteHeaders ? 1 : startRowForWrite - 1,
+                    endRowIndex: (startRowForWrite - 1) + values.length,
+                    startColumnIndex: 2, // Amount column
+                    endColumnIndex: expectedHeaders.length, // Through grand total
+                  },
+                  cell: {
+                    userEnteredFormat: {
+                      numberFormat: {
+                        type: "NUMBER",
+                        pattern: `${currencySymbol}#,##0.00`,
+                      },
+                      horizontalAlignment: "RIGHT",
+                    },
+                  },
+                  fields: "userEnteredFormat(numberFormat,horizontalAlignment)",
                 },
               },
             ],
