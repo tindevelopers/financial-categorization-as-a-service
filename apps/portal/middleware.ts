@@ -389,6 +389,59 @@ export async function middleware(request: NextRequest) {
               let finalHasCompany = hasCompany;
               let finalIsSetupCompleted = isSetupCompleted;
 
+              // Fallback: if no company found with tenant filter, try without tenant filter and repair tenant_id
+              if (!finalHasCompany && tenantId) {
+                try {
+                  const { data: fallbackCompanies, error: fallbackError } = await supabase
+                    .from('company_profiles')
+                    .select('id, setup_completed, tenant_id, setup_step, company_name')
+                    .eq('user_id', user.id)
+                    .order('created_at', { ascending: false })
+                    .limit(1);
+
+                  console.log('[setup-loop] companyQuery.fallback', JSON.stringify({
+                    userId: user.id?.substring(0,8) || null,
+                    tenantId,
+                    fallbackCount: fallbackCompanies?.length ?? 0,
+                    fallbackTenant: (fallbackCompanies as any)?.[0]?.tenant_id,
+                    fallbackSetup: (fallbackCompanies as any)?.[0]?.setup_completed,
+                    error: (fallbackError as any)?.message || null,
+                  }));
+
+                  if (fallbackCompanies && fallbackCompanies.length > 0) {
+                    const fb = fallbackCompanies[0];
+                    const needsTenantRepair = !fb.tenant_id && tenantId;
+                    if (needsTenantRepair) {
+                      try {
+                        await supabase
+                          .from('company_profiles')
+                          .update({
+                            tenant_id: tenantId,
+                            setup_completed: true,
+                            setup_step: fb.setup_step ?? 5,
+                          })
+                          .eq('id', fb.id)
+                          .eq('user_id', user.id);
+                        console.log('[setup-loop] companyQuery.repairTenant', JSON.stringify({
+                          userId: user.id?.substring(0,8) || null,
+                          companyId: fb.id,
+                          tenantId,
+                        }));
+                        finalHasCompany = true;
+                        finalIsSetupCompleted = true;
+                      } catch (repairErr) {
+                        console.error('Company tenant repair failed:', repairErr);
+                      }
+                    } else {
+                      finalHasCompany = true;
+                      finalIsSetupCompleted = fb.setup_completed === true;
+                    }
+                  }
+                } catch (fallbackCatchErr) {
+                  console.error('Fallback company query failed:', fallbackCatchErr);
+                }
+              }
+
               // Enterprise tenants: auto-create/complete company profile to avoid setup loop
               if (isEnterpriseTenant && (!hasCompany || !isSetupCompleted)) {
                 let rechecked: { id: string; setup_completed: boolean } | null = null;
