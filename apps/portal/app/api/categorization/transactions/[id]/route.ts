@@ -19,7 +19,7 @@ export async function PATCH(
     }
 
     const { id } = await params;
-    const { category, subcategory, supplier_id } = await request.json();
+    const { category, subcategory, supplier_id, user_notes } = await request.json();
 
     // Use admin client to bypass RLS on categorized_transactions (ownership is enforced below via job check)
     const admin = createAdminClient();
@@ -75,6 +75,7 @@ export async function PATCH(
     if (category !== undefined) updateData.category = category;
     if (subcategory !== undefined) updateData.subcategory = subcategory;
     if (supplier_id !== undefined) updateData.supplier_id = supplier_id || null;
+    if (user_notes !== undefined) updateData.user_notes = user_notes || null;
     
     // Mark as pending sync since it was updated
     updateData.sync_status = "pending";

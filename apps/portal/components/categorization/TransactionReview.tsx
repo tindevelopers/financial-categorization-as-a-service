@@ -645,6 +645,26 @@ export default function TransactionReview({ jobId }: TransactionReviewProps) {
     }
   };
 
+  const handleEditNotes = async (transactionId: string, notes: string) => {
+    try {
+      const response = await fetch(`/api/categorization/transactions/${transactionId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ user_notes: notes }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || "Failed to update notes");
+      }
+
+      await loadTransactions();
+    } catch (err: any) {
+      setError(err.message);
+    }
+  };
+
   const handleInitializeSheetSync = async () => {
     if (installingSync) return;
     setInstallingSync(true);
@@ -703,6 +723,7 @@ export default function TransactionReview({ jobId }: TransactionReviewProps) {
         transactions: filteredTransactions,
         onConfirm: handleConfirm,
         onEditCategory: handleEditCategory,
+        onEditNotes: handleEditNotes,
         onEditingChange: setIsEditing,
         formatDescription: getDisplayDescription,
       };

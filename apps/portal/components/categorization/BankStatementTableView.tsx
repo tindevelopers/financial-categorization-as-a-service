@@ -39,6 +39,7 @@ interface BankStatementTableViewProps {
   transactions: Transaction[];
   onConfirm: (transactionId: string) => Promise<void>;
   onEditCategory?: (transactionId: string, category: string) => Promise<void>;
+  onEditNotes?: (transactionId: string, notes: string) => Promise<void>;
   onEditingChange?: (isEditing: boolean) => void;
   formatDescription?: (tx: Transaction) => string;
 }
@@ -75,16 +76,19 @@ export default function BankStatementTableView({
   transactions,
   onConfirm,
   onEditCategory,
+  onEditNotes,
   onEditingChange,
   formatDescription,
 }: BankStatementTableViewProps) {
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingNotesId, setEditingNotesId] = useState<string | null>(null);
   const [editCategory, setEditCategory] = useState<string>("");
+  const [editNotes, setEditNotes] = useState<string>("");
 
   // Notify parent when editing state changes
   React.useEffect(() => {
-    onEditingChange?.(editingId !== null);
-  }, [editingId, onEditingChange]);
+    onEditingChange?.(editingId !== null || editingNotesId !== null);
+  }, [editingId, editingNotesId, onEditingChange]);
 
   const startEdit = (tx: Transaction) => {
     setEditingId(tx.id);
@@ -102,6 +106,36 @@ export default function BankStatementTableView({
     }
     setEditingId(null);
     setEditCategory("");
+  };
+
+  const startEditNotes = (tx: Transaction) => {
+    setEditingNotesId(tx.id);
+    setEditNotes(tx.user_notes || "");
+  };
+
+  const cancelEditNotes = () => {
+    setEditingNotesId(null);
+    setEditNotes("");
+  };
+
+  const saveEditNotes = async (transactionId: string) => {
+    if (onEditNotes) {
+      await onEditNotes(transactionId, editNotes);
+    }
+    setEditingNotesId(null);
+    setEditNotes("");
+  };
+
+  const getCounterpartyLabel = (tx: Transaction): string => {
+    const isDebit = typeof tx.amount === "number" ? tx.amount < 0 : (tx.is_debit ?? false);
+    const payee = tx.payee_name?.trim();
+    const payer = tx.payer_name?.trim();
+    
+    if (isDebit && payee) return `Payee: ${payee}`;
+    if (!isDebit && payer) return `Payer: ${payer}`;
+    if (payee) return `Payee: ${payee}`;
+    if (payer) return `Payer: ${payer}`;
+    return tx.original_description || "-";
   };
 
   const formatAmount = (amount: number, isDebit?: boolean | null) => {
@@ -140,6 +174,9 @@ export default function BankStatementTableView({
                 Date
               </th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                Payer Payee
+              </th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                 Description
               </th>
               <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
@@ -155,6 +192,9 @@ export default function BankStatementTableView({
                 Status
               </th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                Notes
+              </th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                 Actions
               </th>
             </tr>
@@ -162,6 +202,7 @@ export default function BankStatementTableView({
           <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
             {transactions.map((tx) => {
               const isEditing = editingId === tx.id;
+              const isEditingNotes = editingNotesId === tx.id;
 
               return (
                 <tr
@@ -177,6 +218,11 @@ export default function BankStatementTableView({
                       ? new Date(tx.date).toLocaleDateString("en-GB")
                       : "-"}
                   </td>
+                  <td className="px-6 py-4 text-sm text-gray-900 dark:text-white max-w-xs">
+                    <div className="truncate" title={getCounterpartyLabel(tx)}>
+                      {getCounterpartyLabel(tx)}
+                    </div>
+                  </td>
                   <td className="px-6 py-4 text-sm text-gray-900 dark:text-white max-w-md">
                     <div className="space-y-1">
                       {tx.payment_description_reference && (
@@ -185,7 +231,7 @@ export default function BankStatementTableView({
                         </div>
                       )}
                       <div className="truncate" title={tx.original_description}>
-                        {formatDescription ? formatDescription(tx) : tx.original_description || "-"}
+                        {tx.original_description || "-"}
                       </div>
                     </div>
                   </td>
@@ -249,6 +295,55 @@ export default function BankStatementTableView({
                       <span className="text-sm text-gray-500 dark:text-gray-400">
                         Pending
                       </span>
+                    )}
+                  </td>
+                  <td className="px-6 py-4 text-sm text-gray-900 dark:text-white max-w-xs">
+                    {isEditingNotes ? (
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="text"
+                          value={editNotes}
+                          onChange={(e) => setEditNotes(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                              saveEditNotes(tx.id);
+                            } else if (e.key === "Escape") {
+                              cancelEditNotes();
+                            }
+                          }}
+                          className="flex-1 rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm px-2 py-1"
+                          autoFocus
+                        />
+                        <button
+                          onClick={() => saveEditNotes(tx.id)}
+                          className="p-1 text-green-600 hover:bg-green-100 dark:hover:bg-green-900/30 rounded"
+                          title="Save"
+                        >
+                          <CheckIcon className="h-4 w-4" />
+                        </button>
+                        <button
+                          onClick={cancelEditNotes}
+                          className="p-1 text-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700 rounded"
+                          title="Cancel"
+                        >
+                          <XMarkIcon className="h-4 w-4" />
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-2">
+                        <span className="flex-1 truncate text-gray-600 dark:text-gray-400">
+                          {tx.user_notes || ""}
+                        </span>
+                        {onEditNotes && (
+                          <button
+                            onClick={() => startEditNotes(tx)}
+                            className="p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 rounded"
+                            title="Edit Notes"
+                          >
+                            <PencilIcon className="h-3 w-3" />
+                          </button>
+                        )}
+                      </div>
                     )}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm">
