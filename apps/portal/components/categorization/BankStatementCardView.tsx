@@ -13,6 +13,13 @@ interface Transaction {
   confidence_score: number;
   user_confirmed: boolean;
   user_notes: string | null;
+  invoice_number: string | null;
+  document_id: string | null;
+  document?: any | null;
+  group_transaction_ids?: string[];
+  sync_status?: "pending" | "synced" | "failed" | null;
+  last_synced_at?: string | null;
+  sync_error?: string | null;
   is_debit?: boolean | null;
   payee_name?: string | null;
   payer_name?: string | null;
