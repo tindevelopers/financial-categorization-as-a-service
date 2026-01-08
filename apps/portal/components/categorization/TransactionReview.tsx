@@ -433,18 +433,34 @@ export default function TransactionReview({ jobId }: TransactionReviewProps) {
     }
   };
 
+  const resolveTransactionIds = (transactionId: string): string[] => {
+    const tx = transactions.find((t) => t.id === transactionId);
+    if (tx?.group_transaction_ids?.length) {
+      return tx.group_transaction_ids;
+    }
+    return [transactionId];
+  };
+
   const handleConfirm = async (transactionId: string) => {
     try {
-      const response = await fetch(`/api/categorization/transactions/${transactionId}/confirm`, {
-        method: "POST",
-        credentials: "include",
-        headers: {
-          ...authHeaders,
-        },
-      });
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ error: "Failed to confirm" }));
-        throw new Error(errorData.error || "Failed to confirm");
+      const ids = resolveTransactionIds(transactionId);
+      const responses = await Promise.all(
+        ids.map((id) =>
+          fetch(`/api/categorization/transactions/${id}/confirm`, {
+            method: "POST",
+            credentials: "include",
+            headers: {
+              ...authHeaders,
+            },
+          })
+        )
+      );
+
+      for (const response of responses) {
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({ error: "Failed to confirm" }));
+          throw new Error(errorData.error || "Failed to confirm");
+        }
       }
       await loadTransactions();
     } catch (err: any) {
@@ -627,16 +643,23 @@ export default function TransactionReview({ jobId }: TransactionReviewProps) {
 
   const handleEditCategory = async (transactionId: string, category: string) => {
     try {
-      const response = await fetch(`/api/categorization/transactions/${transactionId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ category }),
-      });
+      const ids = resolveTransactionIds(transactionId);
+      const responses = await Promise.all(
+        ids.map((id) =>
+          fetch(`/api/categorization/transactions/${id}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            credentials: "include",
+            body: JSON.stringify({ category }),
+          })
+        )
+      );
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || "Failed to update category");
+      for (const response of responses) {
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({ error: "Failed to update category" }));
+          throw new Error(errorData.error || "Failed to update category");
+        }
       }
 
       await loadTransactions();
