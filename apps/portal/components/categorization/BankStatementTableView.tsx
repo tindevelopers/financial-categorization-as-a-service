@@ -22,6 +22,11 @@ interface Transaction {
   is_debit?: boolean | null;
   running_balance?: number | null;
   group_transaction_ids?: string[];
+  payee_name?: string | null;
+  payer_name?: string | null;
+  paid_in_amount?: number | null;
+  paid_out_amount?: number | null;
+  payment_description_reference?: string | null;
 }
 
 interface BankStatementTableViewProps {
@@ -29,6 +34,7 @@ interface BankStatementTableViewProps {
   onConfirm: (transactionId: string) => Promise<void>;
   onEditCategory?: (transactionId: string, category: string) => Promise<void>;
   onEditingChange?: (isEditing: boolean) => void;
+  formatDescription?: (tx: Transaction) => string;
 }
 
 const CATEGORY_OPTIONS = [
@@ -64,6 +70,7 @@ export default function BankStatementTableView({
   onConfirm,
   onEditCategory,
   onEditingChange,
+  formatDescription,
 }: BankStatementTableViewProps) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editCategory, setEditCategory] = useState<string>("");
@@ -165,8 +172,15 @@ export default function BankStatementTableView({
                       : "-"}
                   </td>
                   <td className="px-6 py-4 text-sm text-gray-900 dark:text-white max-w-md">
-                    <div className="truncate" title={tx.original_description}>
-                      {tx.original_description || "-"}
+                    <div className="space-y-1">
+                      {tx.payment_description_reference && (
+                        <div className="text-xs text-gray-500 dark:text-gray-400">
+                          Ref: {tx.payment_description_reference}
+                        </div>
+                      )}
+                      <div className="truncate" title={tx.original_description}>
+                        {formatDescription ? formatDescription(tx) : tx.original_description || "-"}
+                      </div>
                     </div>
                   </td>
                   <td

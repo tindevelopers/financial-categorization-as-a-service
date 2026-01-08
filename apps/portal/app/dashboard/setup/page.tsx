@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { Heading, Text, Button } from '@/components/catalyst'
+import { CheckCircleIcon } from '@heroicons/react/24/solid'
 import { CompanyDetailsForm } from '@/components/setup/CompanyDetailsForm'
 import { TaxSettingsForm } from '@/components/setup/TaxSettingsForm'
 import { BankAccountsForm } from '@/components/setup/BankAccountsForm'
@@ -52,6 +53,50 @@ export default function SetupWizardPage() {
   })
 
   const totalSteps = 5
+  const [isEditMode, setIsEditMode] = useState(false)
+
+  // Calculate completion percentage based on filled fields
+  const calculateCompletionPercentage = useCallback(() => {
+    if (!companyProfileId) return 0
+    
+    let completedFields = 0
+    let totalFields = 0
+    
+    // Company Details (Step 1) - 3 required fields
+    totalFields += 3
+    if (formData.companyName.trim()) completedFields++
+    if (formData.companyType) completedFields++
+    if (formData.currency) completedFields++
+    
+    // Tax Settings (Step 2) - VAT registration status is always set, others optional
+    totalFields += 1 // VAT registered status (always has a value)
+    completedFields++ // Always completed (boolean)
+    
+    // VAT number only counts if VAT is registered
+    if (formData.vatRegistered) {
+      totalFields += 1
+      if (formData.vatNumber) completedFields++
+    }
+    
+    // Other tax settings (optional but count if filled)
+    totalFields += 3
+    if (formData.vatScheme) completedFields++
+    if (formData.financialYearEnd) completedFields++
+    if (formData.accountingBasis) completedFields++
+    
+    // Bank Accounts (Step 3) - optional but counts toward completion
+    totalFields += 1
+    if (formData.bankAccounts.length > 0) completedFields++
+    
+    // Google Drive Settings (Step 4) - optional but counts toward completion
+    totalFields += 2
+    if (formData.googleSharedDriveId) completedFields++
+    if (formData.googleMasterSpreadsheetId) completedFields++
+    
+    // Ensure minimum 20% for basic setup (company name, type, currency)
+    const basicCompletion = Math.round((completedFields / totalFields) * 100)
+    return Math.max(basicCompletion, companyProfileId ? 20 : 0)
+  }, [formData, companyProfileId])
 
   const handleFormDataChange = useCallback((updates: Partial<typeof formData>) => {
     setFormData((prev) => ({ ...prev, ...updates }))
@@ -108,11 +153,14 @@ export default function SetupWizardPage() {
               // Enterprise BYO Domain-Wide Delegation
               dwdSubjectEmail: company.dwd_subject_email || null,
             })
-            // If setup was completed, start at step 1 (edit mode). Otherwise, restore saved step.
+            // If setup was completed, show completion view (not edit mode by default)
+            // Otherwise, restore saved step
             if (isCompleted) {
-              setCurrentStep(1)
+              setCurrentStep(5) // Show completion step
+              setIsEditMode(false)
             } else if (company.setup_step) {
               setCurrentStep(company.setup_step)
+              setIsEditMode(false)
             }
           }
         }
@@ -169,6 +217,14 @@ export default function SetupWizardPage() {
       
       // Update local state to show "Setup Complete" before redirect
       setSetupCompleted(true)
+      setIsEditMode(false)
+      
+      // If in edit mode, just exit edit mode and show completion view
+      // Otherwise redirect to dashboard
+      if (isEditMode) {
+        setCurrentStep(5)
+        return
+      }
       
       // Use window.location instead of router.push to force a full page reload
       // This ensures the middleware sees the updated setup_completed value
@@ -246,27 +302,115 @@ export default function SetupWizardPage() {
     )
   }
 
+  const completionPercentage = calculateCompletionPercentage()
+
+  // Show completion view if setup is completed and not in edit mode
+  if (setupCompleted && !isEditMode) {
+    return (
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center p-4">
+        <div className="max-w-2xl w-full">
+          {/* Header */}
+          <div className="text-center mb-8">
+            <div className="inline-flex items-center justify-center w-16 h-16 bg-green-100 dark:bg-green-900/20 rounded-full mb-4">
+              <CheckCircleIcon className="h-10 w-10 text-green-600 dark:text-green-400" />
+            </div>
+            <Heading level={1}>Company Setup Complete</Heading>
+            <Text className="mt-2">
+              Your company information has been successfully set up
+            </Text>
+          </div>
+
+          {/* Completion Percentage */}
+          <div className="mb-8 bg-white dark:bg-gray-800 rounded-lg shadow-lg p-6">
+            <div className="flex items-center justify-between mb-2">
+              <Text className="font-medium">Setup Completion</Text>
+              <Text className="text-lg font-semibold text-blue-600 dark:text-blue-400">
+                {completionPercentage}%
+              </Text>
+            </div>
+            <div className="h-3 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+              <div
+                className="h-full bg-gradient-to-r from-blue-500 to-green-500 transition-all duration-500"
+                style={{ width: `${completionPercentage}%` }}
+              />
+            </div>
+            <Text className="mt-3 text-sm text-gray-600 dark:text-gray-400">
+              {completionPercentage === 100 
+                ? "All required information has been provided. You can update your details anytime."
+                : `You've completed ${completionPercentage}% of your setup. Consider adding more details to improve your experience.`
+              }
+            </Text>
+          </div>
+
+          {/* Company Information Summary */}
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-8 mb-6">
+            <CompletionStep data={formData} setupCompleted={true} />
+          </div>
+
+          {/* Action Buttons */}
+          <div className="flex gap-3 justify-center">
+            <Button 
+              color="blue" 
+              onClick={() => {
+                setIsEditMode(true)
+                setCurrentStep(1)
+              }}
+            >
+              Update Company Information
+            </Button>
+            <Button 
+              plain
+              onClick={() => router.push('/dashboard')}
+            >
+              Go to Dashboard
+            </Button>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center p-4">
       <div className="max-w-2xl w-full">
         {/* Header */}
         <div className="text-center mb-8">
           <Heading level={1}>
-            {companyProfileId ? 'Update Your Company Information' : "Welcome! Let's set up your account"}
+            {isEditMode ? 'Update Your Company Information' : companyProfileId ? 'Update Your Company Information' : "Welcome! Let's set up your account"}
           </Heading>
           <Text className="mt-2">
-            Step {currentStep} of {totalSteps}
+            {setupCompleted && isEditMode 
+              ? `Editing - Step ${currentStep} of ${totalSteps}`
+              : `Step ${currentStep} of ${totalSteps}`
+            }
           </Text>
         </div>
 
         {/* Progress Bar */}
         <div className="mb-8">
-          <div className="h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+          <div className="flex items-center justify-between mb-2">
+            <Text className="text-sm font-medium text-gray-700 dark:text-gray-300">
+              {setupCompleted ? 'Setup Complete' : 'Setup Progress'}
+            </Text>
+            <Text className="text-sm font-semibold text-blue-600 dark:text-blue-400">
+              {completionPercentage}%
+            </Text>
+          </div>
+          <div className="h-3 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
             <div
-              className="h-full bg-blue-600 transition-all duration-300"
-              style={{ width: `${(currentStep / totalSteps) * 100}%` }}
+              className={`h-full transition-all duration-300 ${
+                setupCompleted 
+                  ? 'bg-gradient-to-r from-blue-500 to-green-500' 
+                  : 'bg-blue-600'
+              }`}
+              style={{ width: `${Math.max(completionPercentage, (currentStep / totalSteps) * 100)}%` }}
             />
           </div>
+          {!setupCompleted && completionPercentage < 100 && (
+            <Text className="mt-2 text-xs text-gray-600 dark:text-gray-400">
+              Complete all steps to finish setup. You're {completionPercentage}% complete.
+            </Text>
+          )}
         </div>
 
         {/* Form Steps */}
@@ -330,6 +474,17 @@ export default function SetupWizardPage() {
             </div>
 
             <div className="flex gap-3">
+              {isEditMode && (
+                <Button 
+                  plain 
+                  onClick={() => {
+                    setIsEditMode(false)
+                    setCurrentStep(5)
+                  }}
+                >
+                  Cancel
+                </Button>
+              )}
               {currentStep < totalSteps ? (
                 <Button 
                   color="blue" 
@@ -340,7 +495,7 @@ export default function SetupWizardPage() {
                 </Button>
               ) : (
                 <Button color="blue" onClick={handleSubmit}>
-                  {setupCompleted ? 'Save Changes' : 'Complete Setup'}
+                  {setupCompleted || isEditMode ? 'Save Changes' : 'Complete Setup'}
                 </Button>
               )}
             </div>

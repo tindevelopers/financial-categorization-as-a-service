@@ -11,6 +11,8 @@ import InvoiceCardView from "@/components/invoice/InvoiceCardView";
 import InvoiceSplitView from "@/components/invoice/InvoiceSplitView";
 import InvoiceTableView from "@/components/invoice/InvoiceTableView";
 import BankStatementTableView from "@/components/categorization/BankStatementTableView";
+import BankStatementCardView from "@/components/categorization/BankStatementCardView";
+import BankStatementSplitView from "@/components/categorization/BankStatementSplitView";
 import SyncStatusIndicator from "@/components/categorization/SyncStatusIndicator";
 import SyncButton from "@/components/categorization/SyncButton";
 
@@ -62,6 +64,11 @@ interface Transaction {
   sync_status?: "pending" | "synced" | "failed" | null;
   last_synced_at?: string | null;
   sync_error?: string | null;
+  payee_name?: string | null;
+  payer_name?: string | null;
+  paid_in_amount?: number | null;
+  paid_out_amount?: number | null;
+  payment_description_reference?: string | null;
 }
 
 interface TransactionReviewProps {
@@ -219,6 +226,24 @@ export default function TransactionReview({ jobId }: TransactionReviewProps) {
     return transactions.length > 0 && !hasDocuments;
   }, [transactions, hasDocuments]);
 
+  const getCounterpartyLabel = (tx: Transaction): string | null => {
+    // Outgoing (debit) -> Payee, Incoming (credit) -> Payer. If sign is ambiguous, prefer payee then payer.
+    const isDebit = typeof tx.amount === "number" ? tx.amount < 0 : false;
+    const payee = tx.payee_name?.trim();
+    const payer = tx.payer_name?.trim();
+    if (isDebit && payee) return `Payee: ${payee}`;
+    if (!isDebit && payer) return `Payer: ${payer}`;
+    if (payee) return `Payee: ${payee}`;
+    if (payer) return `Payer: ${payer}`;
+    return null;
+  };
+
+  const getDisplayDescription = (tx: Transaction): string => {
+    const counterparty = getCounterpartyLabel(tx);
+    const base = tx.original_description || "";
+    return counterparty ? `${counterparty} — ${base}` : base;
+  };
+
   const filteredTransactions = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
     if (!q) return transactions;
@@ -234,6 +259,10 @@ export default function TransactionReview({ jobId }: TransactionReviewProps) {
       parts.push(tx.user_notes || "");
       parts.push(String(tx.amount ?? ""));
       parts.push(tx.date || "");
+      parts.push(tx.payee_name || "");
+      parts.push(tx.payer_name || "");
+      const cp = getCounterpartyLabel(tx);
+      if (cp) parts.push(cp);
 
       // Useful when users paste a displayed date (e.g. 31/12/2025)
       try {
@@ -668,16 +697,25 @@ export default function TransactionReview({ jobId }: TransactionReviewProps) {
   };
 
   const renderView = () => {
-    // For bank statement jobs (transactions without documents), use dedicated view
+    // For bank statement jobs (transactions without documents), use dedicated views
     if (isBankStatementJob) {
-      return (
-        <BankStatementTableView
-          transactions={filteredTransactions}
-          onConfirm={handleConfirm}
-          onEditCategory={handleEditCategory}
-          onEditingChange={setIsEditing}
-        />
-      );
+      const bankProps = {
+        transactions: filteredTransactions,
+        onConfirm: handleConfirm,
+        onEditCategory: handleEditCategory,
+        onEditingChange: setIsEditing,
+        formatDescription: getDisplayDescription,
+      };
+
+      switch (currentView) {
+        case "card":
+          return <BankStatementCardView {...bankProps} />;
+        case "split":
+          return <BankStatementSplitView {...bankProps} />;
+        case "table":
+        default:
+          return <BankStatementTableView {...bankProps} />;
+      }
     }
 
     // For invoice jobs (transactions with documents), use invoice views
@@ -697,7 +735,6 @@ export default function TransactionReview({ jobId }: TransactionReviewProps) {
       case "split":
         return <InvoiceSplitView {...commonProps} />;
       case "table":
-        return <InvoiceTableView {...commonProps} />;
       default:
         return <InvoiceTableView {...commonProps} />;
     }
