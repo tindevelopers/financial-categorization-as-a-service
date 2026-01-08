@@ -29,6 +29,9 @@ import {
   exportDataSchema,
   exportDataDescription,
   executeExportData,
+  summarizeCounterpartySchema,
+  summarizeCounterpartyDescription,
+  executeSummarizeCounterparty,
 } from '@/lib/ai/tools';
 
 // Allow streaming responses up to 60 seconds
@@ -158,6 +161,11 @@ export async function POST(request: NextRequest) {
           description: exportDataDescription,
           inputSchema: exportDataSchema,
           execute: async (params: unknown) => executeExportData(exportDataSchema.parse(params), user.id, supabase),
+        },
+        summarizeCounterparty: {
+          description: summarizeCounterpartyDescription,
+          inputSchema: summarizeCounterpartySchema,
+          execute: async (params: unknown) => executeSummarizeCounterparty(summarizeCounterpartySchema.parse(params), user.id, supabase),
         },
       },
       // Callback when generation is complete

@@ -14,6 +14,15 @@ export interface TransactionRow {
   date: string;
   description: string;
   amount: number;
+  is_debit?: boolean | null;
+  payee_name?: string | null;
+  payer_name?: string | null;
+  payment_description_reference?: string | null;
+  bank_transaction_type?: string | null;
+  bank_category?: string | null;
+  bank_subcategory?: string | null;
+  paid_in_amount?: number | null;
+  paid_out_amount?: number | null;
   category: string;
   subcategory?: string;
   confidence: number;
@@ -505,29 +514,57 @@ export async function syncUploadTab(
     },
   });
 
-  // Ensure header includes Transaction ID column (newer schema). This is cheap and avoids
-  // drifting schemas when older tabs are re-synced.
+  // Ensure header includes source statement columns first, then system columns.
   await sheets.spreadsheets.values.update({
     spreadsheetId,
-    range: `'${tabName}'!A1:I1`,
+    range: `'${tabName}'!A1:P1`,
     valueInputOption: "RAW",
     requestBody: {
-      values: [["Date", "Description", "Amount", "Category", "Subcategory", "Confidence", "Status", "Fingerprint", "Transaction ID"]],
+      values: [[
+        "Date",
+        "Payee Name",
+        "Payer Name",
+        "Payment Description/Reference",
+        "Transaction Type",
+        "Bank Category",
+        "Bank Subcategory",
+        "Paid In",
+        "Paid Out",
+        "Amount",
+        "Category",
+        "Subcategory",
+        "Confidence",
+        "Status",
+        "Fingerprint",
+        "Transaction ID"
+      ]],
     },
   });
 
   // Prepare data rows
-  const dataRows = transactions.map(tx => [
-    tx.date,
-    tx.description,
-    tx.amount,
-    tx.category,
-    tx.subcategory || "",
-    `${Math.round(tx.confidence * 100)}%`,
-    tx.status,
-    tx.fingerprint,
-    tx.transactionId || "",
-  ]);
+  const dataRows = transactions.map(tx => {
+    const paidIn = tx.paid_in_amount ?? (tx.is_debit === false ? tx.amount : null);
+    const paidOut = tx.paid_out_amount ?? (tx.is_debit === true ? tx.amount : null);
+
+    return [
+      tx.date,
+      tx.payee_name || "",
+      tx.payer_name || "",
+      tx.payment_description_reference || "",
+      tx.bank_transaction_type || "",
+      tx.bank_category || "",
+      tx.bank_subcategory || "",
+      paidIn ?? "",
+      paidOut ?? "",
+      tx.amount,
+      tx.category,
+      tx.subcategory || "",
+      `${Math.round(tx.confidence * 100)}%`,
+      tx.status,
+      tx.fingerprint,
+      tx.transactionId || "",
+    ];
+  });
 
   // Write data starting at row 2
   if (dataRows.length > 0) {
@@ -597,18 +634,47 @@ export async function addUploadTab(
   });
 
   // Prepare data rows
-  const header = ["Date", "Description", "Amount", "Category", "Subcategory", "Confidence", "Status", "Fingerprint", "Transaction ID"];
-  const dataRows = transactions.map(tx => [
-    tx.date,
-    tx.description,
-    tx.amount,
-    tx.category,
-    tx.subcategory || "",
-    `${Math.round(tx.confidence * 100)}%`,
-    tx.status,
-    tx.fingerprint,
-    tx.transactionId || "",
-  ]);
+  const header = [
+    "Date",
+    "Payee Name",
+    "Payer Name",
+    "Payment Description/Reference",
+    "Transaction Type",
+    "Bank Category",
+    "Bank Subcategory",
+    "Paid In",
+    "Paid Out",
+    "Amount",
+    "Category",
+    "Subcategory",
+    "Confidence",
+    "Status",
+    "Fingerprint",
+    "Transaction ID",
+  ];
+  const dataRows = transactions.map(tx => {
+    const paidIn = tx.paid_in_amount ?? (tx.is_debit === false ? tx.amount : null);
+    const paidOut = tx.paid_out_amount ?? (tx.is_debit === true ? tx.amount : null);
+
+    return [
+      tx.date,
+      tx.payee_name || "",
+      tx.payer_name || "",
+      tx.payment_description_reference || "",
+      tx.bank_transaction_type || "",
+      tx.bank_category || "",
+      tx.bank_subcategory || "",
+      paidIn ?? "",
+      paidOut ?? "",
+      tx.amount,
+      tx.category,
+      tx.subcategory || "",
+      `${Math.round(tx.confidence * 100)}%`,
+      tx.status,
+      tx.fingerprint,
+      tx.transactionId || "",
+    ];
+  });
 
   // Write data to new tab
   await sheets.spreadsheets.values.update({

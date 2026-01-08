@@ -515,12 +515,23 @@ export async function POST(
               `${tx.date || ''}_${tx.original_description || ''}_${tx.amount || 0}`
                 .toLowerCase()
                 .replace(/\s+/g, '_');
+            const paidIn = tx.paid_in_amount ?? (tx.is_debit === false ? tx.amount : null);
+            const paidOut = tx.paid_out_amount ?? (tx.is_debit === true ? tx.amount : null);
             
             return {
               transactionId: tx.id,
               date: tx.date || '',
               description: tx.original_description || '',
               amount: tx.amount || 0,
+              is_debit: tx.is_debit ?? null,
+              payee_name: tx.payee_name || null,
+              payer_name: tx.payer_name || null,
+              payment_description_reference: tx.payment_description_reference || null,
+              bank_transaction_type: tx.bank_transaction_type || tx.transaction_type || null,
+              bank_category: tx.bank_category || null,
+              bank_subcategory: tx.bank_subcategory || null,
+              paid_in_amount: paidIn ?? null,
+              paid_out_amount: paidOut ?? null,
               category: tx.category || 'Uncategorized',
               subcategory: tx.subcategory || '',
               confidence: tx.confidence_score || 0,
@@ -759,7 +770,14 @@ export async function POST(
     // Define expected headers (dynamic category columns + grand total)
     const baseHeaders = [
       "Date",
-      "Description",
+      "Payee Name",
+      "Payer Name",
+      "Payment Description/Reference",
+      "Transaction Type",
+      "Bank Category",
+      "Bank Subcategory",
+      "Paid In",
+      "Paid Out",
       "Amount",
       "Category",
       "Subcategory",
@@ -840,9 +858,19 @@ export async function POST(
         : 0;
 
       const amount = tx.amount != null ? Number(tx.amount) : 0;
+      const paidIn = tx.paid_in_amount != null ? Number(tx.paid_in_amount) : (tx.is_debit === false ? amount : 0);
+      const paidOut = tx.paid_out_amount != null ? Number(tx.paid_out_amount) : (tx.is_debit ? amount : 0);
+
       const rowBase = [
         dateStr,
-        tx.original_description || "",
+        tx.payee_name || "",
+        tx.payer_name || "",
+        tx.payment_description_reference || "",
+        tx.bank_transaction_type || tx.transaction_type || "",
+        tx.bank_category || "",
+        tx.bank_subcategory || "",
+        paidIn || "",
+        paidOut || "",
         amount,
         tx.category || "Uncategorized",
         tx.subcategory || "",
@@ -986,7 +1014,7 @@ export async function POST(
                     sheetId: 0,
                     startRowIndex: shouldWriteHeaders ? 1 : startRowForWrite - 1,
                     endRowIndex: (startRowForWrite - 1) + values.length,
-                    startColumnIndex: 2, // Amount column
+                    startColumnIndex: 7, // Paid In column
                     endColumnIndex: expectedHeaders.length, // Through grand total
                   },
                   cell: {
@@ -1032,7 +1060,7 @@ export async function POST(
                     sheetId: 0,
                     startRowIndex: shouldWriteHeaders ? 1 : startRowForWrite - 1,
                     endRowIndex: (startRowForWrite - 1) + values.length,
-                    startColumnIndex: 2, // Amount column
+                    startColumnIndex: 7, // Paid In column
                     endColumnIndex: expectedHeaders.length, // Through grand total
                   },
                   cell: {

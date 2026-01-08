@@ -13,6 +13,14 @@ export interface Transaction {
   reference_number?: string;
   merchant_category_code?: string;
   running_balance?: number;
+  payee_name?: string | null;
+  payer_name?: string | null;
+  payment_description_reference?: string | null;
+  bank_transaction_type?: string | null;
+  bank_category?: string | null;
+  bank_subcategory?: string | null;
+  paid_in_amount?: number | null;
+  paid_out_amount?: number | null;
 }
 
 export interface CategorizedTransaction extends Transaction {
@@ -164,6 +172,54 @@ export function extractTransactions(data: any[]): Transaction[] {
     "txn type",
   ];
 
+  const payeePayerPatterns = [
+    "payee/payer name",
+    "payee payer name",
+    "payee",
+    "payer",
+    "counterparty",
+    "payee name",
+    "payer name",
+    "name",
+  ];
+
+  const paymentDescriptionPatterns = [
+    "payment description/reference",
+    "payment description",
+    "payment reference",
+    "description/reference",
+    "description reference",
+    "narrative",
+    "details",
+  ];
+
+  const bankCategoryPatterns = ["category", "bank category"];
+  const bankSubcategoryPatterns = ["sub category", "subcategory", "bank subcategory"];
+
+  const paidInPatterns = [
+    "paid in",
+    "paid_in",
+    "paid in amount",
+    "paid_in_amount",
+    "money in",
+    "money_in",
+    "credit",
+    "credit amount",
+    "in amount",
+  ];
+
+  const paidOutPatterns = [
+    "paid out",
+    "paid_out",
+    "paid out amount",
+    "paid_out_amount",
+    "money out",
+    "money_out",
+    "debit",
+    "debit amount",
+    "out amount",
+  ];
+
   for (const row of data) {
     let date: Date | string | null = null;
     let postedDate: Date | string | null = null;
@@ -172,6 +228,13 @@ export function extractTransactions(data: any[]): Transaction[] {
     let transactionType: Transaction['transaction_type'] | null = null;
     let referenceNumber: string | null = null;
     let runningBalance: number | null = null;
+    let payeePayerName: string | null = null;
+    let paymentDescriptionReference: string | null = null;
+    let bankTransactionType: string | null = null;
+    let bankCategory: string | null = null;
+    let bankSubcategory: string | null = null;
+    let paidInAmount: number | null = null;
+    let paidOutAmount: number | null = null;
 
     // Find date using extended patterns
     const dateValue = findColumnValue(row, datePatterns);
@@ -225,7 +288,46 @@ export function extractTransactions(data: any[]): Transaction[] {
     // Find transaction type from dedicated column
     const typeValue = findColumnValue(row, typePatterns);
     if (typeValue && typeof typeValue === "string") {
+      bankTransactionType = typeValue.trim();
       transactionType = classifyTransactionTypeFromString(typeValue.toLowerCase());
+    }
+
+    // Payee / payer name
+    const payeePayerValue = findColumnValue(row, payeePayerPatterns);
+    if (payeePayerValue && typeof payeePayerValue === "string") {
+      payeePayerName = payeePayerValue.trim();
+    }
+
+    // Payment description / reference column
+    const paymentDescVal = findColumnValue(row, paymentDescriptionPatterns);
+    if (paymentDescVal && typeof paymentDescVal === "string") {
+      paymentDescriptionReference = paymentDescVal.trim();
+    }
+
+    // Bank category / subcategory
+    const bankCatVal = findColumnValue(row, bankCategoryPatterns);
+    if (bankCatVal && typeof bankCatVal === "string") {
+      bankCategory = bankCatVal.trim();
+    }
+    const bankSubcatVal = findColumnValue(row, bankSubcategoryPatterns);
+    if (bankSubcatVal && typeof bankSubcatVal === "string") {
+      bankSubcategory = bankSubcatVal.trim();
+    }
+
+    // Paid in / out (explicit columns)
+    const paidInVal = findColumnValue(row, paidInPatterns);
+    if (paidInVal !== undefined) {
+      const parsed = parseAmount(paidInVal);
+      if (parsed !== null && parsed !== 0) {
+        paidInAmount = Math.abs(parsed);
+      }
+    }
+    const paidOutVal = findColumnValue(row, paidOutPatterns);
+    if (paidOutVal !== undefined) {
+      const parsed = parseAmount(paidOutVal);
+      if (parsed !== null && parsed !== 0) {
+        paidOutAmount = Math.abs(parsed);
+      }
     }
 
     // Find running balance
@@ -234,38 +336,43 @@ export function extractTransactions(data: any[]): Transaction[] {
       runningBalance = parseAmount(balanceValue);
     }
 
-    // Find amount using extended patterns
-    // Try debit/credit columns separately first (common in bank statements)
+    // Find amount using explicit paid in/out first, then debit/credit columns, then generic amount
     const rowKeys = Object.keys(row);
     let debitAmount: number | null = null;
     let creditAmount: number | null = null;
-    
-    // Look for separate debit/credit columns
-    for (const key of rowKeys) {
-      const keyLower = key.toLowerCase();
-      if (keyLower.includes("debit") || keyLower.includes("paid out") || 
-          keyLower.includes("money out") || keyLower.includes("withdrawal")) {
-        const val = parseAmount(row[key]);
-        if (val !== null && val !== 0) {
-          debitAmount = Math.abs(val);
-          if (!transactionType) {
-            transactionType = 'debit';
+
+    if (paidOutAmount !== null) {
+      debitAmount = paidOutAmount;
+      if (!transactionType) transactionType = 'debit';
+    }
+    if (paidInAmount !== null) {
+      creditAmount = paidInAmount;
+      if (!transactionType) transactionType = 'credit';
+    }
+
+    if (debitAmount === null || creditAmount === null) {
+      // Look for separate debit/credit columns if not already set by paid in/out
+      for (const key of rowKeys) {
+        const keyLower = key.toLowerCase();
+        if (debitAmount === null && (keyLower.includes("debit") || keyLower.includes("paid out") || 
+            keyLower.includes("money out") || keyLower.includes("withdrawal"))) {
+          const val = parseAmount(row[key]);
+          if (val !== null && val !== 0) {
+            debitAmount = Math.abs(val);
+            if (!transactionType) transactionType = 'debit';
           }
         }
-      }
-      if (keyLower.includes("credit") || keyLower.includes("paid in") || 
-          keyLower.includes("money in") || keyLower.includes("deposit")) {
-        const val = parseAmount(row[key]);
-        if (val !== null && val !== 0) {
-          creditAmount = Math.abs(val);
-          if (!transactionType) {
-            transactionType = 'credit';
+        if (creditAmount === null && (keyLower.includes("credit") || keyLower.includes("paid in") || 
+            keyLower.includes("money in") || keyLower.includes("deposit"))) {
+          const val = parseAmount(row[key]);
+          if (val !== null && val !== 0) {
+            creditAmount = Math.abs(val);
+            if (!transactionType) transactionType = 'credit';
           }
         }
       }
     }
-    
-    // If we found debit or credit, use them (debit as negative, credit as positive)
+
     if (debitAmount !== null && debitAmount !== 0) {
       amount = -debitAmount; // Outflow is negative
     } else if (creditAmount !== null && creditAmount !== 0) {
@@ -312,12 +419,35 @@ export function extractTransactions(data: any[]): Transaction[] {
       normalizedAmount = Math.abs(amount);
     }
 
+    // Derive paid in/out if not explicitly provided
+    if (normalizedAmount !== null && paidInAmount === null && paidOutAmount === null) {
+      if (is_debit === false) {
+        paidInAmount = normalizedAmount;
+      } else if (is_debit === true) {
+        paidOutAmount = normalizedAmount;
+      }
+    }
+
     // Only add if we have all required fields
-    if (date && description && normalizedAmount !== null) {
+    if (date && (description || paymentDescriptionReference || payeePayerName) && normalizedAmount !== null) {
+      const descParts: string[] = [];
+      if (payeePayerName) descParts.push(payeePayerName);
+      if (paymentDescriptionReference) descParts.push(paymentDescriptionReference);
+      if (description && descParts.length === 0) descParts.push(description);
+      const compositeDescription = descParts.length > 0 ? descParts.join(" - ") : (description || "");
+
       const transaction: Transaction = {
         date,
-        description,
+        description: compositeDescription || description || "",
         amount: normalizedAmount,
+        payee_name: is_debit ? (payeePayerName || null) : null,
+        payer_name: is_debit === false ? (payeePayerName || null) : null,
+        payment_description_reference: paymentDescriptionReference || null,
+        bank_transaction_type: bankTransactionType || null,
+        bank_category: bankCategory || null,
+        bank_subcategory: bankSubcategory || null,
+        paid_in_amount: paidInAmount !== null ? paidInAmount : null,
+        paid_out_amount: paidOutAmount !== null ? paidOutAmount : null,
       };
 
       if (transactionType) {
@@ -883,6 +1013,20 @@ export async function processSpreadsheetFile(
       original_description: tx.description,
       amount: tx.amount,
       date: typeof tx.date === "string" ? tx.date : tx.date.toISOString().split("T")[0],
+      transaction_type: tx.transaction_type,
+      is_debit: tx.is_debit,
+      posted_date: tx.posted_date ? (typeof tx.posted_date === "string" ? tx.posted_date : tx.posted_date.toISOString().split("T")[0]) : null,
+      reference_number: tx.reference_number || null,
+      merchant_category_code: tx.merchant_category_code || null,
+      running_balance: tx.running_balance ?? null,
+      payee_name: tx.payee_name || null,
+      payer_name: tx.payer_name || null,
+      payment_description_reference: tx.payment_description_reference || null,
+      bank_transaction_type: tx.bank_transaction_type || null,
+      bank_category: tx.bank_category || null,
+      bank_subcategory: tx.bank_subcategory || null,
+      paid_in_amount: tx.paid_in_amount ?? null,
+      paid_out_amount: tx.paid_out_amount ?? null,
       category: undefined,
       subcategory: undefined,
     }));
