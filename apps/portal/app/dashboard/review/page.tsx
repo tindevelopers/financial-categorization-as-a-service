@@ -315,7 +315,7 @@ export default function ReviewJobsPage() {
             </>
           )}
           <Link
-            href="/dashboard/uploads/bank-statements"
+            href="/dashboard/statements"
             className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
           >
             Upload New Statement
@@ -333,7 +333,7 @@ export default function ReviewJobsPage() {
             Upload a bank statement to start categorizing your transactions
           </p>
           <Link
-            href="/dashboard/uploads/bank-statements"
+            href="/dashboard/statements"
             className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
           >
             Upload Statement

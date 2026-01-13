@@ -67,9 +67,9 @@ export default function DashboardPage() {
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           <QuickActionCard
-            title="Upload Bank Statement"
-            description="Import transactions from your bank CSV"
-            href="/dashboard/uploads/bank-statements"
+            title="Upload Statement"
+            description="Import transactions from bank, credit card, or processor statements"
+            href="/dashboard/statements"
             icon={<ArrowUpTrayIcon className="h-8 w-8" />}
             color="blue"
           />
@@ -103,7 +103,7 @@ export default function DashboardPage() {
             <DocumentTextIcon className="h-12 w-12 mx-auto" />
           </div>
           <Text className="mb-4">No recent activity</Text>
-          <Link href="/dashboard/uploads/bank-statements">
+          <Link href="/dashboard/statements">
             <Button color="blue">Upload Your First Statement</Button>
           </Link>
         </div>

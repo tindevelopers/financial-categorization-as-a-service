@@ -679,10 +679,10 @@ export default function UploadsPage() {
               Upload Receipts
             </Button>
           </Link>
-          <Link href="/dashboard/uploads/bank-statements">
+          <Link href="/dashboard/statements">
             <Button color="blue" className="gap-2">
               <ArrowUpTrayIcon className="h-5 w-5" />
-              Upload Bank Statement
+              Upload Statement
             </Button>
           </Link>
         </div>
@@ -701,7 +701,7 @@ export default function UploadsPage() {
               <ArrowUpTrayIcon className="h-12 w-12 mx-auto" />
             </div>
             <Text className="mb-4">No uploads yet</Text>
-            <Link href="/dashboard/uploads/bank-statements">
+            <Link href="/dashboard/statements">
               <Button color="blue">Upload Your First Statement</Button>
             </Link>
           </div>

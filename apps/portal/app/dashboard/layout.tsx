@@ -118,11 +118,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               </SidebarItem>
 
               <SidebarItem
-                href="/dashboard/uploads/bank-statements"
-                current={pathname === '/dashboard/uploads/bank-statements'}
+                href="/dashboard/statements"
+                current={pathname === '/dashboard/statements'}
               >
                 <BanknotesIcon />
-                <SidebarLabel>Bank Statements</SidebarLabel>
+                <SidebarLabel>Statements</SidebarLabel>
               </SidebarItem>
 
               <SidebarItem
