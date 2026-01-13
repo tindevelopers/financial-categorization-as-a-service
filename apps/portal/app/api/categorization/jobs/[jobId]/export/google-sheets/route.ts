@@ -80,6 +80,7 @@ export async function POST(
     let linkedSpreadsheetId: string | null = null;
     let linkedSpreadsheetSource: "job" | "bank_account" | "company" | "new" = "new";
     let bankAccountName: string | null = null;
+    let bankAccountId: string | null = null;
     let isSuspenseAccount = false;
     
     if (job.bank_account_id) {
@@ -91,15 +92,17 @@ export async function POST(
       
       if (bankAccount) {
         bankAccountName = bankAccount.account_name;
+        bankAccountId = bankAccount.id;
         isSuspenseAccount = bankAccount.account_type === 'suspense' || bankAccount.is_default_suspense === true;
         
         // For suspense accounts, we'll use company master spreadsheet if available
-        // Otherwise use the bank account's spreadsheet if it has one
+        // For regular bank accounts, always use bank account's own spreadsheet
         if (bankAccount.default_spreadsheet_id && !isSuspenseAccount) {
           linkedSpreadsheetId = bankAccount.default_spreadsheet_id;
           linkedSpreadsheetSource = "bank_account";
         }
         // If suspense account has no spreadsheet, we'll fall back to company master spreadsheet later
+        // If regular bank account has no spreadsheet, we'll create one in Shared Drive mode
       }
     }
     
@@ -452,28 +455,74 @@ export async function POST(
       console.log("Google Sheets export: Using Shared Drive mode", {
         driveId: effectiveSharedDriveId,
         driveName: companyProfile?.google_shared_drive_name || null,
-        existingSpreadsheetId: companyProfile?.google_master_spreadsheet_id || null,
+        bankAccountId: bankAccountId || null,
+        bankAccountSpreadsheetId: linkedSpreadsheetId || null,
+        companySpreadsheetId: companyProfile?.google_master_spreadsheet_id || null,
       });
 
       try {
+        // Determine which spreadsheet to use/create:
+        // 1. If bank account has default_spreadsheet_id, use that (for regular accounts)
+        // 2. If suspense account without spreadsheet, use company master
+        // 3. If regular bank account without spreadsheet, create bank-account-specific master
+        let spreadsheetToUse: string | undefined = undefined;
+        let spreadsheetNameToUse: string | undefined = undefined;
+        let shouldCreateBankAccountSpreadsheet = false;
+
+        if (bankAccountId && !isSuspenseAccount) {
+          // Regular bank account: use its own spreadsheet or create one
+          if (linkedSpreadsheetId && linkedSpreadsheetSource === "bank_account") {
+            spreadsheetToUse = linkedSpreadsheetId;
+          } else {
+            // Bank account doesn't have a spreadsheet yet - create one
+            shouldCreateBankAccountSpreadsheet = true;
+            spreadsheetNameToUse = bankAccountName 
+              ? `FinCat ${bankAccountName} - ${new Date().getFullYear()}`
+              : `FinCat Bank Account - ${new Date().getFullYear()}`;
+          }
+        } else if (isSuspenseAccount) {
+          // Suspense account: use company master spreadsheet if available
+          spreadsheetToUse = companyProfile?.google_master_spreadsheet_id || undefined;
+          spreadsheetNameToUse = companyProfile?.google_master_spreadsheet_name || undefined;
+        } else {
+          // No bank account: use company master spreadsheet
+          spreadsheetToUse = companyProfile?.google_master_spreadsheet_id || undefined;
+          spreadsheetNameToUse = companyProfile?.google_master_spreadsheet_name || undefined;
+        }
+
         // Get or create master spreadsheet in shared drive
         const masterConfig = await getOrCreateMasterSpreadsheet(
           auth,
           effectiveSharedDriveId,
           statementsFolderIdFromTenant || effectiveSharedDriveId,
-          companyProfile?.google_master_spreadsheet_id || undefined,
-          companyProfile?.google_master_spreadsheet_name || undefined
+          spreadsheetToUse,
+          spreadsheetNameToUse
         );
 
-        // Update company profile with spreadsheet ID if it was newly created
-        if (companyProfile?.id && masterConfig.spreadsheetId !== companyProfile.google_master_spreadsheet_id) {
+        // If we created a new spreadsheet for a bank account, store it
+        if (shouldCreateBankAccountSpreadsheet && bankAccountId && masterConfig.spreadsheetId) {
           await supabase
-            .from("company_profiles")
+            .from("bank_accounts")
             .update({
-              google_master_spreadsheet_id: masterConfig.spreadsheetId,
-              google_master_spreadsheet_name: masterConfig.spreadsheetName,
+              default_spreadsheet_id: masterConfig.spreadsheetId,
             })
-            .eq("id", companyProfile.id);
+            .eq("id", bankAccountId);
+          
+          console.log(`Google Sheets export: Created and linked master spreadsheet ${masterConfig.spreadsheetId} to bank account ${bankAccountId}`);
+          linkedSpreadsheetSource = "bank_account";
+        }
+
+        // Update company profile with spreadsheet ID if it was newly created (for suspense/no-bank-account cases)
+        if (!bankAccountId || isSuspenseAccount) {
+          if (companyProfile?.id && masterConfig.spreadsheetId !== companyProfile.google_master_spreadsheet_id) {
+            await supabase
+              .from("company_profiles")
+              .update({
+                google_master_spreadsheet_id: masterConfig.spreadsheetId,
+                google_master_spreadsheet_name: masterConfig.spreadsheetName,
+              })
+              .eq("id", companyProfile.id);
+          }
         }
 
         // Also persist to tenant integration settings (canonical for multi-user tenants)
@@ -594,12 +643,18 @@ export async function POST(
           await appendFingerprints(auth, masterConfig.spreadsheetId, fingerprintRecords);
         }
 
+        // Update sourceTab in transactions to reflect the actual tab name
+        const transactionsWithSourceTab = transactionsWithFingerprints.map(tx => ({
+          ...tx,
+          sourceTab: finalTabName,
+        }));
+
         // Ensure canonical All Transactions schema and upsert rows (do NOT rebuild/wipe user edits)
         await ensureAllTransactionsSchema(auth, masterConfig.spreadsheetId);
         const upsertResult = await upsertAllTransactionsRows(
           auth,
           masterConfig.spreadsheetId,
-          transactionsWithFingerprints
+          transactionsWithSourceTab
         );
 
         // Store spreadsheet_id in job record for reference
