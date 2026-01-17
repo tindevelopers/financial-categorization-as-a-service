@@ -92,7 +92,7 @@
     "@tailwindcss/postcss": "^4.0.9",
     "ai": "^5.0.115",
     "airtable": "^0.12.2",
-    "apexcharts": "^4.3.0",
+    "apexcharts": "^5.3.6",
     "autoprefixer": "^10.4.20",
     "clsx": "^2.1.1",
     "flatpickr": "^4.6.13",
