@@ -166,11 +166,22 @@ export default function StatementsPage() {
   }, [router])
 
   const fetchStatements = async () => {
+    // #region agent log
+    fetch('http://127.0.0.1:7243/ingest/0c1b14f8-8590-4e1a-a5b8-7e9645e1d13e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'fetch-debug',hypothesisId:'H2',location:'apps/portal/app/dashboard/statements/page.tsx:fetchStatements',message:'fetch start',data:{url:'/api/categorization/jobs?limit=100',method:'GET',windowLocation:typeof window!=='undefined'?window.location.href:'SSR'},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
     try {
+      const startTime = Date.now();
       // Fetch all jobs that are statements (bank statements, credit cards, processors)
       const response = await fetch('/api/categorization/jobs?limit=100')
+      const elapsedMs = Date.now() - startTime;
+      // #region agent log
+      fetch('http://127.0.0.1:7243/ingest/0c1b14f8-8590-4e1a-a5b8-7e9645e1d13e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'fetch-debug',hypothesisId:'H2',location:'apps/portal/app/dashboard/statements/page.tsx:fetchStatements',message:'fetch response received',data:{status:response.status,statusText:response.statusText,ok:response.ok,elapsedMs},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
       
       if (!response.ok) {
+        // #region agent log
+        fetch('http://127.0.0.1:7243/ingest/0c1b14f8-8590-4e1a-a5b8-7e9645e1d13e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'fetch-debug',hypothesisId:'H2',location:'apps/portal/app/dashboard/statements/page.tsx:fetchStatements',message:'response not ok',data:{status:response.status,statusText:response.statusText},timestamp:Date.now()})}).catch(()=>{});
+        // #endregion
         throw new Error('Failed to fetch statements')
       }
 
@@ -184,6 +195,9 @@ export default function StatementsPage() {
       
       setStatements(allStatements)
     } catch (error: any) {
+      // #region agent log
+      fetch('http://127.0.0.1:7243/ingest/0c1b14f8-8590-4e1a-a5b8-7e9645e1d13e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'fetch-debug',hypothesisId:'H2',location:'apps/portal/app/dashboard/statements/page.tsx:fetchStatements',message:'fetch error caught',data:{error:error?.message||String(error),errorType:error?.constructor?.name,errorName:error?.name,isNetworkError:error?.message?.includes('Failed to fetch')||error?.message?.includes('NetworkError'),stack:error?.stack?.substring(0,200)},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
       console.error('Error fetching statements:', error)
     } finally {
       setLoading(false)

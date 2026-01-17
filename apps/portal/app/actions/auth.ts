@@ -3,6 +3,49 @@
 import { createClient } from "@/lib/database/server";
 import { createAdminClient } from "@/lib/database/admin-client";
 
+// Server-side telemetry logger
+function logAuthEvent(event: string, data?: Record<string, any>) {
+  try {
+    // Write to Cursor debug log endpoint
+    fetch('http://127.0.0.1:7243/ingest/0c1b14f8-8590-4e1a-a5b8-7e9645e1d13e', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        sessionId: 'auth-session',
+        runId: 'signup-flow',
+        hypothesisId: 'AUTH',
+        location: 'apps/portal/app/actions/auth.ts',
+        message: `auth.${event}`,
+        data: { event, ...data },
+        timestamp: Date.now(),
+      }),
+    }).catch(() => {
+      // Ignore fetch errors
+    });
+
+    // Also write to file
+    try {
+      const fs = require('fs');
+      const path = require('path');
+      const logPath = path.join(process.cwd(), '.cursor/debug.log');
+      const logLine = JSON.stringify({
+        sessionId: 'auth-session',
+        runId: 'signup-flow',
+        hypothesisId: 'AUTH',
+        location: 'apps/portal/app/actions/auth.ts',
+        message: `auth.${event}`,
+        data: { event, ...data },
+        timestamp: Date.now(),
+      }) + '\n';
+      fs.appendFileSync(logPath, logLine, { flag: 'a' });
+    } catch {
+      // Ignore file write errors
+    }
+  } catch {
+    // Ignore all errors
+  }
+}
+
 export interface SignUpData {
   email: string;
   password: string;
@@ -33,6 +76,12 @@ export interface SignInData {
  * This is a server action that uses the admin client to bypass RLS
  */
 export async function signUp(data: SignUpData): Promise<SignUpResult> {
+  logAuthEvent('signup_start', {
+    emailPrefix: data.email.substring(0, 5) + '***',
+    tenantDomain: data.tenantDomain,
+    subscriptionType: data.subscriptionType,
+  });
+
   const adminClient = createAdminClient();
 
   try {
@@ -263,8 +312,19 @@ export async function signUp(data: SignUpData): Promise<SignUpResult> {
       throw userError || new Error("Failed to create user record");
     }
 
+    logAuthEvent('signup_success', {
+      userId: user?.id?.substring(0, 8) || null,
+      tenantId: tenant?.id?.substring(0, 8) || null,
+      emailPrefix: data.email.substring(0, 5) + '***',
+    });
+
     return { ok: true, data: { user, tenant, session: authData.session } };
   } catch (error) {
+    logAuthEvent('signup_error', {
+      error: error instanceof Error ? error.message : String(error),
+      errorType: error instanceof Error ? error.constructor?.name : typeof error,
+      emailPrefix: data.email.substring(0, 5) + '***',
+    });
     const errorDetails = {
       message: error instanceof Error ? error.message : String(error),
       stack: error instanceof Error ? error.stack : undefined,

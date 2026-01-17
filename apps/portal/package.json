@@ -4,9 +4,9 @@
   "private": true,
   "description": "Consumer-facing portal application with SSG/ISR for SEO optimization",
   "scripts": {
-    "dev": "next dev --port 3002",
+    "dev": "next dev --port 3080",
     "build": "next build",
-    "start": "next start --port 3002",
+    "start": "next start --port 3080",
     "lint": "next lint",
     "type-check": "tsc --noEmit"
   },

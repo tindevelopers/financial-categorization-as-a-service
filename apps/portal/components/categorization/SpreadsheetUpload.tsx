@@ -109,8 +109,16 @@ export default function SpreadsheetUpload() {
   }, []);
 
   const fetchBankAccounts = async () => {
+    // #region agent log
+    fetch('http://127.0.0.1:7243/ingest/0c1b14f8-8590-4e1a-a5b8-7e9645e1d13e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'fetch-debug',hypothesisId:'H2',location:'apps/portal/components/categorization/SpreadsheetUpload.tsx:fetchBankAccounts',message:'fetch start',data:{url:'/api/bank-accounts',method:'GET',windowLocation:typeof window!=='undefined'?window.location.href:'SSR'},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
     try {
+      const startTime = Date.now();
       const response = await fetch("/api/bank-accounts");
+      const elapsedMs = Date.now() - startTime;
+      // #region agent log
+      fetch('http://127.0.0.1:7243/ingest/0c1b14f8-8590-4e1a-a5b8-7e9645e1d13e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'fetch-debug',hypothesisId:'H2',location:'apps/portal/components/categorization/SpreadsheetUpload.tsx:fetchBankAccounts',message:'fetch response received',data:{status:response.status,statusText:response.statusText,ok:response.ok,elapsedMs,hasBody:!!response.body},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
       const data = await response.json();
       
       if (data.success && data.bank_accounts) {
@@ -129,6 +137,9 @@ export default function SpreadsheetUpload() {
       } else {
       }
     } catch (error: any) {
+      // #region agent log
+      fetch('http://127.0.0.1:7243/ingest/0c1b14f8-8590-4e1a-a5b8-7e9645e1d13e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'fetch-debug',hypothesisId:'H2',location:'apps/portal/components/categorization/SpreadsheetUpload.tsx:fetchBankAccounts',message:'fetch error caught',data:{error:error?.message||String(error),errorType:error?.constructor?.name,errorName:error?.name,isNetworkError:error?.message?.includes('Failed to fetch')||error?.message?.includes('NetworkError'),stack:error?.stack?.substring(0,200)},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
       console.error("Error fetching bank accounts:", error);
     } finally {
       setLoadingBankAccounts(false);
@@ -136,8 +147,16 @@ export default function SpreadsheetUpload() {
   };
 
   const fetchProfileStatus = async () => {
+    // #region agent log
+    fetch('http://127.0.0.1:7243/ingest/0c1b14f8-8590-4e1a-a5b8-7e9645e1d13e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'fetch-debug',hypothesisId:'H2',location:'apps/portal/components/categorization/SpreadsheetUpload.tsx:fetchProfileStatus',message:'fetch start',data:{url:'/api/company',method:'GET'},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
     try {
+      const startTime = Date.now();
       const response = await fetch("/api/company");
+      const elapsedMs = Date.now() - startTime;
+      // #region agent log
+      fetch('http://127.0.0.1:7243/ingest/0c1b14f8-8590-4e1a-a5b8-7e9645e1d13e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'fetch-debug',hypothesisId:'H2',location:'apps/portal/components/categorization/SpreadsheetUpload.tsx:fetchProfileStatus',message:'fetch response received',data:{status:response.status,statusText:response.statusText,ok:response.ok,elapsedMs},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
       if (response.ok) {
         const data = await response.json();
         const companies = data.companies || [];
