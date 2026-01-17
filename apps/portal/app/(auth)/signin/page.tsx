@@ -5,6 +5,29 @@ import { createClient } from "@/lib/database/client";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 
+// Client-side telemetry logger
+function logAuthEvent(event: string, data?: Record<string, any>) {
+  try {
+    fetch('http://127.0.0.1:7243/ingest/0c1b14f8-8590-4e1a-a5b8-7e9645e1d13e', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        sessionId: 'auth-session',
+        runId: 'login-flow',
+        hypothesisId: 'AUTH',
+        location: 'apps/portal/app/(auth)/signin/page.tsx',
+        message: `auth.${event}`,
+        data: { event, ...data },
+        timestamp: Date.now(),
+      }),
+    }).catch(() => {
+      // Ignore fetch errors
+    });
+  } catch {
+    // Ignore errors
+  }
+}
+
 export default function SignInPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -16,10 +39,15 @@ export default function SignInPage() {
 
   useEffect(() => {
     setMounted(true);
+    logAuthEvent('page_load');
     try {
-      setSupabase(createClient());
+      const client = createClient();
+      setSupabase(client);
+      logAuthEvent('client_initialized', { success: true });
     } catch (err: any) {
-      setError(err.message || 'Failed to initialize Supabase client');
+      const errorMsg = err.message || 'Failed to initialize Supabase client';
+      setError(errorMsg);
+      logAuthEvent('client_init_error', { error: errorMsg, errorType: err.constructor?.name });
     }
   }, []);
 
@@ -28,27 +56,55 @@ export default function SignInPage() {
     setError(null);
     setLoading(true);
 
+    logAuthEvent('signin_start', { 
+      email: email.substring(0, 5) + '***', // Partial email for privacy
+      hasSupabaseClient: !!supabase 
+    });
+
     if (!supabase) {
-      setError('Supabase client not initialized');
+      const errorMsg = 'Supabase client not initialized';
+      setError(errorMsg);
       setLoading(false);
+      logAuthEvent('signin_error', { error: errorMsg, errorType: 'ClientNotInitialized' });
       return;
     }
 
     try {
-      const { error } = await supabase.auth.signInWithPassword({
+      const startTime = Date.now();
+      const { data, error } = await supabase.auth.signInWithPassword({
         email,
         password,
       });
+      const elapsedMs = Date.now() - startTime;
 
       if (error) {
+        logAuthEvent('signin_error', {
+          error: error.message,
+          errorCode: error.status,
+          elapsedMs,
+          emailPrefix: email.substring(0, 5) + '***',
+        });
         setError(error.message);
         return;
       }
 
+      logAuthEvent('signin_success', {
+        userId: data.user?.id?.substring(0, 8) || null,
+        emailPrefix: email.substring(0, 5) + '***',
+        hasSession: !!data.session,
+        elapsedMs,
+      });
+
       router.push("/dashboard");
       router.refresh();
     } catch (err: any) {
-      setError(err.message || "An error occurred");
+      const errorMsg = err.message || "An error occurred";
+      logAuthEvent('signin_exception', {
+        error: errorMsg,
+        errorType: err.constructor?.name,
+        stack: err.stack?.substring(0, 200),
+      });
+      setError(errorMsg);
     } finally {
       setLoading(false);
     }
