@@ -25,6 +25,39 @@ export async function GET(request: NextRequest) {
 
     // Get source filter if provided
     const sourceType = searchParams.get('sourceType'); // 'upload', 'google_sheets', 'manual', 'api'
+    const bankAccountId = searchParams.get('bank_account_id');
+    const processor = searchParams.get('processor');
+
+    // If a processor filter is used, resolve job IDs up front (we filter transactions by job_id).
+    // (We intentionally keep this simple: processor slug is used as the keyword.)
+    let processorJobIds: string[] | null = null;
+    if (!bankAccountId && processor) {
+      const { data: procJobs, error: procJobsError } = await db
+        .from('categorization_jobs')
+        .select('id')
+        .eq('user_id', user.id)
+        .ilike('original_filename', `%${processor}%`)
+        .limit(500);
+
+      if (procJobsError) {
+        console.error('Error fetching processor jobs:', procJobsError);
+        return NextResponse.json({ error: 'Failed to fetch processor jobs' }, { status: 500 });
+      }
+
+      processorJobIds = (procJobs || []).map((j: any) => j.id);
+
+      // No matching jobs => empty result set scoped to this processor
+      if (processorJobIds.length === 0) {
+        return NextResponse.json({
+          transactions: [],
+          summary: {
+            total_unreconciled: 0,
+            total_matched: 0,
+            total_documents: 0,
+          },
+        });
+      }
+    }
 
     // Get transactions (all or filtered by status)
     // Now includes source tracking fields for sync-aware reconciliation
@@ -52,6 +85,13 @@ export async function GET(request: NextRequest) {
       txQuery = txQuery.eq('source_type', sourceType);
     }
 
+    // Filter by bank account if specified (takes precedence over processor)
+    if (bankAccountId) {
+      txQuery = txQuery.eq('bank_account_id', bankAccountId);
+    } else if (processorJobIds) {
+      txQuery = txQuery.in('job_id', processorJobIds);
+    }
+
     const { data: transactions, error: txError } = await txQuery;
 
     if (txError) {
@@ -70,6 +110,7 @@ export async function GET(request: NextRequest) {
         id, original_filename, vendor_name, document_date, 
         total_amount, subtotal_amount, tax_amount, fee_amount, net_amount, 
         tax_rate, line_items, payment_method, po_number,
+        bank_account_id,
         reconciliation_status, matched_transaction_id, 
         file_type, mime_type, file_size_bytes, ocr_status, extracted_text,
         supabase_path, storage_tier, extracted_data, category, subcategory,
@@ -172,6 +213,7 @@ export async function GET(request: NextRequest) {
               match_confidence: matchConfidence,
               amount_difference: amountDiff,
               days_difference: dateDiff,
+              account_match: !!(bankAccountId && doc.bank_account_id && doc.bank_account_id === bankAccountId),
             };
           })
           .sort((a: any, b: any) => {
@@ -181,6 +223,12 @@ export async function GET(request: NextRequest) {
             const bScore = confidenceScore[b.match_confidence] || 0;
             
             if (aScore !== bScore) return bScore - aScore;
+            // Prefer account-consistent matches when scoped to a bank account
+            if (bankAccountId) {
+              const aAcct = a.account_match ? 1 : 0;
+              const bAcct = b.account_match ? 1 : 0;
+              if (aAcct !== bAcct) return bAcct - aAcct;
+            }
             return a.amount_difference - b.amount_difference;
           })
           .slice(0, 5); // Top 5 matches per transaction
@@ -207,18 +255,27 @@ export async function GET(request: NextRequest) {
       .eq('user_id', user.id);
     
     const jobIds = (userJobs || []).map((j: any) => j.id);
+    const summaryJobIds = processorJobIds || jobIds;
     
-    const { count: totalUnreconciled } = await db
+    let unreconciledQuery = db
       .from('categorized_transactions')
       .select('*', { count: 'exact', head: true })
       .eq('reconciliation_status', 'unreconciled')
-      .in('job_id', jobIds.length > 0 ? jobIds : ['']);
+      .in('job_id', summaryJobIds.length > 0 ? summaryJobIds : ['']);
 
-    const { count: totalMatched } = await db
+    let matchedQuery = db
       .from('categorized_transactions')
       .select('*', { count: 'exact', head: true })
       .eq('reconciliation_status', 'matched')
-      .in('job_id', jobIds.length > 0 ? jobIds : ['']);
+      .in('job_id', summaryJobIds.length > 0 ? summaryJobIds : ['']);
+
+    if (bankAccountId) {
+      unreconciledQuery = unreconciledQuery.eq('bank_account_id', bankAccountId);
+      matchedQuery = matchedQuery.eq('bank_account_id', bankAccountId);
+    }
+
+    const { count: totalUnreconciled } = await unreconciledQuery;
+    const { count: totalMatched } = await matchedQuery;
 
     return NextResponse.json({
       transactions: transactionsWithMatches,

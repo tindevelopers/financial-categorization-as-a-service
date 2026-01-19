@@ -33,6 +33,7 @@ export interface TransactionRow {
   portalModifiedAt?: string;
   sheetModifiedAt?: string;
   sheetModifiedBy?: string;
+  account?: string;
 }
 
 interface MasterSpreadsheetConfig {
@@ -46,7 +47,7 @@ const ALL_TRANSACTIONS_TAB = "All Transactions";
 const FINGERPRINTS_TAB = "_Fingerprints";
 
 // Canonical schema for the editable All Transactions tab.
-// Columns A-M (13):
+// Columns A-N (14):
 // A Date
 // B Description
 // C Amount
@@ -60,6 +61,7 @@ const FINGERPRINTS_TAB = "_Fingerprints";
 // K Portal Modified At
 // L Sheet Modified At
 // M Sheet Modified By
+// N Account
 const ALL_TRANSACTIONS_HEADER = [
   "Date",
   "Description",
@@ -74,10 +76,11 @@ const ALL_TRANSACTIONS_HEADER = [
   "Portal Modified At",
   "Sheet Modified At",
   "Sheet Modified By",
+  "Account",
 ];
 
-const ALL_TRANSACTIONS_RANGE = `'${ALL_TRANSACTIONS_TAB}'!A:M`;
-const ALL_TRANSACTIONS_HEADER_RANGE = `'${ALL_TRANSACTIONS_TAB}'!A1:M1`;
+const ALL_TRANSACTIONS_RANGE = `'${ALL_TRANSACTIONS_TAB}'!A:N`;
+const ALL_TRANSACTIONS_HEADER_RANGE = `'${ALL_TRANSACTIONS_TAB}'!A1:N1`;
 
 /**
  * Get or create the master spreadsheet in the shared drive
@@ -342,7 +345,7 @@ export async function upsertAllTransactionsRows(
         continue;
       }
 
-      // Update the existing row (A-M)
+      // Update the existing row (A-N)
       const rowValues = [
         tx.date,
         tx.description,
@@ -357,10 +360,11 @@ export async function upsertAllTransactionsRows(
         portalModifiedAt,
         "", // sheet_modified_at cleared on portal push
         "", // sheet_modified_by cleared on portal push
+        tx.account || "",
       ];
 
       dataUpdates.push({
-        range: `'${ALL_TRANSACTIONS_TAB}'!A${existing.rowNumber}:M${existing.rowNumber}`,
+        range: `'${ALL_TRANSACTIONS_TAB}'!A${existing.rowNumber}:N${existing.rowNumber}`,
         values: [rowValues],
       });
       updated++;
@@ -380,10 +384,11 @@ export async function upsertAllTransactionsRows(
         portalModifiedAt,
         "",
         "",
+        tx.account || "",
       ];
 
       dataUpdates.push({
-        range: `'${ALL_TRANSACTIONS_TAB}'!A${appendCursor}:M${appendCursor}`,
+        range: `'${ALL_TRANSACTIONS_TAB}'!A${appendCursor}:N${appendCursor}`,
         values: [rowValues],
       });
       appendCursor++;

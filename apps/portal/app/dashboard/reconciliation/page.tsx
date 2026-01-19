@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useMemo, useState, useEffect } from 'react'
+import { useSearchParams } from 'next/navigation'
 import { Heading, Text, Button } from '@/components/catalyst'
 import { 
   ArrowsRightLeftIcon, 
@@ -67,7 +68,25 @@ type Summary = {
   total_documents: number
 }
 
+type BankAccount = {
+  id: string
+  account_name: string
+  bank_name: string
+  account_type: string
+}
+
+const KNOWN_PROCESSORS: Array<{ slug: string; label: string }> = [
+  { slug: 'stripe', label: 'Stripe' },
+  { slug: 'paypal', label: 'PayPal' },
+  { slug: 'booking', label: 'Booking.com' },
+  { slug: 'expedia', label: 'Expedia' },
+  { slug: 'airbnb', label: 'Airbnb' },
+  { slug: 'vrbo', label: 'VRBO' },
+  { slug: 'lodgify', label: 'Lodgify' },
+]
+
 export default function ReconciliationPage() {
+  const searchParams = useSearchParams()
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const [summary, setSummary] = useState<Summary>({ 
     total_unreconciled: 0, 
@@ -82,6 +101,9 @@ export default function ReconciliationPage() {
   const [statusFilter, setStatusFilter] = useState<'all' | 'unreconciled' | 'matched'>('all')
   const [showUploadModal, setShowUploadModal] = useState(false)
   const [showEmailInfo, setShowEmailInfo] = useState(false)
+  const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([])
+  const [selectedBankAccountId, setSelectedBankAccountId] = useState<string | 'all'>('all')
+  const [selectedProcessor, setSelectedProcessor] = useState<string | 'all'>('all')
   const [breakdownModal, setBreakdownModal] = useState<{
     show: boolean
     transaction: Transaction | null
@@ -89,12 +111,48 @@ export default function ReconciliationPage() {
   }>({ show: false, transaction: null, document: null })
 
 
+  // Initialize scope from query params (Statements -> Reconciliation)
+  useEffect(() => {
+    const bankAccountId = searchParams.get('bank_account_id')
+    const processor = searchParams.get('processor')
+    if (bankAccountId) {
+      setSelectedBankAccountId(bankAccountId)
+      setSelectedProcessor('all')
+      return
+    }
+    if (processor) {
+      setSelectedProcessor(processor)
+      setSelectedBankAccountId('all')
+    }
+  }, [searchParams])
+
+  const fetchBankAccounts = async () => {
+    try {
+      const resp = await fetch('/api/bank-accounts?include_inactive=true')
+      if (!resp.ok) throw new Error('Failed to fetch bank accounts')
+      const data = await resp.json()
+      setBankAccounts(data.bank_accounts || [])
+    } catch (error) {
+      console.error('Error fetching bank accounts:', error)
+      setBankAccounts([])
+    }
+  }
+
+  useEffect(() => {
+    fetchBankAccounts()
+  }, [])
+
   const loadReconciliationData = async () => {
     try {
       setLoading(true)
       const params = new URLSearchParams()
       if (statusFilter !== 'all') {
         params.set('status', statusFilter)
+      }
+      if (selectedBankAccountId !== 'all') {
+        params.set('bank_account_id', selectedBankAccountId)
+      } else if (selectedProcessor !== 'all') {
+        params.set('processor', selectedProcessor)
       }
       const response = await fetch(`/api/reconciliation/candidates?${params.toString()}`)
       if (!response.ok) throw new Error('Failed to load reconciliation data')
@@ -111,7 +169,7 @@ export default function ReconciliationPage() {
 
   useEffect(() => {
     loadReconciliationData()
-  }, [statusFilter])
+  }, [statusFilter, selectedBankAccountId, selectedProcessor])
 
   const handleAutoMatch = async () => {
     try {
@@ -298,6 +356,18 @@ export default function ReconciliationPage() {
     )
   }
 
+  const bankAccountsById = useMemo(() => new Map(bankAccounts.map((a) => [a.id, a])), [bankAccounts])
+  const activeScopeLabel = useMemo(() => {
+    if (selectedBankAccountId !== 'all') {
+      const acct = bankAccountsById.get(selectedBankAccountId)
+      return acct ? `${acct.account_name} (${acct.bank_name})` : 'Selected account'
+    }
+    if (selectedProcessor !== 'all') {
+      return KNOWN_PROCESSORS.find((p) => p.slug === selectedProcessor)?.label || selectedProcessor
+    }
+    return 'All accounts'
+  }, [bankAccountsById, selectedBankAccountId, selectedProcessor])
+
   return (
     <div className="space-y-8">
       {/* Header */}
@@ -373,6 +443,53 @@ export default function ReconciliationPage() {
                 {summary.total_documents}
               </div>
             </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Account scope filter */}
+      <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-4 border border-gray-200 dark:border-gray-700">
+        <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+          <div className="flex-1 max-w-xl">
+            <Text className="text-sm text-gray-500 dark:text-gray-400">Scope</Text>
+            <div className="mt-1 flex flex-col gap-2 sm:flex-row">
+              <select
+                value={selectedBankAccountId}
+                onChange={(e) => {
+                  const v = e.target.value
+                  setSelectedBankAccountId(v as any)
+                  if (v !== 'all') setSelectedProcessor('all')
+                }}
+                className="block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-800 dark:text-white shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
+              >
+                <option value="all">All bank/credit-card accounts</option>
+                {bankAccounts.map((a) => (
+                  <option key={a.id} value={a.id}>
+                    {a.account_name} ({a.bank_name})
+                  </option>
+                ))}
+              </select>
+
+              <select
+                value={selectedProcessor}
+                onChange={(e) => {
+                  const v = e.target.value
+                  setSelectedProcessor(v as any)
+                  if (v !== 'all') setSelectedBankAccountId('all')
+                }}
+                className="block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-800 dark:text-white shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
+              >
+                <option value="all">All processors</option>
+                {KNOWN_PROCESSORS.map((p) => (
+                  <option key={p.slug} value={p.slug}>
+                    {p.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+          <div className="text-sm text-gray-600 dark:text-gray-300">
+            Viewing: <span className="font-medium">{activeScopeLabel}</span>
           </div>
         </div>
       </div>

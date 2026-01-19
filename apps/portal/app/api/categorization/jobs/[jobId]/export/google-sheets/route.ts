@@ -525,6 +525,33 @@ export async function POST(
           }
         }
 
+        // Ensure we always have a tenant/company master spreadsheet to aggregate ALL statements.
+        // For regular bank accounts we keep exporting to the account-specific spreadsheet, but also upsert into the company master.
+        const destinationIsCompanyMaster = !bankAccountId || isSuspenseAccount;
+        let companyMasterConfig = masterConfig;
+        if (!destinationIsCompanyMaster) {
+          const masterNameFallback = companyProfile?.google_master_spreadsheet_name || `FinCat Master - ${new Date().getFullYear()}`;
+          const ensuredCompanyMaster = await getOrCreateMasterSpreadsheet(
+            auth,
+            effectiveSharedDriveId,
+            statementsFolderIdFromTenant || effectiveSharedDriveId,
+            companyProfile?.google_master_spreadsheet_id || undefined,
+            masterNameFallback
+          );
+
+          companyMasterConfig = ensuredCompanyMaster;
+
+          if (companyProfile?.id && ensuredCompanyMaster.spreadsheetId !== companyProfile.google_master_spreadsheet_id) {
+            await supabase
+              .from("company_profiles")
+              .update({
+                google_master_spreadsheet_id: ensuredCompanyMaster.spreadsheetId,
+                google_master_spreadsheet_name: ensuredCompanyMaster.spreadsheetName,
+              })
+              .eq("id", companyProfile.id);
+          }
+        }
+
         // Also persist to tenant integration settings (canonical for multi-user tenants)
         if (tenantId) {
           const { data: tis } = await (supabase as any)
@@ -536,8 +563,8 @@ export async function POST(
 
           const updatedSettings = {
             ...(tis?.settings || {}),
-            googleMasterSpreadsheetId: masterConfig.spreadsheetId,
-            googleMasterSpreadsheetName: masterConfig.spreadsheetName,
+            googleMasterSpreadsheetId: companyMasterConfig.spreadsheetId,
+            googleMasterSpreadsheetName: companyMasterConfig.spreadsheetName,
           };
 
           await (supabase as any)
@@ -587,6 +614,7 @@ export async function POST(
               status: tx.user_confirmed ? 'Confirmed' : 'Pending',
               fingerprint,
               sourceTab: "portal", // canonical tab source label
+              account: bankAccountName || (isSuspenseAccount ? "Suspense" : ""),
             };
           });
 
@@ -656,6 +684,23 @@ export async function POST(
           masterConfig.spreadsheetId,
           transactionsWithSourceTab
         );
+
+        // Also upsert into the tenant/company master spreadsheet so all statements aggregate into one place.
+        // (Keeps current per-account export destinations intact.)
+        try {
+          if (companyMasterConfig?.spreadsheetId && companyMasterConfig.spreadsheetId !== masterConfig.spreadsheetId) {
+            const accountLabel = bankAccountName || "Unassigned";
+            const companyRows = transactionsWithFingerprints.map((tx) => ({
+              ...tx,
+              sourceTab: `${accountLabel} - ${finalTabName}`,
+              account: accountLabel,
+            }));
+            await ensureAllTransactionsSchema(auth, companyMasterConfig.spreadsheetId);
+            await upsertAllTransactionsRows(auth, companyMasterConfig.spreadsheetId, companyRows);
+          }
+        } catch (masterUpsertErr: any) {
+          console.warn("Google Sheets export: Failed to upsert into company master spreadsheet (non-fatal):", masterUpsertErr?.message || masterUpsertErr);
+        }
 
         // Store spreadsheet_id in job record for reference
         await supabase
@@ -1171,6 +1216,40 @@ export async function POST(
         console.error("Google Sheets export: Error storing spreadsheet_id:", dbError);
         // Don't fail the export - spreadsheet was created successfully
       }
+    }
+
+    // Also upsert into the company master spreadsheet (if configured) so all statements aggregate into one place.
+    // In non-Shared-Drive mode we only do this when a master spreadsheet already exists.
+    try {
+      const companyMasterId = companyProfile?.google_master_spreadsheet_id || null;
+      if (companyMasterId && companyMasterId !== spreadsheetId) {
+        const accountLabel = bankAccountName || "Unassigned";
+        const rowsForMaster: TransactionRow[] = (transactions || []).map((tx: any) => {
+          const fingerprint =
+            (tx.transaction_fingerprint as string | null | undefined) ||
+            `${tx.date || ''}_${tx.original_description || ''}_${tx.amount || 0}`
+              .toLowerCase()
+              .replace(/\s+/g, '_');
+          return {
+            transactionId: tx.id,
+            date: tx.date || '',
+            description: tx.original_description || '',
+            amount: tx.amount || 0,
+            category: tx.category || 'Uncategorized',
+            subcategory: tx.subcategory || '',
+            confidence: tx.confidence_score || 0,
+            status: tx.user_confirmed ? 'Confirmed' : 'Pending',
+            fingerprint,
+            sourceTab: `${accountLabel} - ${job.original_filename || jobId}`,
+            account: accountLabel,
+          };
+        });
+
+        await ensureAllTransactionsSchema(auth, companyMasterId);
+        await upsertAllTransactionsRows(auth, companyMasterId, rowsForMaster);
+      }
+    } catch (masterErr: any) {
+      console.warn("Google Sheets export: Failed to upsert into company master spreadsheet (non-fatal):", masterErr?.message || masterErr);
     }
 
     const sheetUrl = `https://docs.google.com/spreadsheets/d/${spreadsheetId}`;

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useMemo, useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/database/client'
 import SpreadsheetUpload from '@/components/categorization/SpreadsheetUpload'
@@ -26,6 +26,8 @@ interface BankAccount {
   account_type: string
 }
 
+type AccountKey = `bank:${string}` | `processor:${string}`
+
 interface Statement {
   id: string
   original_filename: string
@@ -44,6 +46,46 @@ interface Statement {
 }
 
 type StatementTab = 'all' | 'bank' | 'credit-card' | 'processor'
+
+const KNOWN_PROCESSORS: Array<{ slug: string; label: string; keywords: string[] }> = [
+  { slug: 'stripe', label: 'Stripe', keywords: ['stripe'] },
+  { slug: 'paypal', label: 'PayPal', keywords: ['paypal'] },
+  { slug: 'booking', label: 'Booking.com', keywords: ['booking'] },
+  { slug: 'expedia', label: 'Expedia', keywords: ['expedia'] },
+  { slug: 'airbnb', label: 'Airbnb', keywords: ['airbnb'] },
+  { slug: 'vrbo', label: 'VRBO', keywords: ['vrbo'] },
+  { slug: 'lodgify', label: 'Lodgify', keywords: ['lodgify'] },
+]
+
+function inferProcessorSlug(filename: string): string | null {
+  const lower = filename.toLowerCase()
+  for (const p of KNOWN_PROCESSORS) {
+    if (p.keywords.some((k) => lower.includes(k))) return p.slug
+  }
+  return null
+}
+
+function getAccountKey(statement: Statement): AccountKey | null {
+  if (statement.bank_account_id) return `bank:${statement.bank_account_id}`
+  const slug = inferProcessorSlug(statement.original_filename)
+  if (slug) return `processor:${slug}`
+  return null
+}
+
+function getAccountLabelFromKey(
+  key: AccountKey,
+  bankAccountsById: Map<string, BankAccount>
+): string {
+  if (key.startsWith('bank:')) {
+    const id = key.slice('bank:'.length)
+    const acct = bankAccountsById.get(id)
+    if (!acct) return 'Unknown Account'
+    return `${acct.account_name} (${acct.bank_name})`
+  }
+  const slug = key.slice('processor:'.length)
+  const known = KNOWN_PROCESSORS.find((p) => p.slug === slug)
+  return known?.label || slug
+}
 
 // Helper to categorize statement type
 function getStatementType(filename: string, bankAccount?: BankAccount | null): 'bank' | 'credit-card' | 'processor' {
@@ -141,11 +183,14 @@ function getStatusLabel(status: string, statusMessage?: string) {
 export default function StatementsPage() {
   const router = useRouter()
   const [statements, setStatements] = useState<Statement[]>([])
+  const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([])
   const [loading, setLoading] = useState(true)
+  const [loadingAccounts, setLoadingAccounts] = useState(true)
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [resettingStorage, setResettingStorage] = useState(false)
   const [showUpload, setShowUpload] = useState(false)
   const [activeTab, setActiveTab] = useState<StatementTab>('all')
+  const [selectedAccountKey, setSelectedAccountKey] = useState<AccountKey | 'all'>('all')
   const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null)
 
   useEffect(() => {
@@ -164,6 +209,21 @@ export default function StatementsPage() {
 
     checkAuth()
   }, [router])
+
+  const fetchBankAccounts = async () => {
+    try {
+      setLoadingAccounts(true)
+      const resp = await fetch('/api/bank-accounts?include_inactive=true')
+      if (!resp.ok) throw new Error('Failed to fetch bank accounts')
+      const data = await resp.json()
+      setBankAccounts(data.bank_accounts || [])
+    } catch (e) {
+      console.error('Error fetching bank accounts:', e)
+      setBankAccounts([])
+    } finally {
+      setLoadingAccounts(false)
+    }
+  }
 
   const fetchStatements = async () => {
     // #region agent log
@@ -205,6 +265,7 @@ export default function StatementsPage() {
   }
 
   useEffect(() => {
+    fetchBankAccounts()
     fetchStatements()
     
     // Poll for updates every 3 seconds
@@ -220,23 +281,97 @@ export default function StatementsPage() {
     }
   }, [])
 
-  // Filter statements based on active tab
-  const filteredStatements = statements.filter((statement) => {
-    if (activeTab === 'all') return true
-    
-    const statementType = getStatementType(statement.original_filename, statement.bank_account)
-    
-    switch (activeTab) {
-      case 'bank':
-        return statementType === 'bank'
-      case 'credit-card':
-        return statementType === 'credit-card'
-      case 'processor':
-        return statementType === 'processor'
-      default:
-        return true
+  const bankAccountsById = useMemo(() => {
+    return new Map(bankAccounts.map((a) => [a.id, a]))
+  }, [bankAccounts])
+
+  const allAccountKeys: AccountKey[] = useMemo(() => {
+    const keys = new Set<AccountKey>()
+    // Prefer explicit accounts (bank/credit card) from bank_accounts table
+    for (const a of bankAccounts) keys.add(`bank:${a.id}`)
+    // Add inferred processors from current statements
+    for (const s of statements) {
+      const k = getAccountKey(s)
+      if (k && k.startsWith('processor:')) keys.add(k)
     }
-  })
+    return Array.from(keys)
+  }, [bankAccounts, statements])
+
+  const filteredByAccount = useMemo(() => {
+    if (selectedAccountKey === 'all') return statements
+    if (selectedAccountKey.startsWith('bank:')) {
+      const id = selectedAccountKey.slice('bank:'.length)
+      return statements.filter((s) => s.bank_account_id === id)
+    }
+    const slug = selectedAccountKey.slice('processor:'.length)
+    return statements.filter((s) => !s.bank_account_id && inferProcessorSlug(s.original_filename) === slug)
+  }, [selectedAccountKey, statements])
+
+  // Filter statements based on active tab + selected account key
+  const filteredStatements = useMemo(() => {
+    return filteredByAccount.filter((statement) => {
+      if (activeTab === 'all') return true
+      const statementType = getStatementType(statement.original_filename, statement.bank_account)
+      switch (activeTab) {
+        case 'bank':
+          return statementType === 'bank'
+        case 'credit-card':
+          return statementType === 'credit-card'
+        case 'processor':
+          return statementType === 'processor'
+        default:
+          return true
+      }
+    })
+  }, [activeTab, filteredByAccount])
+
+  const rollups = useMemo(() => {
+    type Rollup = {
+      key: AccountKey
+      label: string
+      statementCount: number
+      totalTransactions: number
+      lastUploadedAt: string | null
+      statusCounts: Record<string, number>
+      reconcileHref: string
+    }
+
+    const map = new Map<AccountKey, Omit<Rollup, 'label' | 'reconcileHref'>>()
+    for (const s of statements) {
+      const key = getAccountKey(s)
+      if (!key) continue
+      const existing = map.get(key) || {
+        key,
+        statementCount: 0,
+        totalTransactions: 0,
+        lastUploadedAt: null as string | null,
+        statusCounts: {} as Record<string, number>,
+      }
+      existing.statementCount += 1
+      existing.totalTransactions += typeof s.processed_items === 'number' ? s.processed_items : 0
+      existing.statusCounts[s.status] = (existing.statusCounts[s.status] || 0) + 1
+      if (!existing.lastUploadedAt || new Date(s.created_at).getTime() > new Date(existing.lastUploadedAt).getTime()) {
+        existing.lastUploadedAt = s.created_at
+      }
+      map.set(key, existing)
+    }
+
+    const items: Rollup[] = Array.from(map.values()).map((r) => {
+      const label = getAccountLabelFromKey(r.key, bankAccountsById)
+      const reconcileHref =
+        r.key.startsWith('bank:')
+          ? `/dashboard/reconciliation?bank_account_id=${encodeURIComponent(r.key.slice('bank:'.length))}`
+          : `/dashboard/reconciliation?processor=${encodeURIComponent(r.key.slice('processor:'.length))}`
+      return { ...r, label, reconcileHref }
+    })
+
+    items.sort((a, b) => {
+      const ta = a.lastUploadedAt ? new Date(a.lastUploadedAt).getTime() : 0
+      const tb = b.lastUploadedAt ? new Date(b.lastUploadedAt).getTime() : 0
+      return tb - ta
+    })
+    return items
+  }, [bankAccountsById, statements])
 
   const handleDelete = async (jobId: string) => {
     if (!confirm('Are you sure you want to delete this statement? This action cannot be undone.')) {
@@ -300,10 +435,10 @@ export default function StatementsPage() {
   }
 
   const tabs: { id: StatementTab; label: string; count: number }[] = [
-    { id: 'all', label: 'All Statements', count: statements.length },
-    { id: 'bank', label: 'Bank Statements', count: statements.filter(s => getStatementType(s.original_filename, s.bank_account) === 'bank').length },
-    { id: 'credit-card', label: 'Credit Card Statements', count: statements.filter(s => getStatementType(s.original_filename, s.bank_account) === 'credit-card').length },
-    { id: 'processor', label: 'Processors', count: statements.filter(s => getStatementType(s.original_filename, s.bank_account) === 'processor').length },
+    { id: 'all', label: 'All Statements', count: filteredByAccount.length },
+    { id: 'bank', label: 'Bank Statements', count: filteredByAccount.filter(s => getStatementType(s.original_filename, s.bank_account) === 'bank').length },
+    { id: 'credit-card', label: 'Credit Card Statements', count: filteredByAccount.filter(s => getStatementType(s.original_filename, s.bank_account) === 'credit-card').length },
+    { id: 'processor', label: 'Processors', count: filteredByAccount.filter(s => getStatementType(s.original_filename, s.bank_account) === 'processor').length },
   ]
 
   return (
@@ -358,6 +493,95 @@ export default function StatementsPage() {
           Manage bank statements, credit card statements, and processor statements (Stripe, PayPal, Booking.com, Expedia, etc.)
         </Text>
       </div>
+
+      {/* Account Filter */}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+        <div className="flex-1 max-w-xl">
+          <Text className="text-sm text-gray-500 dark:text-gray-400">Filter by account</Text>
+          <div className="mt-1">
+            <select
+              value={selectedAccountKey}
+              onChange={(e) => {
+                const v = e.target.value as AccountKey | 'all'
+                setSelectedAccountKey(v)
+              }}
+              className="block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-800 dark:text-white shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
+              disabled={loadingAccounts}
+            >
+              <option value="all">All accounts</option>
+              {allAccountKeys.map((k) => (
+                <option key={k} value={k}>
+                  {getAccountLabelFromKey(k, bankAccountsById)}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+        {selectedAccountKey !== 'all' && (
+          <div className="flex gap-2">
+            <Button
+              color="white"
+              onClick={() => setSelectedAccountKey('all')}
+            >
+              Clear
+            </Button>
+          </div>
+        )}
+      </div>
+
+      {/* Account rollups */}
+      {rollups.length > 0 && (
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+          {rollups.map((r) => {
+            const isSelected = selectedAccountKey === r.key
+            return (
+              <button
+                key={r.key}
+                type="button"
+                onClick={() => setSelectedAccountKey(r.key)}
+                className={`text-left rounded-lg border p-4 transition-colors ${
+                  isSelected
+                    ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
+                    : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700/40'
+                }`}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="text-sm font-semibold text-gray-900 dark:text-white truncate" title={r.label}>
+                      {r.label}
+                    </div>
+                    <div className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                      {r.statementCount} statement{r.statementCount === 1 ? '' : 's'} • {r.totalTransactions} transaction{r.totalTransactions === 1 ? '' : 's'}
+                    </div>
+                    {r.lastUploadedAt && (
+                      <div className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                        Last upload: {new Date(r.lastUploadedAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
+                      </div>
+                    )}
+                  </div>
+                  <Link
+                    href={r.reconcileHref}
+                    onClick={(e) => e.stopPropagation()}
+                    className="inline-flex items-center px-3 py-1.5 text-xs font-medium text-blue-700 bg-blue-50 hover:bg-blue-100 dark:text-blue-300 dark:bg-blue-900/30 dark:hover:bg-blue-900/50 rounded-md"
+                  >
+                    Reconcile
+                  </Link>
+                </div>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {Object.entries(r.statusCounts).map(([status, count]) => (
+                    <span
+                      key={`${r.key}-${status}`}
+                      className="inline-flex items-center rounded-full bg-gray-100 dark:bg-gray-700 px-2 py-0.5 text-xs text-gray-700 dark:text-gray-200"
+                    >
+                      {status}: {count}
+                    </span>
+                  ))}
+                </div>
+              </button>
+            )
+          })}
+        </div>
+      )}
 
       {/* Tabs */}
       <div className="border-b border-gray-200 dark:border-gray-700">
