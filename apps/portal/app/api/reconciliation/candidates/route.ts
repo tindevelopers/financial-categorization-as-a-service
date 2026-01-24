@@ -47,7 +47,7 @@ export async function GET(request: NextRequest) {
       processorJobIds = (procJobs || []).map((j: any) => j.id);
 
       // No matching jobs => empty result set scoped to this processor
-      if (processorJobIds.length === 0) {
+      if (processorJobIds && processorJobIds.length === 0) {
         return NextResponse.json({
           transactions: [],
           summary: {
