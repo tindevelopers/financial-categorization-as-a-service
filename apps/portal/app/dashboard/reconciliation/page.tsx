@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState, useEffect } from 'react'
+import { Suspense, useMemo, useState, useEffect } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { Heading, Text, Button } from '@/components/catalyst'
 import { 
@@ -85,7 +85,7 @@ const KNOWN_PROCESSORS: Array<{ slug: string; label: string }> = [
   { slug: 'lodgify', label: 'Lodgify' },
 ]
 
-export default function ReconciliationPage() {
+function ReconciliationContent() {
   const searchParams = useSearchParams()
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const [summary, setSummary] = useState<Summary>({ 
@@ -837,5 +837,23 @@ export default function ReconciliationPage() {
         onCancel={() => setBreakdownModal({ show: false, transaction: null, document: null })}
       />
     </div>
+  )
+}
+
+export default function ReconciliationPage() {
+  return (
+    <Suspense fallback={
+      <div className="space-y-8">
+        <div>
+          <Heading>Reconciliation</Heading>
+          <Text>Match bank transactions with receipts and invoices</Text>
+        </div>
+        <div className="flex items-center justify-center py-12">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+        </div>
+      </div>
+    }>
+      <ReconciliationContent />
+    </Suspense>
   )
 }
