@@ -1290,7 +1290,7 @@ export default function StatementsPage() {
                         alert('Invoice matched successfully!')
                         setSelectedDocumentId('')
                         setShowEditModal(false)
-                        loadTransactions()
+                        if (selectedBankAccount) fetchTransactions(selectedBankAccount)
                         loadAvailableDocuments()
                       } catch (error) {
                         console.error('Match error:', error)
