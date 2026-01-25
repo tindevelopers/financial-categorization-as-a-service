@@ -52,6 +52,24 @@ export function createClient() {
           // Ignore errors when removing items
         }
       })
+
+      // Clear localhost Supabase cookies if using remote Supabase
+      // Cookies are named like: sb-{projectRef}-auth-token
+      // Localhost cookies: sb-127-auth-token, sb-localhost-auth-token
+      const isRemoteSupabase = supabaseUrl && !supabaseUrl.includes('127.0.0.1') && !supabaseUrl.includes('localhost')
+      if (isRemoteSupabase) {
+        // Clear cookies that reference localhost
+        const cookiesToClear = ['sb-127-auth-token', 'sb-localhost-auth-token']
+        cookiesToClear.forEach(cookieName => {
+          try {
+            document.cookie = `${cookieName}=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;`
+            document.cookie = `${cookieName}=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/; domain=localhost`
+            document.cookie = `${cookieName}=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/; domain=127.0.0.1`
+          } catch {
+            // Ignore cookie clearing errors
+          }
+        })
+      }
     } catch {
       // Ignore errors during cleanup
     }

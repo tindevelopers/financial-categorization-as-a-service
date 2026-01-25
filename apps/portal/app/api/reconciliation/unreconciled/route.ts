@@ -158,7 +158,8 @@ async function findPotentialMatches(
     const candidateAmount = candidate.total_amount || candidate.amount || 0;
     const candidateDate = candidate.document_date || candidate.date;
 
-    const amountDiff = Math.abs(itemAmount - candidateAmount);
+    // Compare absolute amounts - transactions are negative, documents are positive
+    const amountDiff = Math.abs(Math.abs(itemAmount) - Math.abs(candidateAmount));
     const dateDiff = itemDate && candidateDate
       ? Math.abs(
           (new Date(itemDate).getTime() - new Date(candidateDate).getTime()) /

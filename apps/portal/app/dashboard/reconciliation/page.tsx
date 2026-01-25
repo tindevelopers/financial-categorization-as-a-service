@@ -109,6 +109,8 @@ function ReconciliationContent() {
     transaction: Transaction | null
     document: Document | null
   }>({ show: false, transaction: null, document: null })
+  const [availableDocuments, setAvailableDocuments] = useState<Document[]>([])
+  const [loadingDocuments, setLoadingDocuments] = useState(false)
 
 
   // Initialize scope from query params (Statements -> Reconciliation)
@@ -142,6 +144,22 @@ function ReconciliationContent() {
     fetchBankAccounts()
   }, [])
 
+  const loadAvailableDocuments = async () => {
+    try {
+      setLoadingDocuments(true)
+      const response = await fetch('/api/reconciliation/documents')
+      if (!response.ok) throw new Error('Failed to load documents')
+      
+      const data = await response.json()
+      setAvailableDocuments(data.documents || [])
+    } catch (error) {
+      console.error('Error loading documents:', error)
+      setAvailableDocuments([])
+    } finally {
+      setLoadingDocuments(false)
+    }
+  }
+
   const loadReconciliationData = async () => {
     try {
       setLoading(true)
@@ -169,6 +187,7 @@ function ReconciliationContent() {
 
   useEffect(() => {
     loadReconciliationData()
+    loadAvailableDocuments()
   }, [statusFilter, selectedBankAccountId, selectedProcessor])
 
   const handleAutoMatch = async () => {
@@ -342,6 +361,19 @@ function ReconciliationContent() {
     await loadReconciliationData()
   }
 
+  // Move useMemo hooks before any conditional returns to follow Rules of Hooks
+  const bankAccountsById = useMemo(() => new Map(bankAccounts.map((a) => [a.id, a])), [bankAccounts])
+  const activeScopeLabel = useMemo(() => {
+    if (selectedBankAccountId !== 'all') {
+      const acct = bankAccountsById.get(selectedBankAccountId)
+      return acct ? `${acct.account_name} (${acct.bank_name})` : 'Selected account'
+    }
+    if (selectedProcessor !== 'all') {
+      return KNOWN_PROCESSORS.find((p) => p.slug === selectedProcessor)?.label || selectedProcessor
+    }
+    return 'All accounts'
+  }, [bankAccountsById, selectedBankAccountId, selectedProcessor])
+
   if (loading) {
     return (
       <div className="space-y-8">
@@ -355,18 +387,6 @@ function ReconciliationContent() {
       </div>
     )
   }
-
-  const bankAccountsById = useMemo(() => new Map(bankAccounts.map((a) => [a.id, a])), [bankAccounts])
-  const activeScopeLabel = useMemo(() => {
-    if (selectedBankAccountId !== 'all') {
-      const acct = bankAccountsById.get(selectedBankAccountId)
-      return acct ? `${acct.account_name} (${acct.bank_name})` : 'Selected account'
-    }
-    if (selectedProcessor !== 'all') {
-      return KNOWN_PROCESSORS.find((p) => p.slug === selectedProcessor)?.label || selectedProcessor
-    }
-    return 'All accounts'
-  }, [bankAccountsById, selectedBankAccountId, selectedProcessor])
 
   return (
     <div className="space-y-8">
@@ -797,14 +817,85 @@ function ReconciliationContent() {
                                 </div>
                               ))}
                             </div>
+                            <div className="mt-4">
+                              <label htmlFor={`manual-match-${tx.id}`} className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                                Or select a different document:
+                              </label>
+                              <select
+                                id={`manual-match-${tx.id}`}
+                                className="block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-800 dark:text-white shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
+                                onChange={(e) => {
+                                  const documentId = e.target.value
+                                  if (documentId) {
+                                    const document = availableDocuments.find(d => d.id === documentId)
+                                    if (document) {
+                                      setBreakdownModal({
+                                        show: true,
+                                        transaction: tx,
+                                        document: document,
+                                      })
+                                    }
+                                    e.target.value = ''
+                                  }
+                                }}
+                                onClick={(e) => e.stopPropagation()}
+                                disabled={loadingDocuments || availableDocuments.length === 0}
+                              >
+                                <option value="">
+                                  {loadingDocuments ? 'Loading...' : availableDocuments.length === 0 ? 'No documents available' : '-- Select Invoice/Receipt --'}
+                                </option>
+                                {availableDocuments.map((doc) => (
+                                  <option key={doc.id} value={doc.id}>
+                                    {doc.vendor_name || doc.original_filename} - {formatCurrency(doc.total_amount || 0)} - {doc.document_date ? formatDate(doc.document_date) : 'No date'}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
                           </div>
                         )}
 
                         {!isMatched && (!tx.potential_matches || tx.potential_matches.length === 0) && (
-                          <div className="border-t border-gray-200 dark:border-gray-700 pt-4">
+                          <div className="border-t border-gray-200 dark:border-gray-700 pt-4 space-y-3">
                             <Text className="text-sm text-gray-500 dark:text-gray-400">
                               No matching documents found. Upload a receipt or invoice to match this transaction.
                             </Text>
+                            <div>
+                              <label htmlFor={`manual-match-${tx.id}`} className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                                Or select a document to match manually:
+                              </label>
+                              <select
+                                id={`manual-match-${tx.id}`}
+                                className="block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-800 dark:text-white shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
+                                onChange={(e) => {
+                                  const documentId = e.target.value
+                                  if (documentId) {
+                                    // Find document in available documents
+                                    const document = availableDocuments.find(d => d.id === documentId)
+                                    if (document) {
+                                      setBreakdownModal({
+                                        show: true,
+                                        transaction: tx,
+                                        document: document,
+                                      })
+                                    }
+                                    
+                                    // Reset select
+                                    e.target.value = ''
+                                  }
+                                }}
+                                onClick={(e) => e.stopPropagation()}
+                                disabled={loadingDocuments || availableDocuments.length === 0}
+                              >
+                                <option value="">
+                                  {loadingDocuments ? 'Loading...' : availableDocuments.length === 0 ? 'No documents available' : '-- Select Invoice/Receipt --'}
+                                </option>
+                                {availableDocuments.map((doc) => (
+                                  <option key={doc.id} value={doc.id}>
+                                    {doc.vendor_name || doc.original_filename} - {formatCurrency(doc.total_amount || 0)} - {doc.document_date ? formatDate(doc.document_date) : 'No date'}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
                           </div>
                         )}
                       </div>

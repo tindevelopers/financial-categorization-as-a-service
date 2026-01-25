@@ -348,9 +348,17 @@ function parseInvoiceData(document: any): InvoiceData {
         case "tax_amount":
           const parsedTax = parseAmount(value);
           if (parsedTax !== undefined) {
-            data.tax = parsedTax;
-            data.field_confidence!['tax'] = entityConfidence;
-            data.extraction_methods!['tax'] = 'entity';
+            // Skip if this looks like a VAT percentage rate (5-30% whole numbers)
+            // Real VAT amounts usually have decimals (e.g., 6.60, not 20)
+            const looksLikePercentage = parsedTax >= 5 && parsedTax <= 30 && parsedTax === Math.floor(parsedTax);
+            
+            if (!looksLikePercentage) {
+              data.tax = parsedTax;
+              data.field_confidence!['tax'] = entityConfidence;
+              data.extraction_methods!['tax'] = 'entity';
+            } else {
+              console.log(`[DocumentAI] Skipping potential VAT percentage from entity: ${parsedTax}`);
+            }
           }
           break;
         case "total_amount":
@@ -409,9 +417,28 @@ function parseInvoiceData(document: any): InvoiceData {
         const cells = row.cells || [];
         if (cells.length < 2) continue;
         
-        // Skip summary rows (contain "total", "subtotal", "vat", etc.)
+        // Skip summary rows, date-only rows, and header/footer rows
         const rowText = cells.map((c: any) => c?.text || '').join(' ').toLowerCase();
+        
+        // Skip rows with totals, subtotals, VAT, etc.
         if (rowText.match(/\b(total|subtotal|vat|tax|sub\s*total|delivery|shipping|shipping charges)\b/)) {
+          continue;
+        }
+        
+        // Skip date-only rows (e.g., "28 Jun", "Due Date: 28 Jun")
+        if (rowText.match(/\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\b/i)) {
+          continue;
+        }
+        
+        // Skip rows that look like due dates or payment terms
+        if (rowText.match(/\b(due date|payment terms|pay by|invoice date)\b/i)) {
+          continue;
+        }
+        
+        // Skip rows that are mostly just dates/years (check if row only contains dates and numbers)
+        const rowWithoutDates = rowText.replace(/\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec|20\d{2}|19\d{2})\b/gi, '').trim();
+        if (rowWithoutDates.length < 10) {
+          // Row is mostly dates and years, skip it
           continue;
         }
         
@@ -465,8 +492,11 @@ function parseInvoiceData(document: any): InvoiceData {
             }
           }
           
-          // Only add if we have description and total
-          if (description && description.length > 3 && total !== undefined && total > 0) {
+          // Filter out summary/total rows (subtotal, tax, VAT, etc.)
+          const isSummaryRow = /^(total|subtotal|sub\s*total|vat|tax|grand\s*total|net\s*total|amount\s*due|balance\s*due|shipping|delivery|fee)/i.test(description);
+          
+          // Only add if we have description and total, and it's not a summary row
+          if (description && description.length > 3 && total !== undefined && total > 0 && !isSummaryRow) {
             data.line_items!.push({
               description: description.trim(),
               quantity,
@@ -534,11 +564,14 @@ function parseInvoiceData(document: any): InvoiceData {
           // Try to identify amounts (monetary values)
           const amount = parseAmount(cellText);
           if (amount !== undefined && amount > 0 && amount <= MAX_REASONABLE_AMOUNT) {
+            // Skip if this is a 4-digit year (1900-2099)
+            const isYear = /^\s*\d{4}\s*$/.test(cellText) && amount >= 1900 && amount <= 2099;
+            
             // If this looks like a quantity (small integer), don't treat as amount
-            if (cellText.match(/^\d+$/) && amount < 1000 && amount === Math.floor(amount)) {
+            if (cellText.match(/^\d+$/) && amount < 1000 && amount === Math.floor(amount) && !isYear) {
               quantity = amount;
-            } else {
-              // This is likely a monetary amount
+            } else if (!isYear) {
+              // This is likely a monetary amount (not a year)
               if (total === undefined) {
                 total = amount;
               } else if (unitPrice === undefined && cells.length > 2) {
@@ -562,8 +595,11 @@ function parseInvoiceData(document: any): InvoiceData {
           }
         }
 
-        // Only add if we have at least description and total
-        if (description && description.length > 3 && total !== undefined && total > 0) {
+        // Filter out summary/total rows (subtotal, tax, VAT, etc.)
+        const isSummaryRow = /^(total|subtotal|sub\s*total|vat|tax|grand\s*total|net\s*total|amount\s*due|balance\s*due|shipping|delivery|fee)/i.test(description);
+        
+        // Only add if we have at least description and total, and it's not a summary row
+        if (description && description.length > 3 && total !== undefined && total > 0 && !isSummaryRow) {
           data.line_items!.push({
             description,
             quantity,
@@ -755,17 +791,28 @@ function parseInvoiceData(document: any): InvoiceData {
           type: 'subtotal',
           priority: 5
         },
-        // VAT: £9.99 or Tax: £9.99
+        // VAT amount patterns - multiple variations to handle different formats
+        // "TOTAL VAT 20%: 3.20" or "VAT 20%\n3.20" or "TOTAL VAT 20% 3.20"
         {
-          pattern: /(?:vat|tax)\s*[:\s|]+([£$€]?\s*\d+[\d.,]*)/gi,
+          pattern: /total\s*vat\s*\d+(?:\.\d+)?%\s*([£$€]?\s*\d+\.\d+)/gi,
           type: 'vat',
           priority: 6
+        },
+        {
+          pattern: /(?:vat|tax)\s*\d+(?:\.\d+)?%\s*[:\s|]*([£$€]?\s*\d+\.\d+)/gi,
+          type: 'vat',
+          priority: 7
+        },
+        {
+          pattern: /(?:vat|tax)\s*[:\s|]+([£$€]?\s*\d+\.\d+)/gi,
+          type: 'vat',
+          priority: 8
         },
         // Total: £59.96 (generic fallback)
         {
           pattern: /^total[:\s|]+([£$€]?\s*\d+[\d.,]*)/gim,
           type: 'total',
-          priority: 7
+          priority: 9
         },
       ];
       
@@ -777,6 +824,19 @@ function parseInvoiceData(document: any): InvoiceData {
           if (amountStr) {
             const amount = parseAmount(amountStr);
             if (amount !== undefined && amount > 0) {
+              // Skip if this looks like a percentage rate (for VAT/tax amounts)
+              if (type === 'vat') {
+                // Only skip if it's a whole number that looks like a percentage rate (5-30)
+                // Always accept amounts with decimal places (3.20, 6.60, etc.)
+                const hasDecimals = amount !== Math.floor(amount);
+                const looksLikePercentage = !hasDecimals && amount >= 5 && amount <= 30;
+                
+                if (looksLikePercentage) {
+                  console.log(`[DocumentAI] Skipping potential VAT percentage: ${amount} from "${match[0] || ''}"`);
+                  continue;
+                }
+              }
+              
               foundAmounts.push({
                 type,
                 amount,
@@ -1696,8 +1756,47 @@ function parseDate(value: string | undefined): string | undefined {
 function parseAmount(value: string | undefined): number | undefined {
   if (!value) return undefined;
   
+  const trimmed = value.trim();
+  
+  // Skip if this looks like a date (contains month names or date patterns)
+  const datePatterns = [
+    /\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)/i, // Month names
+    /\b\d{1,2}\s+(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\b/i, // "28 Jun"
+    /\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\s+\d{1,2}\b/i, // "Jun 28"
+    /\b\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}\b/, // Date formats like 28/06/2025
+    /\b(monday|tuesday|wednesday|thursday|friday|saturday|sunday)/i, // Day names
+    /\bdue\s*date\b/i, // "Due Date"
+    /\bto\s+\d{1,2}\s+(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\b/i, // "to 27 Aug"
+    /\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\s+\d{4}\b/i, // "Jul 2025"
+    /\b\d{1,2}\s+(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\s+\d{4}\b/i, // "28 Jul 2025"
+  ];
+  
+  for (const pattern of datePatterns) {
+    if (pattern.test(trimmed)) {
+      return undefined; // This is a date, not an amount
+    }
+  }
+  
+  // Skip standalone 4-digit years (1900-2099)
+  // Check this before any cleaning/parsing to catch pure year values
+  if (/^\d{4}$/.test(trimmed)) {
+    const yearValue = parseInt(trimmed, 10);
+    if (yearValue >= 1900 && yearValue <= 2099) {
+      return undefined; // This is a year, not an amount
+    }
+  }
+  
+  // Skip if the value appears in a date context (e.g., "28 Jul 2025 to 27 Aug")
+  // This catches years that appear alongside dates in descriptions
+  if (/\d{1,2}\s+(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\s+\d{4}/i.test(trimmed)) {
+    // If it's just the year part, skip it
+    if (/^\d{4}$/.test(trimmed)) {
+      return undefined;
+    }
+  }
+  
   // Handle negative amounts (credit/refund)
-  let isNegative = /^[-–—]/.test(value.trim()) || /\(.*\)/.test(value);
+  let isNegative = /^[-–—]/.test(trimmed) || /\(.*\)/.test(trimmed);
   
   // Remove currency symbols, spaces, and parse number
   // Handle both comma and period as decimal separators
@@ -1753,10 +1852,14 @@ function parseAmount(value: string | undefined): number | undefined {
   // Some OCR outputs drop separators entirely (e.g. "2024" meaning "20.24").
   // If the original had no explicit separator and we ended up with a long digit-only string,
   // treat the last 2 digits as cents.
+  // BUT: Skip if this looks like a year (1900-2099)
   const originalTrimmed = value.trim();
   const hasExplicitSeparator = /[.,]/.test(originalTrimmed);
   const digitOnly = /^[0-9]+$/.test(cleaned);
-  if (!hasExplicitSeparator && digitOnly && cleaned.length >= 4) {
+  const num = parseInt(cleaned, 10);
+  const looksLikeYear = !isNaN(num) && num >= 1900 && num <= 2099 && cleaned.length === 4;
+  
+  if (!hasExplicitSeparator && digitOnly && cleaned.length >= 4 && !looksLikeYear) {
     const implied = `${cleaned.slice(0, -2)}.${cleaned.slice(-2)}`;
     const impliedAmount = parseFloat(implied);
     if (!isNaN(impliedAmount) && Math.abs(impliedAmount) <= MAX_REASONABLE_AMOUNT) {

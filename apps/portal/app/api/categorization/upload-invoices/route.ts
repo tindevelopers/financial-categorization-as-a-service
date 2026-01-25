@@ -296,7 +296,9 @@ export async function POST(request: NextRequest) {
 
     // Queue for async processing (Vercel Background Functions)
     try {
-      const bgResponse = await fetch(`${request.nextUrl.origin}/api/background/process-invoices`, {
+      // Use 127.0.0.1 instead of localhost to avoid DNS resolution issues on macOS
+      const origin = request.nextUrl.origin.replace('localhost', '127.0.0.1');
+      const bgResponse = await fetch(`${origin}/api/background/process-invoices`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -311,6 +313,8 @@ export async function POST(request: NextRequest) {
           bgResponse.status,
           errorText
         );
+      } else {
+        console.log(`✅ Background processing queued for job ${jobData.id}`);
       }
     } catch (processError: any) {
       console.error("Failed to queue background processing:", processError);

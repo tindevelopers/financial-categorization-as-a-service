@@ -71,8 +71,10 @@ export async function middleware(request: NextRequest) {
           supabaseHost.startsWith("localhost:") ||
           supabaseHost.endsWith(".local"));
 
+      const cookieNames = request.cookies.getAll().map((c) => c.name);
+      
       if (isLocalSupabase && supabaseProjectRef) {
-        const cookieNames = request.cookies.getAll().map((c) => c.name);
+        // Clear cookies from other local Supabase instances
         const cookieProjectRefs = Array.from(
           new Set(
             cookieNames
@@ -90,6 +92,20 @@ export async function middleware(request: NextRequest) {
           mismatchedRefs.some((r) => n.startsWith(`sb-${r}-`))
         );
         mismatchMeta = { supabaseHost, supabaseProjectRef, mismatchedRefs };
+      } else if (!isLocalSupabase && supabaseHost) {
+        // Using remote Supabase - clear any localhost cookies (from previous local dev)
+        mismatchedSbCookieNamesToClear = cookieNames.filter((n) => 
+          n.startsWith("sb-127-") || 
+          n.startsWith("sb-localhost-") ||
+          (n.startsWith("sb-") && n.includes("127.0.0.1"))
+        );
+        if (mismatchedSbCookieNamesToClear.length > 0) {
+          mismatchMeta = { 
+            supabaseHost, 
+            supabaseProjectRef, 
+            mismatchedRefs: ['127', 'localhost'] 
+          };
+        }
       }
     }
 

@@ -44,11 +44,24 @@ export async function POST(request: NextRequest) {
     }
 
     // Start background processing
-    waitUntil(
+    // In development, waitUntil doesn't work properly, so we run inline
+    const isProduction = process.env.NODE_ENV === 'production' && process.env.VERCEL === '1';
+    
+    if (isProduction) {
+      // Production: Use Vercel's waitUntil for true background processing
+      console.log(`[PRODUCTION] Queueing background processing for job ${jobId}`);
+      waitUntil(
+        processInvoicesBatch(jobId, user.id, supabase).catch((err) => {
+          console.error("Background batch processing failed:", err);
+        })
+      );
+    } else {
+      // Development: Run inline without waiting (fire and forget)
+      console.log(`🔄 [DEV MODE] Starting inline processing for job ${jobId}`);
       processInvoicesBatch(jobId, user.id, supabase).catch((err) => {
-        console.error("Background batch processing failed:", err);
-      })
-    );
+        console.error("❌ Background batch processing failed:", err);
+      });
+    }
 
     return NextResponse.json({
       success: true,
@@ -69,10 +82,12 @@ async function processInvoicesBatch(
   userId: string,
   supabase: any
 ) {
+  console.log(`📦 [processInvoicesBatch] Starting processing for job ${jobId}`);
   const adminClient = createAdminClient();
   const BATCH_SIZE = 10; // Process 10 invoices at a time
   try {
     // Update job status
+    console.log(`📦 [processInvoicesBatch] Updating job ${jobId} status to 'processing'`);
     await supabase
       .from("categorization_jobs")
       .update({ 
@@ -151,14 +166,16 @@ async function processInvoicesBatch(
     const needsManualReviewCount = docsNeedingReview?.length || 0;
 
     // Mark job as complete
-    const finalStatus = failedCount === documents.length ? "failed" : "reviewing";
+    // NOTE: Invoices don't create transactions anymore, so we use "completed" status
+    // instead of "reviewing". The invoices are stored as documents for reconciliation.
+    const finalStatus = failedCount === documents.length ? "failed" : "completed";
     let finalMessage = failedCount === documents.length 
       ? "Processing failed for all invoices"
-      : `Processing complete. ${processedCount} invoice${processedCount !== 1 ? "s" : ""} ready for review.`;
+      : `Processing complete. ${processedCount} invoice${processedCount !== 1 ? "s" : ""} processed and ready for reconciliation.`;
     
-    // Add note about manual review needed
+    // Add note about manual review needed (OCR issues)
     if (needsManualReviewCount > 0 && finalStatus !== "failed") {
-      finalMessage += ` (${needsManualReviewCount} need${needsManualReviewCount === 1 ? "s" : ""} manual entry)`;
+      finalMessage += ` (${needsManualReviewCount} need${needsManualReviewCount === 1 ? "s" : ""} manual data entry)`;
     }
     
     if (finalStatus === "failed") {
@@ -357,39 +374,12 @@ async function processSingleInvoice(
       })
       .eq("id", doc.id);
 
-    // Convert invoice to transactions (pass filename, document_id, and supplier_id for linking)
-    const transactions = await invoiceToTransactions(
-      invoiceData, 
-      jobId, 
-      supabase, 
-      doc.original_filename,
-      doc.id, // document_id
-      supplierId // supplier_id
-    );
-    // Insert transactions
-    let insertedTransactionIds: string[] = [];
-    if (transactions.length > 0) {
-      const { data: insertedTransactions, error: txError } = await adminClient
-        .from("categorized_transactions")
-        .insert(transactions)
-        .select("id");
-
-      if (txError) {        console.error("Transaction insert error:", txError);
-        throw txError;
-      } else {
-        insertedTransactionIds = insertedTransactions?.map((t: any) => t.id) || [];
-        // Categorize the transactions
-        await categorizeInvoiceTransactions(insertedTransactions || transactions, userId, adminClient);
-        
-        // Attempt automatic reconciliation after transactions are created
-        if (insertedTransactionIds.length > 0) {
-          await reconcileInvoiceAfterProcessing(doc.id, insertedTransactionIds, userId, jobId, adminClient);
-        }
-      }
-    } else {
-      // Even if no transactions were created, try to reconcile the invoice document
-      await reconcileInvoiceAfterProcessing(doc.id, [], userId, jobId, adminClient);
-    }
+    // NOTE: Invoices/receipts should NOT create transactions in the statements.
+    // They are documents that get matched to existing transactions from bank statements.
+    // The OCR data is already stored in financial_documents table above.
+    
+    // Attempt automatic reconciliation with existing transactions
+    await reconcileInvoiceAfterProcessing(doc.id, [], userId, jobId, adminClient);
   } catch (error: any) {
     console.error(`Error processing invoice ${doc.id}:`, error);
     await supabase
@@ -664,10 +654,13 @@ async function invoiceToTransactions(
       
       const fullDescription = descriptionParts.join(" - ");
       
+      // Invoices/receipts uploaded through this interface are payable (money out), so make amounts negative
+      const negativeAmount = -Math.abs(validatedAmount);
+      
       transactions.push({
         job_id: jobId,
         original_description: fullDescription,
-        amount: validatedAmount,
+        amount: negativeAmount,
         date: invoiceData.invoice_date || new Date().toISOString().split("T")[0],
         category: null,
         subcategory: null,
@@ -690,10 +683,13 @@ async function invoiceToTransactions(
       }
       const fullDescription = descriptionParts.join(" - ");
       
+      // Invoices/receipts uploaded through this interface are payable (money out), so make amounts negative
+      const negativeAmount = -Math.abs(validatedAmount);
+      
       transactions.push({
         job_id: jobId,
         original_description: fullDescription,
-        amount: validatedAmount,
+        amount: negativeAmount,
         date: invoiceData.invoice_date || new Date().toISOString().split("T")[0],
         category: null,
         subcategory: null,
@@ -965,14 +961,16 @@ async function reconcileInvoiceAfterProcessing(
       .eq("job.user_id", userId)
       .eq("reconciliation_status", "unreconciled")
       .is("matched_document_id", null)
-      .neq("id", invoiceTransactionIds[0] || "") // Exclude transactions we just created
       .order("date", { ascending: false });
     
     if (!txError && transactions) {
       for (const tx of transactions) {
         if (tx.matched_document_id) continue;
 
-        const amountDiff = Math.abs((tx.amount || 0) - invoiceAmount);
+        // Compare absolute amounts - invoices store positive amounts, 
+        // bank transactions show money out as negative
+        const txAmount = Math.abs(tx.amount || 0);
+        const amountDiff = Math.abs(txAmount - invoiceAmount);
         const dateDiff = invoiceDate
           ? Math.abs(
               (new Date(tx.date).getTime() - new Date(invoiceDate).getTime()) /

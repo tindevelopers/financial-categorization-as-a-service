@@ -119,33 +119,12 @@ export async function POST(request: NextRequest) {
           })
           .eq("id", doc.id);
 
-        // Convert invoice to transactions
-        const transactions = await invoiceToTransactions(invoiceData, jobId, supabase);
-
-        // Insert transactions
-        let insertedTransactionIds: string[] = [];
-        if (transactions.length > 0) {
-          const { data: insertedTransactions, error: txError } = await supabase
-            .from("categorized_transactions")
-            .insert(transactions)
-            .select("id");
-
-          if (txError) {
-            console.error("Transaction insert error:", txError);
-          } else {
-            insertedTransactionIds = insertedTransactions?.map((t: any) => t.id) || [];
-            // Categorize the transactions (basic rule-based for now)
-            await categorizeInvoiceTransactions(insertedTransactions || transactions, user.id, supabase);
-            
-            // Attempt automatic reconciliation after transactions are created
-            if (insertedTransactionIds.length > 0) {
-              await reconcileInvoiceAfterProcessing(doc.id, insertedTransactionIds, user.id, jobId, supabase);
-            }
-          }
-        } else {
-          // Even if no transactions were created, try to reconcile the invoice document
-          await reconcileInvoiceAfterProcessing(doc.id, [], user.id, jobId, supabase);
-        }
+        // NOTE: Invoices/receipts should NOT create transactions in the statements.
+        // They are documents that get matched to existing transactions from bank statements.
+        // The OCR data is already stored in financial_documents table above.
+        
+        // Attempt automatic reconciliation with existing transactions
+        await reconcileInvoiceAfterProcessing(doc.id, [], user.id, jobId, supabase);
 
         processedCount++;
       } catch (error: any) {
@@ -234,10 +213,13 @@ async function invoiceToTransactions(
       
       const fullDescription = descriptionParts.join(" - ");
       
+      // Invoices/receipts uploaded through this interface are payable (money out), so make amounts negative
+      const negativeAmount = -Math.abs(item.total);
+      
       transactions.push({
         job_id: jobId,
         original_description: fullDescription,
-        amount: item.total,
+        amount: negativeAmount,
         date: invoiceData.invoice_date || new Date().toISOString().split("T")[0],
         category: null,
         subcategory: null,
@@ -258,10 +240,13 @@ async function invoiceToTransactions(
     }
     const fullDescription = descriptionParts.join(" - ");
     
+    // Invoices/receipts uploaded through this interface are payable (money out), so make amounts negative
+    const negativeAmount = -Math.abs(invoiceData.total);
+    
     transactions.push({
       job_id: jobId,
       original_description: fullDescription,
-      amount: invoiceData.total,
+      amount: negativeAmount,
       date: invoiceData.invoice_date || new Date().toISOString().split("T")[0],
       category: null,
       subcategory: null,
@@ -474,7 +459,7 @@ async function reconcileInvoiceAfterProcessing(
 
     let matchedCount = 0;
 
-    // 1. Try to match invoice document with existing bank transactions
+    // Try to match invoice document with existing bank transactions
     // Search across ALL account types (remove account filter)
     const { data: transactions, error: txError } = await supabase
       .from("categorized_transactions")
@@ -488,14 +473,16 @@ async function reconcileInvoiceAfterProcessing(
       .eq("job.user_id", userId)
       .eq("reconciliation_status", "unreconciled")
       .is("matched_document_id", null)
-      .neq("id", invoiceTransactionIds[0] || "") // Exclude transactions we just created
       .order("date", { ascending: false });
 
     if (!txError && transactions) {
       for (const tx of transactions) {
         if (tx.matched_document_id) continue;
 
-        const amountDiff = Math.abs((tx.amount || 0) - invoiceAmount);
+        // Compare absolute amounts - invoices store positive amounts, 
+        // bank transactions show money out as negative
+        const txAmount = Math.abs(tx.amount || 0);
+        const amountDiff = Math.abs(txAmount - invoiceAmount);
         const dateDiff = invoiceDate
           ? Math.abs(
               (new Date(tx.date).getTime() - new Date(invoiceDate).getTime()) /
@@ -531,8 +518,8 @@ async function reconcileInvoiceAfterProcessing(
       }
     }
 
-    // 2. Try to match invoice transactions with existing documents (receipts, other invoices)
-    if (invoiceTransactionIds.length > 0 && matchedCount === 0) {
+    // NOTE: We no longer create transactions from invoices, so skip document-to-transaction matching
+    if (false && invoiceTransactionIds.length > 0 && matchedCount === 0) {
       const { data: documents, error: docMatchError } = await supabase
         .from("financial_documents")
         .select("*")

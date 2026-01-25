@@ -6,6 +6,35 @@ import { createClient } from '@/lib/database/client'
 import SpreadsheetUpload from '@/components/categorization/SpreadsheetUpload'
 import { Heading, Text, Button } from '@/components/catalyst'
 import Link from 'next/link'
+
+// Category options for transaction categorization
+const CATEGORY_OPTIONS = [
+  "Income",
+  "Sales",
+  "Refund",
+  "Transfer In",
+  "Cost of Goods Sold",
+  "Operating Expenses",
+  "Payroll",
+  "Rent",
+  "Utilities",
+  "Insurance",
+  "Professional Services",
+  "Office Supplies",
+  "Travel",
+  "Meals & Entertainment",
+  "Marketing",
+  "Software & Subscriptions",
+  "Bank Fees",
+  "Interest Expense",
+  "Taxes",
+  "Equipment",
+  "Transfer Out",
+  "Owner Draw",
+  "Loan Payment",
+  "Other Expense",
+  "Uncategorized",
+]
 import { 
   ChevronLeftIcon,
   ArrowPathIcon,
@@ -16,7 +45,10 @@ import {
   DocumentTextIcon,
   BanknotesIcon,
   CreditCardIcon,
-  BuildingOffice2Icon
+  BuildingOffice2Icon,
+  EllipsisVerticalIcon,
+  PencilIcon,
+  XMarkIcon
 } from '@heroicons/react/24/outline'
 
 interface BankAccount {
@@ -45,7 +77,7 @@ interface Statement {
   bank_account?: BankAccount | null
 }
 
-type StatementTab = 'all' | 'bank' | 'credit-card' | 'processor'
+type StatementTab = 'all' | 'bank' | 'credit-card' | 'processor' | 'transactions'
 
 const KNOWN_PROCESSORS: Array<{ slug: string; label: string; keywords: string[] }> = [
   { slug: 'stripe', label: 'Stripe', keywords: ['stripe'] },
@@ -191,7 +223,94 @@ export default function StatementsPage() {
   const [showUpload, setShowUpload] = useState(false)
   const [activeTab, setActiveTab] = useState<StatementTab>('all')
   const [selectedAccountKey, setSelectedAccountKey] = useState<AccountKey | 'all'>('all')
+  const [transactions, setTransactions] = useState<any[]>([])
+  const [loadingTransactions, setLoadingTransactions] = useState(false)
+  const [editingTransaction, setEditingTransaction] = useState<any | null>(null)
+  const [showEditModal, setShowEditModal] = useState(false)
+  const [isSaving, setIsSaving] = useState(false)
+  const [availableDocuments, setAvailableDocuments] = useState<any[]>([])
+  const [loadingDocuments, setLoadingDocuments] = useState(false)
+  const [selectedDocumentId, setSelectedDocumentId] = useState<string>('')
   const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null)
+
+  // Function to save transaction changes
+  const handleSaveTransaction = async () => {
+    if (!editingTransaction?.id) return
+
+    try {
+      setIsSaving(true)
+      
+      // Prepare the update payload
+      const updatePayload: any = {}
+      
+      if (editingTransaction.category !== undefined) {
+        updatePayload.category = editingTransaction.category
+      }
+      if (editingTransaction.subcategory !== undefined) {
+        updatePayload.subcategory = editingTransaction.subcategory
+      }
+      if (editingTransaction.notes !== undefined) {
+        updatePayload.user_notes = editingTransaction.notes
+      }
+      
+      // Call the API to update the transaction
+      const response = await fetch(`/api/categorization/transactions/${editingTransaction.id}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(updatePayload),
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || 'Failed to save transaction')
+      }
+
+      // Update the local state to reflect the changes
+      setTransactions(prevTransactions =>
+        prevTransactions.map(tx =>
+          tx.id === editingTransaction.id
+            ? { ...tx, ...updatePayload }
+            : tx
+        )
+      )
+
+      // Close the modal
+      setShowEditModal(false)
+      setEditingTransaction(null)
+
+      // Optionally show a success message
+      console.log('Transaction saved successfully')
+    } catch (error: any) {
+      console.error('Error saving transaction:', error)
+      alert(`Failed to save transaction: ${error.message}`)
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
+  const loadAvailableDocuments = async () => {
+    try {
+      setLoadingDocuments(true)
+      const response = await fetch('/api/reconciliation/documents')
+      if (!response.ok) {
+        const errorData = await response.json()
+        console.error('Failed to load documents:', errorData)
+        throw new Error('Failed to load documents')
+      }
+      
+      const data = await response.json()
+      console.log('[Statements] Loaded documents:', data.count, 'documents')
+      console.log('[Statements] Documents:', data.documents)
+      setAvailableDocuments(data.documents || [])
+    } catch (error) {
+      console.error('Error loading documents:', error)
+      setAvailableDocuments([])
+    } finally {
+      setLoadingDocuments(false)
+    }
+  }
 
   useEffect(() => {
     async function checkAuth() {
@@ -208,6 +327,7 @@ export default function StatementsPage() {
     }
 
     checkAuth()
+    loadAvailableDocuments()
   }, [router])
 
   const fetchBankAccounts = async () => {
@@ -264,6 +384,25 @@ export default function StatementsPage() {
     }
   }
 
+  const fetchTransactions = async (bankAccountId: string) => {
+    try {
+      setLoadingTransactions(true)
+      const response = await fetch(`/api/bank-accounts/${bankAccountId}/transactions`)
+      
+      if (!response.ok) {
+        throw new Error('Failed to fetch transactions')
+      }
+
+      const result = await response.json()
+      setTransactions(result.transactions || [])
+    } catch (error: any) {
+      console.error('Error fetching transactions:', error)
+      setTransactions([])
+    } finally {
+      setLoadingTransactions(false)
+    }
+  }
+
   useEffect(() => {
     fetchBankAccounts()
     fetchStatements()
@@ -280,6 +419,17 @@ export default function StatementsPage() {
       }
     }
   }, [])
+
+  // Fetch transactions when switching to transactions tab and account is selected
+  useEffect(() => {
+    if (activeTab === 'transactions' && selectedAccountKey !== 'all' && selectedAccountKey.startsWith('bank:')) {
+      const bankAccountId = selectedAccountKey.slice('bank:'.length)
+      fetchTransactions(bankAccountId)
+    } else if (activeTab !== 'transactions') {
+      // Clear transactions when not on transactions tab
+      setTransactions([])
+    }
+  }, [activeTab, selectedAccountKey])
 
   const bankAccountsById = useMemo(() => {
     return new Map(bankAccounts.map((a) => [a.id, a]))
@@ -439,6 +589,7 @@ export default function StatementsPage() {
     { id: 'bank', label: 'Bank Statements', count: filteredByAccount.filter(s => getStatementType(s.original_filename, s.bank_account) === 'bank').length },
     { id: 'credit-card', label: 'Credit Card Statements', count: filteredByAccount.filter(s => getStatementType(s.original_filename, s.bank_account) === 'credit-card').length },
     { id: 'processor', label: 'Processors', count: filteredByAccount.filter(s => getStatementType(s.original_filename, s.bank_account) === 'processor').length },
+    { id: 'transactions', label: 'All Transactions', count: transactions.length },
   ]
 
   return (
@@ -626,9 +777,199 @@ export default function StatementsPage() {
         </div>
       )}
 
-      {/* Statements List */}
+      {/* Statements List or Transactions View */}
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700">
-        {loading ? (
+        {activeTab === 'transactions' ? (
+          // Transactions View
+          selectedAccountKey === 'all' || !selectedAccountKey.startsWith('bank:') ? (
+            <div className="p-8 text-center">
+              <BanknotesIcon className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+              <Heading level={3} className="text-gray-600 dark:text-gray-400">
+                Select a bank account
+              </Heading>
+              <Text className="mt-2 text-gray-500 dark:text-gray-500">
+                Please select a bank account from the dropdown above to view all transactions
+              </Text>
+            </div>
+          ) : loadingTransactions ? (
+            <div className="p-8 text-center">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
+              <Text className="mt-4 text-gray-500">Loading transactions...</Text>
+            </div>
+          ) : transactions.length === 0 ? (
+            <div className="p-8 text-center">
+              <BanknotesIcon className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+              <Heading level={3} className="text-gray-600 dark:text-gray-400">
+                No transactions yet
+              </Heading>
+              <Text className="mt-2 text-gray-500 dark:text-gray-500">
+                Upload statements for this account to see transactions here
+              </Text>
+              <Button
+                onClick={() => setShowUpload(true)}
+                color="emerald"
+                className="mt-4"
+              >
+                Upload Statement
+              </Button>
+            </div>
+          ) : (
+            // Transactions table will be rendered here
+            <div className="relative">
+              <div className="absolute right-0 top-0 bottom-0 w-16 pointer-events-none bg-gradient-to-l from-white via-white/80 to-transparent dark:from-gray-800 dark:via-gray-800/80 z-10"></div>
+              
+              <div className="overflow-x-auto [&::-webkit-scrollbar]:h-2 [&::-webkit-scrollbar-track]:bg-gray-100 dark:[&::-webkit-scrollbar-track]:bg-gray-800 [&::-webkit-scrollbar-thumb]:bg-gray-300 dark:[&::-webkit-scrollbar-thumb]:bg-gray-600 [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-gray-400 dark:hover:[&::-webkit-scrollbar-thumb]:bg-gray-500">
+                <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+                  <thead className="bg-gray-50 dark:bg-gray-900">
+                    <tr>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                        Date
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                        Description
+                      </th>
+                      <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                        Amount
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                        Category
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                        Subcategory
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                        Status
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                        Source
+                      </th>
+                      <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                        Actions
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+                    {transactions.map((transaction) => {
+                      const amount = transaction.amount || 0
+                      // Use is_debit field to determine if it's a debit (outgoing/negative) or credit (incoming/positive)
+                      // If is_debit is not set, fall back to checking if amount is negative
+                      const isDebit = transaction.is_debit !== null && transaction.is_debit !== undefined 
+                        ? transaction.is_debit 
+                        : amount < 0
+                      const formattedAmount = new Intl.NumberFormat('en-GB', {
+                        style: 'currency',
+                        currency: 'GBP',
+                      }).format(Math.abs(amount))
+                      
+                      return (
+                        <tr 
+                          key={transaction.id} 
+                          className="hover:bg-gray-50 dark:hover:bg-gray-700/50"
+                        >
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
+                            {transaction.date ? new Date(transaction.date).toLocaleDateString('en-GB', {
+                              day: 'numeric',
+                              month: 'short',
+                              year: 'numeric'
+                            }) : '—'}
+                          </td>
+                          <td className="px-6 py-4">
+                            <div className="text-sm text-gray-900 dark:text-white max-w-md truncate" title={transaction.original_description}>
+                              {transaction.original_description || '—'}
+                            </div>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-right">
+                            <span className={`text-sm font-medium ${isDebit ? 'text-red-600 dark:text-red-400' : 'text-green-600 dark:text-green-400'}`}>
+                              {isDebit ? '-' : '+'}{formattedAmount}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                setEditingTransaction(transaction)
+                                setSelectedDocumentId('')
+                                setShowEditModal(true)
+                              }}
+                              className="text-sm text-gray-900 dark:text-white hover:text-blue-600 dark:hover:text-blue-400 underline decoration-dashed underline-offset-4 text-left"
+                            >
+                              {transaction.category || 'Uncategorized'}
+                            </button>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
+                            {transaction.subcategory || '—'}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            {transaction.user_confirmed ? (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  // TODO: Add unconfirm functionality
+                                }}
+                                className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400 hover:bg-green-200 dark:hover:bg-green-900/40 cursor-pointer"
+                              >
+                                <CheckCircleIcon className="h-3.5 w-3.5 mr-1" />
+                                Confirmed
+                              </button>
+                            ) : (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  // TODO: Add confirm functionality
+                                }}
+                                className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400 hover:bg-yellow-200 dark:hover:bg-yellow-900/40 cursor-pointer"
+                              >
+                                <ClockIcon className="h-3.5 w-3.5 mr-1" />
+                                Pending
+                              </button>
+                            )}
+                          </td>
+                          <td className="px-6 py-4">
+                            {transaction.job?.original_filename ? (
+                              <div className="text-xs text-gray-500 dark:text-gray-400 max-w-xs truncate" title={transaction.job.original_filename}>
+                                {transaction.job.original_filename}
+                              </div>
+                            ) : (
+                              <span className="text-xs text-gray-400">—</span>
+                            )}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-right">
+                            <div className="flex items-center gap-2">
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  setEditingTransaction(transaction)
+                                  setSelectedDocumentId('')
+                                  setShowEditModal(true)
+                                }}
+                                className="p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+                                title="Edit transaction"
+                              >
+                                <PencilIcon className="h-4 w-4" />
+                              </button>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  if (transaction.job_id) {
+                                    router.push(`/dashboard/review/${transaction.job_id}`)
+                                  }
+                                }}
+                                className="p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+                                title="View in statement"
+                              >
+                                <DocumentTextIcon className="h-4 w-4" />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )
+        ) : loading ? (
           <div className="p-8 text-center">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
             <Text className="mt-4 text-gray-500">Loading statements...</Text>
@@ -779,6 +1120,242 @@ export default function StatementsPage() {
           </div>
         )}
       </div>
+
+      {/* Edit Transaction Modal (WaveApps-style) */}
+      {showEditModal && editingTransaction && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between p-6 border-b border-gray-200 dark:border-gray-700">
+              <Heading level={2}>Edit Transaction</Heading>
+              <button
+                onClick={() => setShowEditModal(false)}
+                className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+              >
+                <XMarkIcon className="h-6 w-6" />
+              </button>
+            </div>
+
+            {/* Modal Content */}
+            <div className="p-6 space-y-6">
+              {/* Date and Description */}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    Date
+                  </label>
+                  <input
+                    type="date"
+                    value={editingTransaction.date || ''}
+                    onChange={(e) => setEditingTransaction({...editingTransaction, date: e.target.value})}
+                    className="block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
+                  />
+                </div>
+                <div className="col-span-2 sm:col-span-1">
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    Description
+                  </label>
+                  <input
+                    type="text"
+                    value={editingTransaction.original_description || ''}
+                    onChange={(e) => setEditingTransaction({...editingTransaction, original_description: e.target.value})}
+                    className="block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
+                  />
+                </div>
+              </div>
+
+              {/* Amount and Type */}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    Amount
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm text-gray-500 dark:text-gray-400">GBP</span>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={editingTransaction.amount || 0}
+                      onChange={(e) => setEditingTransaction({...editingTransaction, amount: parseFloat(e.target.value)})}
+                      className="block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    Type
+                  </label>
+                  <select
+                    value={editingTransaction.is_debit ? 'withdrawal' : 'deposit'}
+                    onChange={(e) => {
+                      const isWithdrawal = e.target.value === 'withdrawal'
+                      setEditingTransaction({
+                        ...editingTransaction, 
+                        is_debit: isWithdrawal
+                      })
+                    }}
+                    className="block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
+                  >
+                    <option value="deposit">Deposit</option>
+                    <option value="withdrawal">Withdrawal</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Category and Subcategory */}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    Category
+                  </label>
+                  <select
+                    value={editingTransaction.category || ''}
+                    onChange={(e) => setEditingTransaction({...editingTransaction, category: e.target.value})}
+                    className="block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
+                  >
+                    <option value="">Select category</option>
+                    {CATEGORY_OPTIONS.map((category) => (
+                      <option key={category} value={category}>
+                        {category}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    Subcategory
+                  </label>
+                  <input
+                    type="text"
+                    value={editingTransaction.subcategory || ''}
+                    onChange={(e) => setEditingTransaction({...editingTransaction, subcategory: e.target.value})}
+                    className="block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
+                    placeholder="Enter subcategory"
+                  />
+                </div>
+              </div>
+
+              {/* Notes */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  Notes
+                </label>
+                <textarea
+                  value={editingTransaction.notes || ''}
+                  onChange={(e) => setEditingTransaction({...editingTransaction, notes: e.target.value})}
+                  rows={3}
+                  className="block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
+                  placeholder="Write a note here..."
+                />
+              </div>
+
+              {/* Match Invoice/Receipt */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  Match Invoice/Receipt
+                </label>
+                <select
+                  value={selectedDocumentId}
+                  onChange={(e) => setSelectedDocumentId(e.target.value)}
+                  className="block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
+                  disabled={loadingDocuments}
+                >
+                  <option value="">
+                    {loadingDocuments ? 'Loading...' : availableDocuments.length === 0 ? 'No documents available' : '-- Select Invoice/Receipt --'}
+                  </option>
+                  {availableDocuments.map((doc: any) => (
+                    <option key={doc.id} value={doc.id}>
+                      {doc.vendor_name || doc.original_filename} - £{doc.total_amount?.toFixed(2) || '0.00'} - {doc.document_date ? new Date(doc.document_date).toLocaleDateString('en-GB') : 'No date'}
+                    </option>
+                  ))}
+                </select>
+                {selectedDocumentId && (
+                  <button
+                    onClick={async () => {
+                      if (!selectedDocumentId || !editingTransaction) return
+                      
+                      try {
+                        setIsSaving(true)
+                        const response = await fetch('/api/reconciliation/match', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({
+                            transaction_id: editingTransaction.id,
+                            document_id: selectedDocumentId,
+                          }),
+                        })
+                        
+                        if (!response.ok) throw new Error('Match failed')
+                        
+                        alert('Invoice matched successfully!')
+                        setSelectedDocumentId('')
+                        setShowEditModal(false)
+                        loadTransactions()
+                        loadAvailableDocuments()
+                      } catch (error) {
+                        console.error('Match error:', error)
+                        alert('Failed to match invoice')
+                      } finally {
+                        setIsSaving(false)
+                      }
+                    }}
+                    disabled={isSaving}
+                    className="mt-2 inline-flex items-center px-3 py-1.5 text-sm font-medium text-green-700 bg-green-50 hover:bg-green-100 dark:text-green-400 dark:bg-green-900/20 dark:hover:bg-green-900/40 rounded-md disabled:opacity-50"
+                  >
+                    {isSaving ? 'Matching...' : 'Match Invoice'}
+                  </button>
+                )}
+              </div>
+
+              {/* Source Statement */}
+              <div className="bg-gray-50 dark:bg-gray-900 p-4 rounded-md">
+                <div className="text-sm text-gray-600 dark:text-gray-400">
+                  <strong>Source Statement:</strong> {editingTransaction.job?.original_filename || 'Unknown'}
+                </div>
+                {editingTransaction.job_id && (
+                  <Link
+                    href={`/dashboard/review/${editingTransaction.job_id}`}
+                    className="text-sm text-blue-600 dark:text-blue-400 hover:underline mt-2 inline-block"
+                  >
+                    View full statement →
+                  </Link>
+                )}
+              </div>
+
+              {/* Mark as Reviewed Checkbox */}
+              <div className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  id="user_confirmed"
+                  checked={editingTransaction.user_confirmed || false}
+                  onChange={(e) => setEditingTransaction({...editingTransaction, user_confirmed: e.target.checked})}
+                  className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                />
+                <label htmlFor="user_confirmed" className="text-sm text-gray-700 dark:text-gray-300">
+                  Mark as reviewed
+                </label>
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="flex items-center justify-end gap-3 p-6 border-t border-gray-200 dark:border-gray-700">
+              <Button
+                onClick={() => setShowEditModal(false)}
+                color="white"
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={handleSaveTransaction}
+                color="blue"
+                disabled={isSaving}
+              >
+                {isSaving ? 'Saving...' : 'Save'}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

@@ -56,7 +56,9 @@ export default function SpreadsheetsPage() {
     try {
       setLoading(true)
       setError(null)
-      const response = await fetch('/api/integrations/google-sheets/list')
+      const response = await fetch('/api/integrations/google-sheets/list', {
+        credentials: 'include',
+      })
       const data = await response.json()
 
       if (!response.ok) {
@@ -117,6 +119,7 @@ export default function SpreadsheetsPage() {
       const response = await fetch('/api/integrations/google-sheets/preferences', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({
           spreadsheet_id: spreadsheetId,
           spreadsheet_name: spreadsheetName,

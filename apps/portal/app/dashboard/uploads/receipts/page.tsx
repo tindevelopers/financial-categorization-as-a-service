@@ -15,7 +15,8 @@ import {
   DocumentTextIcon,
   ArrowUpTrayIcon,
   DocumentIcon,
-  XCircleIcon
+  XCircleIcon,
+  ArrowsRightLeftIcon
 } from '@heroicons/react/24/outline'
 import { useDropzone } from 'react-dropzone'
 
@@ -40,6 +41,7 @@ interface Invoice {
   failed_items?: number
   error_code?: string
   error_message?: string
+  document_id?: string  // First document ID for this job
 }
 
 function getStatusIcon(status: string) {
@@ -61,7 +63,7 @@ function getStatusIcon(status: string) {
 function getStatusLabel(status: string, statusMessage?: string) {
   switch (status) {
     case 'completed':
-      return { text: 'Completed', color: 'text-green-600 dark:text-green-400' }
+      return { text: 'Ready for Reconciliation', color: 'text-green-600 dark:text-green-400' }
     case 'reviewing':
       return { text: 'Ready for Review', color: 'text-green-600 dark:text-green-400' }
     case 'processing':
@@ -169,7 +171,24 @@ export default function InvoicesReceiptsPage() {
         job.job_type === 'invoice'
       )
       
-      setInvoices(invoiceJobs)
+      // Fetch document IDs for each job
+      const jobsWithDocs = await Promise.all(
+        invoiceJobs.map(async (job: Invoice) => {
+          try {
+            const docsResponse = await fetch(`/api/categorization/jobs/${job.id}/documents`)
+            if (docsResponse.ok) {
+              const docsData = await docsResponse.json()
+              const firstDoc = docsData.documents?.[0]
+              return { ...job, document_id: firstDoc?.id }
+            }
+          } catch (err) {
+            console.error(`Error fetching docs for job ${job.id}:`, err)
+          }
+          return job
+        })
+      )
+      
+      setInvoices(jobsWithDocs)
     } catch (error: any) {
       console.error('Error fetching invoices:', error)
     } finally {
@@ -222,7 +241,7 @@ export default function InvoicesReceiptsPage() {
   }
 
   const pollJobStatus = async (jobId: string) => {
-    const maxAttempts = 120
+    const maxAttempts = 300 // 5 minutes (increased from 2 minutes)
     let attempts = 0
 
     const poll = async () => {
@@ -264,10 +283,14 @@ export default function InvoicesReceiptsPage() {
           if (!['reviewing', 'completed', 'failed'].includes(job.status)) {
             attempts++
             if (attempts < maxAttempts) {
+              // Show a warning after 2 minutes, but keep polling
+              if (attempts === 120) {
+                setStatusMessage('Processing is taking longer than usual, but still running...')
+              }
               setTimeout(poll, 1000)
             } else {
               setUploading(false)
-              setError('Processing is taking longer than expected.')
+              setError('Processing is taking longer than expected. Please check back later or refresh the page.')
             }
           }
         }
@@ -629,13 +652,22 @@ export default function InvoicesReceiptsPage() {
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="flex items-center gap-2">
-                          {(invoice.status === 'reviewing' || invoice.status === 'completed') && (
-                            <Link
-                              href={`/dashboard/review/${invoice.id}`}
-                              className="inline-flex items-center px-3 py-1.5 text-sm font-medium text-blue-700 bg-blue-50 hover:bg-blue-100 dark:text-blue-400 dark:bg-blue-900/20 dark:hover:bg-blue-900/40 rounded-md"
-                            >
-                              Review
-                            </Link>
+                          {invoice.status === 'completed' && invoice.document_id && (
+                            <>
+                              <Link
+                                href={`/dashboard/invoices/${invoice.document_id}`}
+                                className="inline-flex items-center px-3 py-1.5 text-sm font-medium text-blue-700 bg-blue-50 hover:bg-blue-100 dark:text-blue-400 dark:bg-blue-900/20 dark:hover:bg-blue-900/40 rounded-md"
+                              >
+                                Review
+                              </Link>
+                              <Link
+                                href="/dashboard/statements"
+                                className="inline-flex items-center px-3 py-1.5 text-sm font-medium text-green-700 bg-green-50 hover:bg-green-100 dark:text-green-400 dark:bg-green-900/20 dark:hover:bg-green-900/40 rounded-md"
+                              >
+                                <ArrowsRightLeftIcon className="h-4 w-4 mr-1" />
+                                Reconcile
+                              </Link>
+                            </>
                           )}
                           <button
                             onClick={() => handleDelete(invoice.id)}

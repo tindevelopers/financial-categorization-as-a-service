@@ -42,18 +42,35 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { data: document, error: docError } = await supabase
-      .from('documents')
+    // Try financial_documents first (new table), fallback to documents (old table)
+    let document: any = null;
+    let docError: any = null;
+
+    const { data: financialDoc, error: financialDocError } = await supabase
+      .from('financial_documents')
       .select('*')
       .eq('id', document_id)
       .eq('user_id', user.id)
       .single();
 
-    if (docError || !document) {
-      return NextResponse.json(
-        { error: 'Document not found or unauthorized' },
-        { status: 404 }
-      );
+    if (!financialDocError && financialDoc) {
+      document = financialDoc;
+    } else {
+      // Fallback to old documents table
+      const { data: oldDoc, error: oldDocError } = await supabase
+        .from('documents')
+        .select('*')
+        .eq('id', document_id)
+        .eq('user_id', user.id)
+        .single();
+
+      if (oldDocError || !oldDoc) {
+        return NextResponse.json(
+          { error: 'Document not found or unauthorized' },
+          { status: 404 }
+        );
+      }
+      document = oldDoc;
     }
 
     // Use the database function to match

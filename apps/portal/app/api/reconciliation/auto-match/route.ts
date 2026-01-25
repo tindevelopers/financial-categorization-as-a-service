@@ -72,7 +72,10 @@ export async function POST(request: NextRequest) {
         // Skip if already matched
         if (doc.matched_transaction_id) continue;
 
-        const amountDiff = Math.abs((tx.amount || 0) - (doc.total_amount || 0));
+        // Compare absolute amounts - transactions are negative, documents are positive
+        const txAmount = Math.abs(tx.amount || 0);
+        const docAmount = Math.abs(doc.total_amount || 0);
+        const amountDiff = Math.abs(txAmount - docAmount);
         const dateDiff = doc.document_date 
           ? Math.abs(
               (new Date(tx.date).getTime() - new Date(doc.document_date).getTime()) / 

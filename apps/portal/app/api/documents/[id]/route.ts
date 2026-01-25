@@ -1,35 +1,73 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/database/server";
 
+/**
+ * GET /api/documents/[id]
+ * Get a specific document with its details
+ */
 export async function GET(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: { id: string } }
 ) {
   try {
-    const { id } = await params;
     const supabase = await createClient();
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser();
-
+    
+    // Authenticate user
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
     if (authError || !user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      return NextResponse.json(
+        { error: "Unauthorized" },
+        { status: 401 }
+      );
     }
 
-    const { data, error } = await supabase
+    const documentId = params.id;
+
+    // Fetch document
+    const { data: document, error: docError } = await supabase
       .from("financial_documents")
       .select("*")
-      .eq("id", id)
+      .eq("id", documentId)
       .eq("user_id", user.id)
       .single();
 
-    if (error || !data) {
-      return NextResponse.json({ error: "Document not found" }, { status: 404 });
+    if (docError || !document) {
+      return NextResponse.json(
+        { error: "Document not found" },
+        { status: 404 }
+      );
     }
 
-    return NextResponse.json({ success: true, document: data });
+    // Get download URL if document is in storage
+    let downloadUrl = null;
+    if (document.supabase_path) {
+      const { data: urlData } = await supabase.storage
+        .from("categorization-uploads")
+        .createSignedUrl(document.supabase_path, 3600); // 1 hour expiry
+
+      downloadUrl = urlData?.signedUrl || null;
+    }
+
+    // Check if document is archived and needs restoration
+    let archiveStatus = null;
+    if (document.storage_tier === 'archive') {
+      archiveStatus = {
+        isArchived: true,
+        isRestoring: document.archive_restore_status === 'in_progress',
+        canRestore: document.archive_restore_status !== 'in_progress',
+      };
+    }
+
+    return NextResponse.json({
+      document: {
+        ...document,
+        downloadUrl,
+        archiveStatus,
+      },
+    });
+
   } catch (error: any) {
+    console.error("Error in /api/documents/[id]:", error);
     return NextResponse.json(
       { error: error.message || "Internal server error" },
       { status: 500 }
@@ -37,129 +75,89 @@ export async function GET(
   }
 }
 
+/**
+ * PATCH /api/documents/[id]
+ * Update document data (for manual corrections after OCR review)
+ */
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: { id: string } }
 ) {
   try {
-    const { id } = await params;
     const supabase = await createClient();
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser();
-
+    
+    // Authenticate user
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
     if (authError || !user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    const body = await request.json();
-    const updates: Record<string, unknown> = {};
-
-    // Only allow invoice-related fields to be updated
-    const allowed = [
-      "vendor_name",
-      "invoice_number",
-      "po_number",
-      "order_number",
-      "document_date",
-      "delivery_date",
-      "paid_date",
-      "subtotal_amount",
-      "tax_amount",
-      "fee_amount",
-      "shipping_amount",
-      "total_amount",
-      "currency",
-      "line_items",
-      "payment_method",
-      "notes",
-      "ocr_needs_review",
-      "ocr_field_confidence",
-      "ocr_extraction_methods",
-    ];
-
-    for (const key of allowed) {
-      if (body[key] !== undefined) updates[key] = body[key];
-    }
-
-    // If nothing to update, return success
-    if (Object.keys(updates).length === 0) {
-      return NextResponse.json({ success: true });
-    }
-
-    // Try update; if remote DB is missing a newer column, retry without it
-    let pendingUpdates = { ...updates };
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    let lastError: any = null;
-
-    for (let attempt = 1; attempt <= 3; attempt++) {
-      const { error } = await supabase
-        .from("financial_documents")
-        .update(pendingUpdates)
-        .eq("id", id)
-        .eq("user_id", user.id);
-
-      if (!error) {
-        return NextResponse.json({ success: true });
-      }
-
-      lastError = error;
-      const errMsg = String(error.message || "");
-      const match = errMsg.match(/financial_documents\.([a-zA-Z0-9_]+)/);
-      const missingCol = match?.[1];
-      if ((error as any)?.code === "42703" && missingCol && pendingUpdates[missingCol] !== undefined) {
-        const next = { ...pendingUpdates };
-        delete next[missingCol];
-        pendingUpdates = next;
-        continue;
-      }
-
-      break;
-    }
-
-    return NextResponse.json(
-      { error: "Failed to update document", details: lastError?.message },
-      { status: 500 }
-    );
-  } catch (error: any) {
-    return NextResponse.json(
-      { error: error.message || "Internal server error" },
-      { status: 500 }
-    );
-  }
-}
-
-export async function DELETE(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
-  try {
-    const { id } = await params;
-    const supabase = await createClient();
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser();
-
-    if (authError || !user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-    // Soft delete so download route respects it (download route checks is_deleted)
-    const { error } = await supabase
-      .from("financial_documents")
-      .update({ is_deleted: true })
-      .eq("id", id)
-      .eq("user_id", user.id);
-
-    if (error) {
       return NextResponse.json(
-        { error: "Failed to delete document", details: error.message },
+        { error: "Unauthorized" },
+        { status: 401 }
+      );
+    }
+
+    const documentId = params.id;
+    const updates = await request.json();
+
+    // Validate document belongs to user
+    const { data: existingDoc, error: checkError } = await supabase
+      .from("financial_documents")
+      .select("id")
+      .eq("id", documentId)
+      .eq("user_id", user.id)
+      .single();
+
+    if (checkError || !existingDoc) {
+      return NextResponse.json(
+        { error: "Document not found" },
+        { status: 404 }
+      );
+    }
+
+    // Update allowed fields
+    const allowedFields = {
+      vendor_name: updates.vendor_name,
+      document_date: updates.document_date,
+      document_number: updates.document_number,
+      order_number: updates.order_number,
+      total_amount: updates.total_amount,
+      subtotal_amount: updates.subtotal_amount,
+      tax_amount: updates.tax_amount,
+      tax_rate: updates.tax_rate,
+      fee_amount: updates.fee_amount,
+      line_items: updates.line_items,
+      currency: updates.currency,
+    };
+
+    // Remove undefined fields
+    Object.keys(allowedFields).forEach(key => {
+      if (allowedFields[key as keyof typeof allowedFields] === undefined) {
+        delete allowedFields[key as keyof typeof allowedFields];
+      }
+    });
+
+    // Update document
+    const { data: updatedDoc, error: updateError } = await supabase
+      .from("financial_documents")
+      .update(allowedFields)
+      .eq("id", documentId)
+      .select()
+      .single();
+
+    if (updateError) {
+      console.error("Error updating document:", updateError);
+      return NextResponse.json(
+        { error: "Failed to update document" },
         { status: 500 }
       );
     }
-    return NextResponse.json({ success: true, message: "Document deleted" });
+
+    return NextResponse.json({
+      success: true,
+      document: updatedDoc,
+    });
+
   } catch (error: any) {
+    console.error("Error in PATCH /api/documents/[id]:", error);
     return NextResponse.json(
       { error: error.message || "Internal server error" },
       { status: 500 }
@@ -167,4 +165,53 @@ export async function DELETE(
   }
 }
 
+/**
+ * DELETE /api/documents/[id]
+ * Delete a document
+ */
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: { id: string } }
+) {
+  try {
+    const supabase = await createClient();
+    
+    // Authenticate user
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    if (authError || !user) {
+      return NextResponse.json(
+        { error: "Unauthorized" },
+        { status: 401 }
+      );
+    }
 
+    const documentId = params.id;
+
+    // Delete document (will cascade to related records)
+    const { error: deleteError } = await supabase
+      .from("financial_documents")
+      .delete()
+      .eq("id", documentId)
+      .eq("user_id", user.id);
+
+    if (deleteError) {
+      console.error("Error deleting document:", deleteError);
+      return NextResponse.json(
+        { error: "Failed to delete document" },
+        { status: 500 }
+      );
+    }
+
+    return NextResponse.json({
+      success: true,
+      message: "Document deleted successfully",
+    });
+
+  } catch (error: any) {
+    console.error("Error in DELETE /api/documents/[id]:", error);
+    return NextResponse.json(
+      { error: error.message || "Internal server error" },
+      { status: 500 }
+    );
+  }
+}

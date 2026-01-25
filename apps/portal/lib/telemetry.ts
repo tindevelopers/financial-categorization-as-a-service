@@ -20,14 +20,18 @@ interface LogEntry {
  * Write log entry to Cursor debug log
  */
 export function logToCursor(entry: LogEntry): void {
+  // Console log for immediate visibility
+  console.log(`[telemetry] ${entry.message}`, entry.data || '')
+
   // Try to write to HTTP endpoint (for Cursor agent)
   if (typeof fetch !== 'undefined') {
     fetch(DEBUG_LOG_ENDPOINT, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(entry),
-    }).catch(() => {
+    }).catch((err) => {
       // Ignore fetch errors (endpoint may not be available)
+      console.debug('[telemetry] HTTP endpoint not available:', err.message)
     });
   }
 
@@ -36,11 +40,20 @@ export function logToCursor(entry: LogEntry): void {
     try {
       const fs = require('fs');
       const path = require('path');
+      const dir = path.join(process.cwd(), '.cursor');
+      
+      // Ensure directory exists
+      if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
+        console.log('[telemetry] Created .cursor directory');
+      }
+      
       const logPath = path.join(process.cwd(), DEBUG_LOG_FILE);
       const logLine = JSON.stringify(entry) + '\n';
-      fs.appendFileSync(logPath, logLine, { flag: 'a' });
+      fs.appendFileSync(logPath, logLine, { flag: 'a', encoding: 'utf-8' });
+      console.debug('[telemetry] Wrote to debug log');
     } catch (err) {
-      // Ignore file write errors
+      console.error('[telemetry] Failed to write debug log:', err);
     }
   }
 }
