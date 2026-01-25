@@ -7,7 +7,7 @@ import { createClient } from "@/lib/database/server";
  */
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const supabase = await createClient();
@@ -21,7 +21,7 @@ export async function GET(
       );
     }
 
-    const documentId = params.id;
+    const { id: documentId } = await params;
 
     // Fetch document
     const { data: document, error: docError } = await supabase
@@ -81,7 +81,7 @@ export async function GET(
  */
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const supabase = await createClient();
@@ -95,7 +95,7 @@ export async function PATCH(
       );
     }
 
-    const documentId = params.id;
+    const { id: documentId } = await params;
     const updates = await request.json();
 
     // Validate document belongs to user
@@ -171,7 +171,7 @@ export async function PATCH(
  */
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const supabase = await createClient();
@@ -185,7 +185,7 @@ export async function DELETE(
       );
     }
 
-    const documentId = params.id;
+    const { id: documentId } = await params;
 
     // Delete document (will cascade to related records)
     const { error: deleteError } = await supabase
