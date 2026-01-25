@@ -24,16 +24,17 @@ export function logToCursor(entry: LogEntry): void {
   console.log(`[telemetry] ${entry.message}`, entry.data || '')
 
   // Try to write to HTTP endpoint (for Cursor agent)
-  if (typeof fetch !== 'undefined') {
-    fetch(DEBUG_LOG_ENDPOINT, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(entry),
-    }).catch((err) => {
-      // Ignore fetch errors (endpoint may not be available)
-      console.debug('[telemetry] HTTP endpoint not available:', err.message)
-    });
-  }
+  // Disabled in production/development to avoid console noise
+  // if (typeof fetch !== 'undefined' && process.env.NEXT_PUBLIC_TELEMETRY_ENABLED === 'true') {
+  //   fetch(DEBUG_LOG_ENDPOINT, {
+  //     method: 'POST',
+  //     headers: { 'Content-Type': 'application/json' },
+  //     body: JSON.stringify(entry),
+  //   }).catch((err) => {
+  //     // Ignore fetch errors (endpoint may not be available)
+  //     console.debug('[telemetry] HTTP endpoint not available:', err.message)
+  //   });
+  // }
 
   // Also write to file system (for server-side)
   if (typeof window === 'undefined') {
