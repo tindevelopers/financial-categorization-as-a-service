@@ -34,7 +34,6 @@ export async function GET(request: NextRequest) {
         tax_rate,
         line_items,
         document_date,
-        invoice_date,
         file_type,
         ocr_status
       `)
@@ -73,7 +72,7 @@ export async function GET(request: NextRequest) {
       fee_amount: doc.fee_amount,
       tax_rate: doc.tax_rate,
       line_items: doc.line_items,
-      document_date: doc.document_date || doc.invoice_date,
+      document_date: doc.document_date,
       file_type: doc.file_type,
     }));
 
