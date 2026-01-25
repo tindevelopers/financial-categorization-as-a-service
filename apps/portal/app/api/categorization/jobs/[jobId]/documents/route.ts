@@ -7,7 +7,7 @@ import { createClient } from "@/lib/database/server";
  */
 export async function GET(
   request: NextRequest,
-  { params }: { params: { jobId: string } }
+  { params }: { params: Promise<{ jobId: string }> }
 ) {
   try {
     const supabase = await createClient();
@@ -21,7 +21,7 @@ export async function GET(
       );
     }
 
-    const jobId = params.jobId;
+    const { jobId } = await params;
 
     // Fetch documents for this job
     const { data: documents, error: docsError } = await supabase
