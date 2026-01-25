@@ -1290,7 +1290,10 @@ export default function StatementsPage() {
                         alert('Invoice matched successfully!')
                         setSelectedDocumentId('')
                         setShowEditModal(false)
-                        if (selectedBankAccount) fetchTransactions(selectedBankAccount)
+                        if (selectedAccountKey !== 'all' && selectedAccountKey.startsWith('bank:')) {
+                          const bankAccountId = selectedAccountKey.slice('bank:'.length)
+                          fetchTransactions(bankAccountId)
+                        }
                         loadAvailableDocuments()
                       } catch (error) {
                         console.error('Match error:', error)
